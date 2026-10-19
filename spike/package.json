@@ -1,0 +1,32 @@
+{
+  "name": "circuitsync-spike",
+  "private": true,
+  "type": "module",
+  "description": "Demostración técnica de factibilidad de CircuitSync: motor, árbitro y medición de latencia",
+  "scripts": {
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "bench:local": "tsx src/bench/latency.ts",
+    "poc:photon": "tsx src/bench/photon-poc.ts",
+    "bench:photon4": "tsx src/bench/photon4.ts",
+    "sim:duel": "tsx src/sim/cli.ts",
+    "export:csv": "tsx src/sim/cli.ts --csv",
+    "serve": "tsx src/serve.ts",
+    "serve:photon": "tsx src/serve.ts --photon"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "eslint": "^9.39.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^2.1.0"
+  },
+  "dependencies": {
+    "photon-realtime": "4.4.0",
+    "ws": "^8.18.0"
+  }
+}
