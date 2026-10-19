@@ -31,10 +31,15 @@ export async function simulateDuel(make: () => Transport): Promise<{ arbiter: Ar
     const counts = ana.log.flatMap((m) => (m.t === "countdown" ? [m.n] : []));
     assert.deepEqual(counts, [3, 2, 1]);
 
+    // Ambos reciben el mismo primer pod; ninguno recibe la solución.
+    assert.deepEqual(ana.pod, beto.pod);
+    assert.ok(!JSON.stringify(ana.log).includes("solucion"));
+
     // Un fallo cuesta tiempo y el rival lo ve como "penalizado" (nunca ve la pieza).
-    const seq = ana.test(0, 1000);
+    const z = ana.pod!.zonas[0]!;
+    const seq = ana.test(z.zona, Bot.answer(z, (v) => v !== "correcto"));
     const r = await ana.until((m) => m.t === "result" && m.seq === seq);
-    assert.ok(r.t === "result" && r.veredicto === "poco" && r.waitMs === 2000);
+    assert.ok(r.t === "result" && r.veredicto !== "correcto" && r.waitMs >= 2000);
     await beto.until((m) => m.t === "rival" && m.estado === "penalizado");
 
     // beto despacha 2 pods, se cae y vuelve antes de 30 s con el mismo alias.
@@ -56,8 +61,10 @@ export async function simulateDuel(make: () => Transport): Promise<{ arbiter: Ar
 
     const csv = host.arbiter.toCsv();
     assert.ok(csv.startsWith("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada\r\n"));
-    assert.match(csv, /\r\nA;1;0;R=1000;fallo;\d+;no\r\n/);
-    assert.equal(csv.trimEnd().split("\r\n").length - 1, 11 + 4); // ana: 1 fallo + 10 aciertos; beto: 4 aciertos
+    assert.match(csv, new RegExp(`\r\nA;1;${z.zona};[^;]+;fallo;\\d+;(no|si)\r\n`));
+    // ana: 1 fallo + un acierto por zona de los 5 pods; beto: los pods 1 y 2 tienen una zona cada uno.
+    const zonas = host.arbiter.pods.reduce((n, p) => n + p.zonas.length, 0);
+    assert.equal(csv.trimEnd().split("\r\n").length - 1, 1 + zonas + 2);
     return { arbiter: host.arbiter, outcome: endA, csv };
   } finally {
     host.stop();

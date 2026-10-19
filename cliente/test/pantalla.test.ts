@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { avisoVivo, inicial, reducir, reloj, textoFin, textoRival, validarEntrada } from "../src/pantalla";
+import { avisoVivo, despachar, inicial, podVisible, tarjetaVisible, reducir, reloj, textoFin, textoRival, validarEntrada } from "../src/pantalla";
 
 describe("lógica de pantalla", () => {
   it("valida código (6) y alias (1–12)", () => {
@@ -44,5 +44,35 @@ describe("lógica de pantalla", () => {
   it("empate y anulada", () => {
     expect(textoFin({ t: "end", phase: "fin", winner: null, reason: "tiempo", score: {} }, "A").titulo).toBe("Empate");
     expect(textoFin({ t: "end", phase: "anulada", winner: null, reason: "x", score: {} }, "A").titulo).toBe("Partida anulada");
+  });
+
+  const pod = { numero: 2, zonas: [
+    { zona: 0, nombre: "radar" as const, circuito: "led" as const, volts: 9, opciones: ["220", "1000", "470"], reparada: false },
+    { zona: 3, nombre: "reactor" as const, circuito: "fusible" as const, volts: 9, opciones: ["3", "0.5", "1"], reparada: true },
+  ] };
+  const taller = { ...inicial(), fase: "taller" as const, despachados: 1, pod };
+
+  it("pieza quemada: mensaje según el circuito y tarjeta de al menos 3 s solo en esa zona", () => {
+    const p = reducir(taller, { t: "result", seq: 1, t0: 0, zona: 0, veredicto: "se quema", waitMs: 4000, despachados: 1, pod }, 0);
+    expect(p.vistas[0]).toMatchObject({ quemado: true, mensaje: "¡El LED se quemó!" });
+    expect(tarjetaVisible(p, 0, 3000)).toBe(true);
+    expect(tarjetaVisible(p, 3, 1000)).toBe(false);
+    expect(tarjetaVisible(p, 0, 4000)).toBe(false);
+  });
+
+  it("al reparar la última zona el pod queda listo para 'Despachar' y luego se ve el siguiente", () => {
+    const sig = { numero: 3, zonas: [{ ...pod.zonas[0]!, zona: 1, nombre: "cabina" as const, circuito: "cabina" as const }] };
+    const p = reducir(taller, { t: "result", seq: 1, t0: 0, zona: 0, veredicto: "correcto", waitMs: 0, despachados: 2, pod: sig }, 0);
+    expect(podVisible(p)).toMatchObject({ numero: 2, zonas: [{ reparada: true }, { reparada: true }] });
+    expect(p.aviso).toBe("¡Pod reparado! Pulsa Despachar");
+    const q = despachar(p);
+    expect(podVisible(q)).toBe(sig);
+    expect(q).toMatchObject({ aviso: "¡Pod despachado!", vistas: {}, despachados: 2 });
+  });
+
+  it("el start guarda el nivel y limpia lo del pod anterior", () => {
+    const p = reducir({ ...taller, despachable: pod, tarjeta: { zona: 0, hasta: 9e9 } },
+      { t: "start", restanteMs: 1000, despachados: 1, total: 5, nivel: 2, pod, rival: null }, 0);
+    expect(p).toMatchObject({ nivel: 2, despachable: undefined, tarjeta: null, vistas: {} });
   });
 });

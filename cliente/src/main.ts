@@ -1,8 +1,9 @@
 /// <reference types="vite/client" />
 import * as Phaser from "phaser";
 import { crearTransporte, Net, type Config } from "./net";
-import { avisoVivo, reloj, textoRival, type Fase, type Pantalla } from "./pantalla";
-import { OPCIONES, textoOpcion, type Aguja } from "./vista";
+import type { Circuito } from "../../spike/src/protocol";
+import { avisoVivo, podVisible, reloj, tarjetaVisible, textoRival, type Fase, type Pantalla } from "./pantalla";
+import { botonesGaveta, GAVETA, NOMBRE_ZONA, pestanas, reparadas, RETO, textoOpcion, textoVolts, type Aguja } from "./vista";
 
 const W = 360, H = 640; // diseño vertical; Scale.FIT lo ajusta a cualquier pantalla
 const ANGULO: Record<Aguja, number> = { poco: -60, correcto: 0, demasiado: 60 };
@@ -70,75 +71,157 @@ class Cuenta extends Base {
   pintar(p: Pantalla) { this.n.setText(String(p.cuenta)); }
 }
 
+/** Colores de la carga: apagada, poco, correcto, demasiado, quemada. */
+const PALETA: Record<Circuito, number[]> = {
+  led: [0x551111, 0x882222, 0xff2020, 0xff7070, 0x222222],
+  cabina: [0x551111, 0x882222, 0xff2020, 0xff7070, 0x222222],
+  luces: [0x55552a, 0x8a8a3a, 0xffe955, 0xffffaa, 0x222222],
+  interruptor: [0x333a44, 0x4f6a5a, 0x3bb273, 0x9be0b5, 0x222222],
+  fusible: [0x443333, 0x7a4a3a, 0xe06c3c, 0xffa070, 0x222222],
+};
+const PIEZA_COLOR: Record<Circuito, number> = { led: 0xc8a46e, cabina: 0xc8a46e, luces: 0x8fa3bf, interruptor: 0x8fa3bf, fusible: 0xeeeeee };
+
 class Taller extends Base {
   private zona = 0;
-  private elegida = 470;
+  /** Pieza elegida por zona, con clave "pod-zona": la gaveta empieza sin elección. */
+  private elegidas = new Map<string, string>();
   private ui!: {
-    estado: Phaser.GameObjects.Text; rival: Phaser.GameObjects.Text; reloj: Phaser.GameObjects.Text; reto: Phaser.GameObjects.Text;
-    pieza: Phaser.GameObjects.Text; leds: Phaser.GameObjects.Arc[]; aguja: Phaser.GameObjects.Rectangle; aviso: Phaser.GameObjects.Text;
-    zonas: Phaser.GameObjects.Text[]; opciones: Phaser.GameObjects.Text[];
+    estado: Phaser.GameObjects.Text; rival: Phaser.GameObjects.Text; reloj: Phaser.GameObjects.Text; reparadas: Phaser.GameObjects.Text;
+    reto: Phaser.GameObjects.Text; volts: Phaser.GameObjects.Text; pieza: Phaser.GameObjects.Text; pinta: Phaser.GameObjects.Rectangle;
+    dibujo: Phaser.GameObjects.Graphics; motor: Phaser.GameObjects.Text; aguja: Phaser.GameObjects.Rectangle; aviso: Phaser.GameObjects.Text;
+    gaveta: Phaser.GameObjects.Text; zonas: Phaser.GameObjects.Text[]; opciones: Phaser.GameObjects.Text[];
+    probar: Phaser.GameObjects.Text; despachar: Phaser.GameObjects.Text; tarjeta: Phaser.GameObjects.Container;
   };
   constructor() { super("Taller"); }
+
+  private clave() { return `${podVisible(net.estado)?.numero}-${this.zona}`; }
 
   create() {
     const estado = texto(this, 16, 8, "", 16).setOrigin(0, 0);
     const relojT = texto(this, W - 16, 8, "", 16).setOrigin(1, 0);
     const rival = texto(this, W / 2, 32, "", 14, "#9ab");
-    const zonas = [0, 1].map((z) => boton(this, 92 + z * 176, 76, "", 168, "#2c3344", () => { this.zona = z; this.pintar(net.estado); }));
-    const reto = texto(this, W / 2, 104, "", 15, "#9ab");
+    const zonas = [0, 1, 2, 3].map((i) => this.add.text(56 + i * 83, 74, "", {
+      fontSize: "13px", color: "#fff", backgroundColor: "#2c3344", fixedWidth: 79, align: "center", padding: { y: 10 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on("pointerdown", () => {
+      const pod = podVisible(net.estado);
+      const z = pod && pestanas(pod, this.zona)[i];
+      if (z) { this.zona = z.zona; this.pintar(net.estado); }
+    }));
+    const reparadasT = texto(this, W / 2, 98, "", 13, "#9ab");
+    const reto = texto(this, W / 2, 118, "", 15);
 
-    // Circuito: batería 9 V → pieza elegida → LED (o dos LED en paralelo en la cabina)
-    this.add.graphics().lineStyle(4, 0xcccccc).strokeRect(60, 140, 240, 100);
-    this.add.rectangle(60, 190, 36, 60, 0x3a6ea5).setStrokeStyle(2, 0xffffff);
-    this.add.text(60, 190, "9 V", { fontSize: "14px", color: "#fff" }).setOrigin(0.5);
-    this.add.rectangle(180, 140, 80, 28, 0xc8a46e).setStrokeStyle(2, 0xffffff);
-    const pieza = this.add.text(180, 140, "", { fontSize: "14px", color: "#000" }).setOrigin(0.5);
-    const leds = [170, 210].map((y) => this.add.circle(300, y, 16, 0x551111).setStrokeStyle(3, 0xffffff));
+    // Circuito: batería → pieza o montaje elegido → carga; el dibujo de la carga depende de `circuito`.
+    this.add.graphics().lineStyle(4, 0xcccccc).strokeRect(50, 176, 260, 96);
+    this.add.rectangle(50, 224, 46, 60, 0x3a6ea5).setStrokeStyle(2, 0xffffff);
+    const volts = this.add.text(50, 224, "", { fontSize: "12px", color: "#fff" }).setOrigin(0.5);
+    const pinta = this.add.rectangle(180, 176, 96, 28, 0xc8a46e).setStrokeStyle(2, 0xffffff);
+    const pieza = this.add.text(180, 176, "", { fontSize: "14px", color: "#000" }).setOrigin(0.5);
+    const dibujo = this.add.graphics();
+    const motor = this.add.text(310, 224, "M", { fontSize: "20px", color: "#000", fontStyle: "bold" }).setOrigin(0.5);
 
     // Aguja: tres zonas sin números
-    const cx = W / 2, cy = 360;
+    const cx = W / 2, cy = 384;
     const arcos: [Aguja, number][] = [["poco", 0x888888], ["correcto", 0x3bb273], ["demasiado", 0xe06c3c]];
     arcos.forEach(([nombre, color], i) => {
       const a0 = Phaser.Math.DegToRad(-180 + i * 60), a1 = Phaser.Math.DegToRad(-120 + i * 60);
-      this.add.graphics().lineStyle(18, color).beginPath().arc(cx, cy, 80, a0, a1).strokePath();
+      this.add.graphics().lineStyle(16, color).beginPath().arc(cx, cy, 72, a0, a1).strokePath();
       const am = (a0 + a1) / 2;
-      this.add.text(cx + Math.cos(am) * 130, cy + Math.sin(am) * 108, nombre, { fontSize: "14px", color: "#ddd" }).setOrigin(0.5);
+      this.add.text(cx + Math.cos(am) * 130, cy + Math.sin(am) * 92, nombre, { fontSize: "14px", color: "#ddd" }).setOrigin(0.5);
     });
-    const aguja = this.add.rectangle(cx, cy, 4, 70, 0xffffff).setOrigin(0.5, 1).setVisible(false);
-    const aviso = texto(this, cx, 380, "", 16);
+    const aguja = this.add.rectangle(cx, cy, 4, 64, 0xffffff).setOrigin(0.5, 1).setVisible(false);
+    const aviso = texto(this, cx, 396, "", 16);
 
-    const opciones = OPCIONES.map((ohms, i) =>
-      boton(this, 16 + (i % 2) * 168 + 80, 462 + Math.floor(i / 2) * 60, textoOpcion(ohms), 160, "#2c3344", () => { this.elegida = ohms; this.pintar(net.estado); }));
-    boton(this, W / 2, 596, "Probar", W - 32, "#3bb273", () => net.probar(this.zona, this.elegida));
+    const gaveta = texto(this, W / 2, 446, "", 14, "#9ab");
+    const opciones = [0, 1, 2].map((i) => boton(this, 68 + i * 112, 486, "", 104, "#2c3344", () => {
+      const z = this.zonaActual();
+      if (z?.opciones[i]) { this.elegidas.set(this.clave(), z.opciones[i]!); this.pintar(net.estado); }
+    }).setFontSize(18));
+    const probar = boton(this, W / 2, 560, "Probar", W - 32, "#3bb273", () => {
+      const z = this.zonaActual(), elegida = this.elegidas.get(this.clave());
+      if (z && !z.reparada && elegida && !net.estado.despachable) net.probar(z.zona, elegida);
+    });
+    const despachar = boton(this, W / 2, 560, "Despachar", W - 32, "#e0a43c", () => net.despachar());
 
-    this.ui = { estado, rival, reloj: relojT, reto, pieza, leds, aguja, aviso, zonas, opciones };
+    // Tarjeta de pieza quemada (≥ 3 s), sobre el circuito.
+    const tarjeta = this.add.container(W / 2, 224, [
+      this.add.rectangle(0, 0, 250, 84, 0x5a1414, 0.95).setStrokeStyle(3, 0xff6b6b),
+      this.add.text(0, 0, "", { fontSize: "18px", color: "#fff", align: "center" }).setOrigin(0.5),
+    ]).setVisible(false);
+
+    this.ui = { estado, rival, reloj: relojT, reparadas: reparadasT, reto, volts, pieza, pinta, dibujo, motor, aguja, aviso, gaveta, zonas, opciones, probar, despachar, tarjeta };
     this.pintar(net.estado);
   }
 
+  private zonaActual() {
+    const zonas = podVisible(net.estado)?.zonas ?? [];
+    return zonas.find((x) => x.zona === this.zona) ?? zonas[0];
+  }
+
   update() {
-    this.ui.reloj.setText(reloj(net.estado, Date.now()));
-    this.ui.aviso.setText(avisoVivo(net.estado, Date.now()) ?? "Elige una resistencia y pulsa Probar");
+    const p = net.estado, z = this.zonaActual(), ahora = Date.now();
+    this.ui.reloj.setText(reloj(p, ahora));
+    this.ui.aviso.setText(avisoVivo(p, ahora) ?? (z?.reparada ? "Zona reparada" : "Elige y pulsa Probar"));
+    const ver = !!z && tarjetaVisible(p, z.zona, ahora);
+    if (ver !== this.ui.tarjeta.visible) {
+      const elegida = this.elegidas.get(this.clave());
+      (this.ui.tarjeta.getAt(1) as Phaser.GameObjects.Text).setText(`¡Pieza quemada!\n${elegida && z ? textoOpcion(elegida, z.circuito) : ""}`);
+      this.ui.tarjeta.setVisible(ver);
+    }
   }
 
   pintar(p: Pantalla) {
     const u = this.ui;
-    const zonas = p.pod?.zonas ?? [];
-    const z = zonas.find((x) => x.zona === this.zona) ?? zonas[0];
-    if (!z) return;
+    const pod = podVisible(p);
+    const z = this.zonaActual();
+    if (!pod || !z) return;
     this.zona = z.zona;
-    u.estado.setText(`Pod ${Math.min(p.pod!.numero, p.total)} · ${p.despachados}/${p.total}`);
+    u.estado.setText(`Nivel ${p.nivel} · Pod ${Math.min(pod.numero, p.total)} · ${p.despachados}/${p.total}`);
     u.rival.setText(textoRival(p.rival, p.total));
-    zonas.forEach((x, i) => u.zonas[i]?.setText(`${x.circuito === "led" ? "Motor" : "Cabina"} ${x.reparada ? "✔" : ""}`)
-      .setBackgroundColor(x.zona === this.zona ? "#3a6ea5" : "#2c3344"));
-    u.reto.setText(z.reparada ? "Zona reparada" : z.circuito === "led" ? "Enciende el LED sin quemarlo" : "Enciende los dos LED en paralelo");
-    u.pieza.setText(textoOpcion(this.elegida));
-    u.opciones.forEach((b, i) => b.setBackgroundColor(OPCIONES[i] === this.elegida ? "#3a6ea5" : "#2c3344"));
+    const tabs = pestanas(pod, this.zona);
+    u.zonas.forEach((b, i) => {
+      const t = tabs[i];
+      b.setVisible(!!t);
+      if (t) b.setText(t.texto).setBackgroundColor(t.activa ? "#3a6ea5" : t.reparada ? "#24553c" : "#2c3344");
+    });
+    u.reparadas.setText(reparadas(pod));
+    u.reto.setText(`${NOMBRE_ZONA[z.nombre]}: ${RETO[z.circuito]}`);
+    u.volts.setText(textoVolts(z.volts));
+    const elegida = this.elegidas.get(this.clave());
+    u.pieza.setText(elegida ? textoOpcion(elegida, z.circuito) : "?");
+    u.pinta.setFillStyle(PIEZA_COLOR[z.circuito]);
+    u.gaveta.setText(z.reparada ? "" : GAVETA[z.circuito]);
+    const botones = botonesGaveta(z, elegida);
+    u.opciones.forEach((b, i) => {
+      const o = botones[i];
+      b.setVisible(!!o && !z.reparada);
+      if (o) b.setText(o.texto).setBackgroundColor(o.elegida ? "#3a6ea5" : "#2c3344");
+    });
+    u.probar.setVisible(!p.despachable).setBackgroundColor(elegida && !z.reparada ? "#3bb273" : "#4a5060");
+    u.despachar.setVisible(!!p.despachable);
+
     const v = p.vistas[this.zona];
     u.aguja.setVisible(!!v?.aguja).setAngle(v?.aguja ? ANGULO[v.aguja] : 0);
-    const color = !v ? 0x551111 : v.quemado || v.cortocircuito ? 0x222222 : v.aguja === "correcto" ? 0xff2020 : v.aguja === "poco" ? 0x882222 : 0xff7070;
-    u.leds.forEach((l, i) => l.setVisible(i === 0 || z.circuito === "cabina").setFillStyle(color));
-    u.aviso.setText(p.aviso ?? "Elige una resistencia y pulsa Probar").setColor(v?.quemado || v?.cortocircuito ? "#ff6b6b" : "#fff");
+    const nivelLuz = z.reparada ? 2 : !v ? 0 : v.quemado || v.cortocircuito ? 4 : v.aguja === "poco" ? 1 : v.aguja === "correcto" ? 2 : 3;
+    this.dibujar(z.circuito, PALETA[z.circuito][nivelLuz]!);
+    u.aviso.setColor(v?.quemado || v?.cortocircuito ? "#ff6b6b" : "#fff");
     if (v?.cortocircuito) this.cameras.main.shake(250, 0.01);
+  }
+
+  /** Carga de la zona en el lado derecho del circuito. */
+  private dibujar(c: Circuito, color: number) {
+    const g = this.ui.dibujo.clear().lineStyle(3, 0xffffff).fillStyle(color);
+    const x = 310;
+    this.ui.motor.setVisible(c === "interruptor");
+    if (c === "led") g.fillCircle(x, 224, 16).strokeCircle(x, 224, 16);
+    if (c === "cabina") for (const y of [200, 248]) g.fillCircle(x, y, 14).strokeCircle(x, y, 14);
+    if (c === "luces") for (const y of [200, 248]) {
+      g.fillCircle(x, y, 15).strokeCircle(x, y, 15).lineBetween(x - 10, y - 10, x + 10, y + 10).lineBetween(x - 10, y + 10, x + 10, y - 10);
+    }
+    if (c === "interruptor") g.fillCircle(x, 224, 22).strokeCircle(x, 224, 22);
+    if (c === "fusible") {
+      g.fillRect(x - 14, 196, 28, 56).strokeRect(x - 14, 196, 28, 56);
+      for (let y = 204; y < 244; y += 10) g.lineBetween(x - 8, y, x + 8, y + 5).lineBetween(x + 8, y + 5, x - 8, y + 10);
+    }
   }
 }
 

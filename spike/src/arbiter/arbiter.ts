@@ -1,7 +1,7 @@
-import { RESISTOR_OHMS } from "../engine/circuit.js";
-import { POD_ZONES, verdict } from "../engine/pods.js";
+import { generar, type Pod } from "../engine/generador.js";
+import { evaluar } from "../engine/pods.js";
 import {
-  validAlias, type End, type Phase, type PodView, type RivalView, type ServerMsg, type Station,
+  validAlias, type End, type Nivel, type Phase, type PodView, type RivalView, type ServerMsg, type Station,
 } from "../protocol.js";
 import { BURN_BLOCK_MS, PenaltyTracker } from "./penalties.js";
 
@@ -16,6 +16,9 @@ export interface ArbiterOptions {
   countdownMs?: number;
   limitMs?: number;
   reconnectMs?: number;
+  /** Semilla de los pods; por defecto se sortea. Nunca se envía a los clientes. */
+  semilla?: number;
+  nivel?: Nivel;
 }
 
 interface Seat {
@@ -28,7 +31,7 @@ interface Seat {
   penalties: PenaltyTracker;
   despachados: number;
   repaired: Set<number>;
-  lastOhms: Map<number, number>;
+  lastPieza: Map<number, string>;
   penalUntil: number;
   lastRival: string;
 }
@@ -51,12 +54,19 @@ export class Arbiter {
   private readonly countdownMs: number;
   private readonly limitMs: number;
   private readonly reconnectMs: number;
+  readonly semilla: number;
+  readonly nivel: Nivel;
+  /** Los 5 pods de la partida, con su solución: los mismos para ambos jugadores. */
+  readonly pods: Pod[];
 
   constructor(private readonly send: (peer: string, msg: ServerMsg) => void, opts: ArbiterOptions = {}) {
     this.now = opts.now ?? Date.now;
     this.countdownMs = opts.countdownMs ?? COUNTDOWN_MS;
     this.limitMs = opts.limitMs ?? MATCH_LIMIT_MS;
     this.reconnectMs = opts.reconnectMs ?? RECONNECT_MS;
+    this.semilla = opts.semilla ?? Math.floor(Math.random() * 2 ** 32);
+    this.nivel = opts.nivel ?? 1;
+    this.pods = generar(this.semilla, this.nivel);
   }
 
   /** Mensaje de un participante. Los datos de la red no son de confianza: se validan aquí. */
@@ -69,7 +79,8 @@ export class Arbiter {
     if (m?.t === "test") {
       const seq = typeof m.seq === "number" ? m.seq : 0;
       const t0 = typeof m.t0 === "number" ? m.t0 : 0;
-      return this.test(s, m.zone, m.ohms, seq, t0);
+      // Compatibilidad: un cliente sin `pieza` manda `ohms`.
+      return this.test(s, m.zone, typeof m.pieza === "string" ? m.pieza : typeof m.ohms === "number" ? String(m.ohms) : null, seq, t0);
     }
   }
 
@@ -145,7 +156,7 @@ export class Arbiter {
     const station: Station = this.seats.some((x) => x.station === "A") ? "B" : "A";
     this.seats.push({
       station, alias: name, peer, goneAt: 0, ready: false, penalties: new PenaltyTracker(this.now),
-      despachados: 0, repaired: new Set(), lastOhms: new Map(), penalUntil: 0, lastRival: "",
+      despachados: 0, repaired: new Set(), lastPieza: new Map(), penalUntil: 0, lastRival: "",
     });
     this.seats.sort((a, b) => a.station.localeCompare(b.station));
     this.phase = this.seats.length === 2 ? "listo" : "esperando";
@@ -178,27 +189,28 @@ export class Arbiter {
     for (const s of this.seats) this.syncRival(s);
   }
 
-  private test(s: Seat, zone: unknown, ohms: unknown, seq: number, t0: number): void {
+  private test(s: Seat, zone: unknown, pieza: string | null, seq: number, t0: number): void {
     const reject = (reason: string, waitMs = 0) => this.send(s.peer!, { t: "reject", seq, t0, reason, waitMs });
     if (this.phase !== "jugando") return reject("la partida no está en juego");
-    const z = POD_ZONES.find((x) => x.zona === zone);
+    const pod = this.pods[s.despachados]!;
+    const z = pod.zonas.find((x) => x.zona === zone);
     if (!z || s.repaired.has(z.zona)) return reject("zona no válida");
-    if (typeof ohms !== "number" || !(RESISTOR_OHMS as readonly number[]).includes(ohms)) return reject("pieza no válida");
+    if (pieza === null || !z.opciones.includes(pieza)) return reject("pieza no válida");
 
-    const check = s.penalties.canTest(z.zona, s.lastOhms.get(z.zona) !== ohms);
+    const check = s.penalties.canTest(z.zona, s.lastPieza.get(z.zona) !== pieza);
     if (!check.ok) return reject(check.reason, check.waitMs);
-    s.lastOhms.set(z.zona, ohms);
+    s.lastPieza.set(z.zona, pieza);
 
-    const v = verdict(z.circuito, ohms);
-    const pieces = [`R=${ohms}`];
+    const v = evaluar(z, pieza);
+    const pieces = [z.circuito === "led" || z.circuito === "cabina" ? `R=${pieza}` : `${z.circuito}=${pieza}`];
     let waitMs = 0;
     if (v === "correcto") {
       s.penalties.registerSuccess(z.zona, pieces);
       s.repaired.add(z.zona);
-      if (s.repaired.size === POD_ZONES.length) {
+      if (s.repaired.size === pod.zonas.length) {
         s.despachados++;
         s.repaired.clear();
-        s.lastOhms.clear();
+        s.lastPieza.clear();
         s.penalties.newPod();
       }
     } else if (v === "se quema" || v === "corto") {
@@ -232,7 +244,15 @@ export class Arbiter {
   }
 
   private podView(s: Seat): PodView {
-    return { numero: s.despachados + 1, zonas: POD_ZONES.map((z) => ({ ...z, reparada: s.repaired.has(z.zona) })) };
+    // Tras el quinto despacho se sigue mostrando el último pod (la partida ya terminó).
+    const pod = this.pods[Math.min(s.despachados, PODS_TO_WIN - 1)]!;
+    // Campo por campo, sin `solucion`: la solución nunca sale del árbitro.
+    return {
+      numero: s.despachados + 1,
+      zonas: pod.zonas.map(({ zona, nombre, circuito, volts, opciones }) => ({
+        zona, nombre, circuito, volts, opciones: [...opciones], reparada: s.repaired.has(zona),
+      })),
+    };
   }
 
   private rivalView(s: Seat): RivalView {
@@ -244,7 +264,7 @@ export class Arbiter {
     const other = this.seats.find((x) => x !== s);
     return {
       t: "start", restanteMs: this.limitMs - (this.now() - this.startAt), despachados: s.despachados,
-      total: PODS_TO_WIN, pod: this.podView(s), rival: other ? this.rivalView(other) : null,
+      total: PODS_TO_WIN, nivel: this.nivel, pod: this.podView(s), rival: other ? this.rivalView(other) : null,
     };
   }
 

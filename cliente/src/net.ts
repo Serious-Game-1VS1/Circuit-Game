@@ -7,7 +7,7 @@ import type { ClientMsg, ServerMsg } from "../../spike/src/protocol";
 import { PhotonTransport } from "../../spike/src/transport/photon";
 import type { Transport } from "../../spike/src/transport/transport";
 import { LocalTransport } from "../../spike/src/transport/ws-client";
-import { inicial, normalizarCodigo, reducir, validarEntrada, type Pantalla } from "./pantalla";
+import { despachar, inicial, normalizarCodigo, reducir, validarEntrada, type Pantalla } from "./pantalla";
 
 // El árbitro guarda el asiento 30 s (RECONNECT_MS); se reintenta cada 2 s dentro de esa ventana.
 const REINTENTOS = 15, PAUSA_MS = 2000;
@@ -66,8 +66,11 @@ export class Net {
 
   listo() { this.enviar({ t: "ready" }); }
 
-  /** "Probar": el veredicto llega después desde el árbitro. */
-  probar(zone: number, ohms: number) { this.enviar({ t: "test", seq: ++this.seq, t0: this.ahora(), zone, ohms }); }
+  /** "Probar" con una de las `opciones` de la zona: el veredicto llega después desde el árbitro. */
+  probar(zone: number, pieza: string) { this.enviar({ t: "test", seq: ++this.seq, t0: this.ahora(), zone, pieza }); }
+
+  /** "Despachar" el pod reparado (local: el árbitro ya lo contó). */
+  despachar() { if (this.estado.despachable) this.poner(despachar(this.estado)); }
 
   private enviar(m: ClientMsg) { this.t.send(m); }
 

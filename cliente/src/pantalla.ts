@@ -2,7 +2,8 @@
  * Lógica de pantalla pura (sin Phaser ni red): qué escena y qué textos ve el jugador a partir de
  * los mensajes del árbitro. La prueba vive en test/pantalla.test.ts.
  */
-import { validAlias, type End, type PodView, type RivalView, type ServerMsg, type Station } from "../../spike/src/protocol";
+import { BURN_CARD_MS } from "../../spike/src/arbiter/penalties";
+import { validAlias, type End, type Nivel, type PodView, type RivalView, type ServerMsg, type Station } from "../../spike/src/protocol";
 import { vistaDeVeredicto, type Vista } from "./vista";
 
 export type Fase = "entrar" | "sala" | "cuenta" | "taller" | "fin";
@@ -17,8 +18,16 @@ export interface Pantalla {
   cuenta: number;
   despachados: number;
   total: number;
+  nivel: Nivel;
   pod?: PodView;
+  /**
+   * Pod recién terminado que espera "Despachar". El árbitro ya lo contó al reparar la última zona
+   * (el protocolo no tiene mensaje de despacho); el botón solo da paso al pod siguiente.
+   */
+  despachable?: PodView;
   rival: RivalView | null;
+  /** Tarjeta "pieza quemada": zona y hora local hasta la que se muestra (≥ BURN_CARD_MS). */
+  tarjeta: { zona: number; hasta: number } | null;
   /** Último veredicto del árbitro, por zona. */
   vistas: Record<number, Vista>;
   /** Hora local (ms) en que se acaba el tiempo de partida. */
@@ -29,8 +38,17 @@ export interface Pantalla {
 }
 
 export const inicial = (): Pantalla => ({
-  fase: "entrar", aviso: null, jugadores: [], cuenta: 0, despachados: 0, total: 5, rival: null, vistas: {}, terminaEn: 0, esperaHasta: 0,
+  fase: "entrar", aviso: null, jugadores: [], cuenta: 0, despachados: 0, total: 5, nivel: 1, rival: null, vistas: {}, terminaEn: 0,
+  esperaHasta: 0, tarjeta: null,
 });
+
+/** El pod que se ve: el terminado mientras espera "Despachar", si no el actual. */
+export const podVisible = (p: Pantalla) => p.despachable ?? p.pod;
+
+/** "Despachar": pasa al pod siguiente que el árbitro ya envió. */
+export const despachar = (p: Pantalla): Pantalla => ({ ...p, despachable: undefined, vistas: {}, tarjeta: null, aviso: "¡Pod despachado!" });
+
+export const tarjetaVisible = (p: Pantalla, zona: number, ahora: number) => p.tarjeta?.zona === zona && ahora < p.tarjeta.hasta;
 
 export const normalizarCodigo = (c: string) => c.trim().toUpperCase();
 
@@ -83,16 +101,19 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     case "lobby": return { ...p, jugadores: m.players, fase: p.fase === "cuenta" ? "sala" : p.fase };
     case "countdown": return { ...p, fase: "cuenta", cuenta: m.n };
     case "start": return {
-      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, pod: m.pod, rival: m.rival,
-      vistas: {}, terminaEn: ahora + m.restanteMs,
+      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, nivel: m.nivel ?? 1, pod: m.pod, rival: m.rival,
+      despachable: undefined, vistas: {}, tarjeta: null, terminaEn: ahora + m.restanteMs,
     };
     case "result": {
       const nuevoPod = m.despachados !== p.despachados;
-      const vista = vistaDeVeredicto(m.veredicto);
+      const circuito = p.pod?.zonas.find((z) => z.zona === m.zona)?.circuito;
+      const vista = vistaDeVeredicto(m.veredicto, circuito);
+      const despachable = nuevoPod && p.pod ? { ...p.pod, zonas: p.pod.zonas.map((z) => ({ ...z, reparada: true })) } : undefined;
       return {
-        ...p, despachados: m.despachados, pod: m.pod, esperaHasta: ahora + m.waitMs,
-        vistas: nuevoPod ? {} : { ...p.vistas, [m.zona]: vista },
-        aviso: nuevoPod ? "¡Pod despachado!" : m.waitMs ? `${vista.mensaje} · espera ${segundos(m.waitMs)} s` : vista.mensaje,
+        ...p, despachados: m.despachados, pod: m.pod, despachable, esperaHasta: ahora + m.waitMs,
+        vistas: { ...p.vistas, [m.zona]: vista },
+        tarjeta: vista.quemado || vista.cortocircuito ? { zona: m.zona, hasta: ahora + Math.max(BURN_CARD_MS, m.waitMs) } : p.tarjeta,
+        aviso: nuevoPod ? "¡Pod reparado! Pulsa Despachar" : m.waitMs ? `${vista.mensaje} · espera ${segundos(m.waitMs)} s` : vista.mensaje,
       };
     }
     case "reject": return { ...p, aviso: textoRechazo(m.reason, m.waitMs), esperaHasta: ahora + m.waitMs };

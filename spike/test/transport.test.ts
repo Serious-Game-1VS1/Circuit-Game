@@ -55,12 +55,13 @@ describe("transporte local", () => {
     await Promise.all([a, b].map((x) => x.until((m) => m.t === "start")));
 
     const mark = b.log.length;
-    await expect(a.solveNext()).resolves.toMatchObject({ t: "result", veredicto: "correcto" });
-    await expect(a.solveNext()).resolves.toMatchObject({ t: "result", despachados: 1 });
+    expect(a.pod).toEqual(b.pod); // misma secuencia de pods para ambos
+    // El pod 1 tiene una sola zona: repararla lo despacha.
+    await expect(a.solveNext()).resolves.toMatchObject({ t: "result", veredicto: "correcto", despachados: 1 });
     await b.until((m) => m.t === "rival" && m.despachados === 1 && "t0" in m, mark);
     expect(b.log.some((m) => m.t === "result")).toBe(false);
 
-    a.t.send({ t: "test", seq: 7, t0: 0, zone: 1, ohms: "nope" });
+    a.t.send({ t: "test", seq: 7, t0: 0, zone: a.pod!.zonas[0]!.zona, ohms: "nope" });
     await expect(a.until((m) => m.t === "reject" && m.seq === 7)).resolves.toMatchObject({ reason: "pieza no válida" });
     host.stop();
   });
