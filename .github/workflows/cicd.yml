@@ -1,0 +1,55 @@
+name: CI/CD Provisional Pipeline
+
+on:
+  push:
+    branches: [ "main", "master" ] 
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  # ==========================================
+  # ETAPA 1: INTEGRACIÓN CONTINUA (CI)
+  # ==========================================
+  build-and-test:
+    name: Construir y Probar (CI)
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Ejecutar pruebas (Test)
+        run: npm test
+      - name: Compilar proyecto (Build)
+        run: npm run build --if-present
+
+  # ==========================================
+  # ETAPA 2: DESPLIEGUE CONTINUO (CD)
+  # ==========================================
+  deploy:
+    name: Despliegue Provisional (CD)
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Ejecutar despliegue
+        run: |
+          echo "Pruebas Exitosas"
+          echo "Agregar despliegue"
+          echo "Ejemplo: Conectarse vía SSH, subir archivos o construir una imagen Docker."
