@@ -59,9 +59,10 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: |
+            spike/package-lock.json
+            cliente/package-lock.json
 
-      # Solución al error: Instalar dependencias de spike primero,
-      # ya que el cliente importa archivos de spike (photon-realtime).
       - name: Instalar dependencias de Spike
         run: npm ci
         working-directory: spike
