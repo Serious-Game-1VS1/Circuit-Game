@@ -45,6 +45,16 @@ Copia `.env.example` a `spike/.env` (ignorado por git; no lo subas):
 npm run serve -- --nivel 2 --semilla 42
 ```
 
+### Demo de 5 minutos (duración de la partida)
+
+Solo para mostrar: `--limite-min N` (o `LIMITE_MIN=N`, de 1 a 30) cambia lo que dura la partida; por defecto son 12 min (el reglamento no cambia). El reloj del cliente y el desempate siguen al árbitro, así que quedan coherentes. Es independiente de `--demo` (que solo elige las mecánicas) y se pueden combinar.
+
+```bash
+npm run serve:demo5           # relé local, partida de 5 min
+npm run serve:photon:demo5    # Photon, partida de 5 min
+npm run serve -- --demo --limite-min 5   # con las mecánicas demo
+```
+
 ### Modo demo (una sola mecánica, para mostrar)
 
 Dos variantes; mismas reglas, penalizaciones, cola, carrera final y podio; ambos jugadores reciben la misma secuencia. El árbitro avisa al cliente con `demo: true` en el mensaje `start` (nunca la solución ni la semilla; el protocolo no cambió) y el cliente muestra solo las pestañas del pod y oculta el multímetro. Sin `--demo` todo funciona como antes.

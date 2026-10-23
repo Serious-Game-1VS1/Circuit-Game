@@ -14,7 +14,9 @@
     "validar:sorteos": "tsx src/engine/validar-sorteos.ts",
     "export:csv": "tsx src/sim/cli.ts --csv",
     "serve": "tsx src/serve.ts",
-    "serve:photon": "tsx src/serve.ts --photon"
+    "serve:photon": "tsx src/serve.ts --photon",
+    "serve:demo5": "tsx src/serve.ts --limite-min 5",
+    "serve:photon:demo5": "tsx src/serve.ts --photon --limite-min 5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
