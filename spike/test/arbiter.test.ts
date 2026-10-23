@@ -374,3 +374,28 @@ describe("modo demo de cableado (Cabina y Turbina)", () => {
     expect(JSON.stringify([...sent("p1"), ...sent("p2")])).not.toMatch(/solucion|semilla|amps/);
   });
 });
+
+describe("modo práctica (SCRUM-151)", () => {
+  for (const nivel of [1, 2] as const) {
+    it(`nivel ${nivel}: arranca con un jugador, sin rival ni cuenta ni límite, y al despachar 5 termina sin carrera ni CSV`, () => {
+      arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA, nivel, practica: true });
+      arb.handle("p1", { t: "hello", alias: "ana" });
+      expect(arb.phase).toBe("jugando");
+      expect(last("p1", "start")).toMatchObject({ practica: true, nivel, rival: null, despachados: 0, restanteMs: 0, pod: { numero: 1 } });
+      expect(last("p1", "countdown")).toBeUndefined();
+      arb.handle("p2", { t: "hello", alias: "beto" });
+      expect(last("p2", "full")).toMatchObject({ reason: "sala completa" });
+
+      t += 60 * 60_000; // una hora: sin límite de 12 min
+      arb.tick();
+      expect(arb.phase).toBe("jugando");
+      const z = podOf("p1").zonas[0]!;
+      test("p1", z.zona, z.opciones.find((p) => evaluar(z, p) === "se quema") ?? z.opciones.find((p) => evaluar(z, p) !== "correcto")!);
+      for (let i = 0; i < 5; i++) { t += 10_000; solvePod("p1"); }
+      expect(arb.phase).toBe("fin");
+      expect(last("p1", "end")).toMatchObject({ phase: "fin", reason: "5 pods despachados" });
+      expect(last("p1", "end")).not.toHaveProperty("carrera");
+      expect(arb.toCsv()).toBe("﻿" + "jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms" + "\r\n");
+    });
+  }
+});

@@ -30,7 +30,7 @@ Copia `.env.example` a `spike/.env` (ignorado por git; no lo subas):
 | `npm test` | Vitest: 99 pruebas pasan y 1 se omite (la de Photon, sin App ID). |
 | `npm run lint` | ESLint. |
 | `npm run typecheck` | `tsc --noEmit`. |
-| `npm run serve` | Relé local en `ws://localhost:8787` (`PORT` lo cambia) + árbitro con una sala; imprime el código. |
+| `npm run serve` | Relé local en `ws://localhost:8787` (`PORT` lo cambia) + árbitro con una sala; imprime el código. Al terminar la partida reabre la sala con el mismo código ("Volver a jugar" sin reiniciar). |
 | `npm run serve:photon` | Árbitro en Photon Cloud (solo WSS:443). Siempre deja una sala libre; al llenarse una abre otra, hasta `MAX_SALAS`. |
 | `npm run sim:duel` | Duelo simulado completo con aserciones sobre el relé local (sin red externa). |
 | `npm run export:csv` | Lo mismo y guarda el registro de intentos en `bench-out/`. |

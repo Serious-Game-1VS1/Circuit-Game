@@ -57,8 +57,18 @@ function vigilar(code: string, arbiter: Arbiter, fin: () => void) {
   }, 200);
 }
 
-async function abrir(t: Transport, alTerminar: () => void) {
-  const code = await createRoom(t);
+/** Reabre la sala con el mismo código (relé local): el relé tarda un instante en soltar el código al cerrar el anfitrión. */
+async function crearConCodigo(t: Transport, code: string) {
+  for (let i = 0; ; i++) {
+    try { await t.create(code); return code; } catch (e) {
+      if (i >= 10) throw e;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+}
+
+async function abrir(t: Transport, alTerminar: () => void, codigo?: string) {
+  const code = codigo ? await crearConCodigo(t, codigo) : await createRoom(t);
   const room = hostRoom(t, { nivel, semilla, demo });
   vigilar(code, room.arbiter, () => { room.stop(); void t.close().then(alTerminar); });
   console.log(`[${code}] nivel: ${room.arbiter.nivel}${demo === "radar" ? " · MODO DEMO (solo Radar)" : demo ? " · MODO DEMO (cableado: Cabina y Turbina)" : ""} · semilla: ${room.arbiter.semilla}`);
@@ -90,7 +100,12 @@ if (photon) {
   setInterval(() => void asegurarSalaLibre(), 1000);
 } else {
   const PORT = Number(process.env.PORT) || 8787;
-  const relay = await startLocalRelay(PORT);
-  const { code } = await abrir(new LocalTransport(`ws://localhost:${PORT}`), () => void relay.close().then(() => process.exit(0)));
+  await startLocalRelay(PORT);
+  // "Volver a jugar": al terminar la partida se reabre la sala con el mismo código, sin reiniciar el relé.
+  const sala = async (codigo?: string): Promise<string> => {
+    const { code } = await abrir(new LocalTransport(`ws://localhost:${PORT}`), () => void sala(code).catch(() => process.exit(1)), codigo);
+    return code;
+  };
+  const code = await sala();
   console.log(`Relé en ws://localhost:${PORT} · código de sala: ${code}`);
 }

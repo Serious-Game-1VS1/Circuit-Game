@@ -25,6 +25,11 @@ export interface ArbiterOptions {
   demo?: Demo;
   /** Azar de la carrera final (qué pod corre); por defecto Math.random. Nunca decide el ganador. */
   azar?: () => number;
+  /**
+   * Modo práctica (SCRUM-151): un solo jugador, sin rival ni cuenta ni límite de tiempo; empieza al entrar,
+   * termina al despachar los 5 pods (sin carrera) y no deja intentos en el CSV. Lo corre el propio cliente.
+   */
+  practica?: boolean;
 }
 
 interface Seat {
@@ -72,6 +77,7 @@ export class Arbiter {
   readonly semilla: number;
   readonly nivel: Nivel;
   readonly demo: Demo;
+  readonly practica: boolean;
   /** Los 5 pods de la partida, con su solución: los mismos para ambos jugadores. */
   readonly pods: Pod[];
 
@@ -84,6 +90,7 @@ export class Arbiter {
     this.semilla = opts.semilla ?? Math.floor(Math.random() * 2 ** 32);
     this.nivel = opts.nivel ?? 1;
     this.demo = opts.demo ?? false;
+    this.practica = opts.practica ?? false;
     this.pods = generar(this.semilla, this.nivel, this.demo);
   }
 
@@ -133,7 +140,7 @@ export class Arbiter {
       return;
     }
     if (this.phase !== "jugando") return;
-    if (t - this.startAt >= this.limitMs) return this.finish("tiempo");
+    if (!this.practica && t - this.startAt >= this.limitMs) return this.finish("tiempo");
     if (this.seats.every((s) => !s.peer && t - s.goneAt >= this.reconnectMs)) {
       this.phase = "anulada";
       this.outcome = { t: "end", phase: "anulada", winner: null, reason: "ambos sin conexión 30 s", score: this.score() };
@@ -150,7 +157,8 @@ export class Arbiter {
   // supuesto: el tiempo por pod va como filas "despacho" en el mismo CSV (dos columnas nuevas al final).
   toCsv(): string {
     const rows: string[] = [];
-    for (const s of this.seats) {
+    // La práctica no registra nada: solo la cabecera.
+    for (const s of this.practica ? [] : this.seats) {
       let hechos = 0, fin = 0;
       const despacho = () => {
         const ms = s.podMs[hechos++]!;
@@ -204,6 +212,7 @@ export class Arbiter {
     this.seats.sort((a, b) => a.station.localeCompare(b.station));
     this.phase = this.seats.length === 2 ? "listo" : "esperando";
     this.send(peer, { t: "welcome", station, alias: name });
+    if (this.practica) return this.start();
     this.broadcastLobby();
   }
 
@@ -311,8 +320,8 @@ export class Arbiter {
     }
     this.phase = "fin";
     // supuesto: ambos reciben el mismo End (con los fallos de los dos); el podio muestra solo los propios.
-    const carrera = Object.fromEntries(this.seats.map((s) => [s.station, this.carril(s)]));
-    this.outcome = { t: "end", phase: "fin", winner: winner ?? null, reason, score: this.score(), carrera };
+    const carrera = this.practica ? undefined : Object.fromEntries(this.seats.map((s) => [s.station, this.carril(s)]));
+    this.outcome = { t: "end", phase: "fin", winner: winner ?? null, reason, score: this.score(), ...(carrera && { carrera }) };
     this.broadcast(this.outcome);
   }
 
@@ -357,8 +366,9 @@ export class Arbiter {
   private snapshot(s: Seat): ServerMsg {
     const other = this.seats.find((x) => x !== s);
     return {
-      t: "start", restanteMs: this.limitMs - (this.now() - this.startAt), despachados: s.despachados,
+      t: "start", restanteMs: this.practica ? 0 : this.limitMs - (this.now() - this.startAt), despachados: s.despachados,
       total: PODS_TO_WIN, nivel: this.nivel, demo: this.demo !== false, pod: this.podView(s), rival: other ? this.rivalView(other) : null,
+      ...(this.practica && { practica: true }),
     };
   }
 

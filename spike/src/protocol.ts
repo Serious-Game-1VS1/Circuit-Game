@@ -39,6 +39,10 @@
  *  - Medida ("medida"): solo lo que mostraría el multímetro: en continuidad, si pasa (batería
  *    desconectada); en tensión, el tramo («nada» | «parte» | «toda») y la fracción de la batería
  *    redondeada a décimas. Nunca el veredicto, la corriente ni la solución. Error: Reject "medida no válida".
+ *
+ * Modo práctica (SCRUM-151), compatible con el cliente anterior:
+ *  - Snapshot suma `practica`: true si el árbitro corre en práctica (un jugador, sin rival, sin límite de tiempo:
+ *    `restanteMs` va en 0). Al despachar los 5 pods llega un End sin `carrera`. El cliente vuelve a la entrada.
  */
 import type { Label } from "./engine/circuit.js";
 
@@ -68,7 +72,7 @@ export interface Full { t: "full"; reason: string }
 export interface Lobby { t: "lobby"; phase: Phase; players: { station: Station; alias: string; ready: boolean }[] }
 export interface Countdown { t: "countdown"; n: number }
 /** Inicio de partida o estado completo al reconectar. */
-export interface Snapshot { t: "start"; restanteMs: number; despachados: number; total: number; nivel: Nivel; demo: boolean; pod: PodView; rival: RivalView | null }
+export interface Snapshot { t: "start"; restanteMs: number; despachados: number; total: number; nivel: Nivel; demo: boolean; practica?: boolean; pod: PodView; rival: RivalView | null }
 export interface Result { t: "result"; seq: number; t0: number; zona: number; veredicto: Verdict; waitMs: number; despachados: number; pod: PodView }
 /** Despacho aceptado: `despachados` ya incluye este pod y `pod` es el siguiente. */
 export interface Dispatched { t: "despachado"; seq: number; t0: number; despachados: number; pod: PodView }

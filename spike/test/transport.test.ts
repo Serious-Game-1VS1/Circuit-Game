@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { runSession } from "../src/bench/session.js";
 import { LocalTransport, startLocalRelay } from "../src/transport/local.js";
 import { Bot } from "../src/sim/bot.js";
@@ -31,6 +31,14 @@ describe("transporte local", () => {
     const code = await createRoom(local());
     await expect(local().create(code)).rejects.toThrow(/ya existe/);
     await expect(local().join("ZZZZZZ")).rejects.toThrow(/no existe/);
+  });
+
+  it("al cerrar el anfitrión el código se libera: serve lo reutiliza para \"Volver a jugar\"", async () => {
+    const viejo = local();
+    const code = await createRoom(viejo);
+    await viejo.close();
+    const nuevo = local();
+    await expect(vi.waitFor(() => nuevo.create(code))).resolves.toBeUndefined();
   });
 
   it("empareja por orden de llegada y rechaza al tercero y al alias inválido", async () => {
