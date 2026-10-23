@@ -8,7 +8,7 @@ import type { Circuito, Medida, ModoMedir, ZonaNombre, ZonaView } from "../../sp
 import type { Net } from "./net";
 import { anim, cargarArte, img, letras, marco, toque } from "./arte";
 import { anguloTension, lecturaLista, T as TM, textoMedida, textoModo, TRAMO, type Midiendo } from "./multimetro";
-import { avisoVivo, despachable, pistaDemo, reloj, tarjetaVisible, textoRival, type Falta, type Pantalla } from "./pantalla";
+import { avisoVivo, despachable, faltan, pistaDemo, reloj, tarjetaVisible, textoRival, type Falta, type Pantalla } from "./pantalla";
 import { arrastrable, dentro } from "./arrastre";
 import { cargasPuestas, conPlaca, montaje, todasPuestas, type Cable, type Puestas } from "./placa";
 import { Tablero, TC } from "./tablero";
@@ -58,7 +58,7 @@ export class Taller extends Phaser.Scene {
     tarjeta: Bloque; cables: Phaser.GameObjects.Graphics; tablero: Tablero; fila: Bloque; etiquetas: Letras[];
     modos: { modo: ModoMedir; fondo: Phaser.GameObjects.NineSlice; icono: Phaser.GameObjects.Image }[]; pasa: Phaser.GameObjects.Image; zonasMedir: Phaser.GameObjects.Zone[];
     /** Pista del primer pod en modo demo: flecha a la gaveta y resaltes (gaveta o Probar). */
-    flecha: Phaser.GameObjects.Sprite; resalteGaveta: Phaser.GameObjects.NineSlice; resalteProbar: Phaser.GameObjects.NineSlice;
+    flecha: Phaser.GameObjects.Sprite; resalteGaveta: Phaser.GameObjects.NineSlice; resalteProbar: Phaser.GameObjects.NineSlice; resalteDespachar: Phaser.GameObjects.NineSlice;
     /** Demo de cableado: flecha de la gaveta de la placa hacia arriba (hacia la placa). */
     flechaPlaca: Phaser.GameObjects.Sprite;
     /** Resalte de la ranura del circuito mientras se arrastra una pieza de la gaveta. */
@@ -211,14 +211,15 @@ export class Taller extends Phaser.Scene {
     const flecha = anim(this, 180, 268, "flecha_guia", 2).setVisible(false);
     const resalteGaveta = marco(this, 180, 290, "recuadro_resaltado", 358, 60).setVisible(false);
     const resalteProbar = marco(this, 92, 340, "recuadro_resaltado", 160, 46).setVisible(false);
-    this.tweens.add({ targets: [resalteGaveta, resalteProbar], alpha: 0.35, duration: 500, yoyo: true, repeat: -1 });
+    const resalteDespachar = marco(this, 268, 340, "recuadro_resaltado", 160, 46).setVisible(false);
+    this.tweens.add({ targets: [resalteGaveta, resalteProbar, resalteDespachar], alpha: 0.35, duration: 500, yoyo: true, repeat: -1 });
     this.tweens.add({ targets: flecha, y: 274, duration: 400, yoyo: true, repeat: -1 });
     // Demo de cableado: flecha girada que sale de la gaveta de la placa (entre sus dos huecos) hacia la placa.
     const flechaPlaca = anim(this, 180, 246, "flecha_guia", 2).setAngle(180).setVisible(false);
     this.tweens.add({ targets: flechaPlaca, y: 238, duration: 400, yoyo: true, repeat: -1 });
     panel.add([
       marco(this, 180, 177, "panel_oscuro", 360, 356), cables, circuito, resalteRanura, ...carga, ...zonasMedir, tablero.c, fila, aviso, gaveta,
-      ...opciones.flatMap((o) => [o.fondo, o.zona, o.texto, o.nombre]), probar, despachar, resalteGaveta, resalteProbar, flecha, flechaPlaca,
+      ...opciones.flatMap((o) => [o.fondo, o.zona, o.texto, o.nombre]), probar, despachar, resalteGaveta, resalteProbar, resalteDespachar, flecha, flechaPlaca,
       // Probar/Despachar miden 34 px de alto: el área táctil es de 48 o más (ajustarGolpes).
       golpes[0] = toque(this, 92, 340, 150, 48, pulsar(probar, "boton_probar", () => {
         const z = this.zonaActual(), elegida = z && this.eleccion(z);
@@ -228,13 +229,16 @@ export class Taller extends Phaser.Scene {
         }
       })),
       // Siempre visible; solo se activa con todas las zonas reparadas (Net.despachar lo comprueba).
-      golpes[1] = toque(this, 268, 340, 150, 48, pulsar(despachar, "boton_despachar", () => net.despachar())),
+      golpes[1] = toque(this, 268, 340, 150, 48, () => {
+        if (despachable(net.estado)) pulsar(despachar, "boton_despachar", () => net.despachar())();
+        else if (faltan(net.estado.pod)) this.avisar(`Aún falta reparar: ${faltan(net.estado.pod)}`);
+      }),
       tarjeta,
     ]);
 
     this.ui = {
       escena, panel, estado, rival, salir, reloj: relojT, contador, pestanas, globo, cola: colaC, bahia, circuito, carga, aguja, aviso, gaveta, opciones, probar, despachar, tarjeta,
-      cables, tablero, fila, etiquetas, modos, pasa, zonasMedir, flecha, resalteGaveta, resalteProbar, flechaPlaca, resalteRanura, golpes,
+      cables, tablero, fila, etiquetas, modos, pasa, zonasMedir, flecha, resalteGaveta, resalteProbar, resalteDespachar, flechaPlaca, resalteRanura, golpes,
     };
     this.crearGuia();
     this.tut = net.tutorial ? iniciar([...(net.estado.demo ? ["multimetro" as const] : []), ...(net.estado.pod?.zonas.some((z) => conPlaca(z.circuito)) ? [] : ["placa" as const])]) : null;
@@ -341,6 +345,7 @@ export class Taller extends Phaser.Scene {
     u.resalteGaveta.setVisible(pista === "elegir" || pista === "colocar" || pista === "cablear")
       .setPosition(recuadro[0], recuadro[1]).setSize(recuadro[2]! / 4, recuadro[3]! / 4);
     u.resalteProbar.setVisible(pista === "probar");
+    u.resalteDespachar.setVisible(despachable(p));
     if (pista === "elegir") u.gaveta.setText(""); // la pista dice lo mismo y la flecha ocupa su lugar
     u.probar.setTexture(this.eleccion(z) && !z.reparada ? "boton_probar_normal" : "boton_probar_deshabilitado");
     u.despachar.setTexture(despachable(p) ? "boton_despachar_normal" : "boton_despachar_deshabilitado");

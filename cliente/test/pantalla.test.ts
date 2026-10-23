@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { avisoVivo, despachable, inicial, pistaDemo, tarjetaVisible, reducir, reloj, textoFin, textoRival, validarEntrada } from "../src/pantalla";
+import { avisoVivo, despachable, faltan, inicial, textoRechazo, pistaDemo, tarjetaVisible, reducir, reloj, textoFin, textoRival, validarEntrada } from "../src/pantalla";
 import { vistaDeVeredicto } from "../src/vista";
 
 describe("lógica de pantalla", () => {
@@ -31,10 +31,10 @@ describe("lógica de pantalla", () => {
     expect(avisoVivo(p, 0)).toBe("Pieza quemada: espera 5 s");
     expect(avisoVivo(p, 3200)).toBe("Pieza quemada: espera 2 s");
     expect(avisoVivo(p, 5000)).toBe("Pieza quemada: ya puedes volver a probar");
-    const q = { ...p, aviso: "Poco: el LED casi no brilla · espera 2 s", esperaHasta: 2000 };
-    expect(avisoVivo(q, 1500)).toBe("Poco: el LED casi no brilla · espera 1 s");
-    expect(avisoVivo(q, 2000)).toBe("Poco: el LED casi no brilla");
-    expect(avisoVivo({ ...q, aviso: "Espera 2 s para volver a probar esta zona" }, 2000)).toBe("Ya puedes volver a probar");
+    const q = { ...p, aviso: "El LED casi no brilla · espera 2 s", esperaHasta: 2000 };
+    expect(avisoVivo(q, 1500)).toBe("El LED casi no brilla · espera 1 s");
+    expect(avisoVivo(q, 2000)).toBe("El LED casi no brilla");
+    expect(avisoVivo({ ...q, aviso: "Espera 2 s y vuelve a probar" }, 2000)).toBe("Ya puedes volver a probar");
   });
 
   it("al reconectar en el taller, el welcome no devuelve a la sala", () => {
@@ -61,10 +61,23 @@ describe("lógica de pantalla", () => {
 
   it("pieza quemada: mensaje según el circuito y tarjeta de al menos 3 s solo en esa zona", () => {
     const p = reducir(taller, { t: "result", seq: 1, t0: 0, zona: 0, veredicto: "se quema", waitMs: 4000, despachados: 1, pod }, 0);
-    expect(p.vistas[0]).toMatchObject({ quemado: true, mensaje: "¡El LED se quemó!" });
+    expect(p.vistas[0]).toMatchObject({ quemado: true, mensaje: "¡El LED se quemó! Frenaste muy poco. Espera y prueba una que frene más." });
     expect(tarjetaVisible(p, 0, 3000)).toBe(true);
     expect(tarjetaVisible(p, 3, 1000)).toBe(false);
     expect(tarjetaVisible(p, 0, 4000)).toBe(false);
+  });
+
+  it("al reparar una zona con otras pendientes, el aviso nombra las que faltan", () => {
+    const pod2 = { ...pod, zonas: pod.zonas.map((z) => ({ ...z, reparada: false })) };
+    const bien = { ...pod2, zonas: [{ ...pod2.zonas[0]!, reparada: true }, pod2.zonas[1]!] };
+    const p = reducir(taller, { t: "result", seq: 1, t0: 0, zona: 0, veredicto: "correcto", waitMs: 0, despachados: 1, pod: bien }, 0);
+    expect(p.aviso).toBe("¡Correcto! Falta reparar: Reactor");
+    expect(faltan(pod2)).toBe("Radar, Reactor");
+    expect(faltan(undefined)).toBe("");
+  });
+
+  it("rechazo sin cambios con dirección", () => {
+    expect(textoRechazo("sin-cambios", 0)).toBe("No cambiaste nada. Cambia una pieza o un cable y prueba.");
   });
 
   it("al reparar la última zona 'Despachar' se activa; el contador sube solo con la confirmación del árbitro", () => {
