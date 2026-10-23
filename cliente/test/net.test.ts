@@ -99,10 +99,10 @@ describe("cliente conectado al árbitro", () => {
     expect(ana.estado.aviso).toBe(`${vistaDeVeredicto("poco", z.circuito).mensaje} · espera 2 s`);
     expect(beto.estado.rival).toMatchObject({ alias: "ana", estado: "penalizado" });
     ana.probar(z.zona, z.solucion);
-    expect(ana.estado.aviso).toBe("Espera 2 s para volver a probar esta zona");
+    expect(ana.estado.aviso).toBe("Espera 2 s y vuelve a probar");
     t += 2000;
     ana.probar(z.zona, mala);
-    expect(ana.estado.aviso).toBe("Cambia la pieza antes de probar");
+    expect(ana.estado.aviso).toBe("No cambiaste nada. Cambia una pieza o un cable y prueba.");
     ana.probar(z.zona, z.solucion);
     // El pod reparado espera "Despachar": todavía no cuenta ni para mí ni para el rival.
     expect(ana.estado).toMatchObject({ despachados: 0, aviso: "¡Pod reparado! Pulsa Despachar" });

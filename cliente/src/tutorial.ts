@@ -15,7 +15,7 @@ const PASOS: Paso[] = [
   { titulo: "Tu objetivo", texto: "Repara las zonas marcadas en cada pod. Lo que pide cada zona está en su pestaña.", objetivo: "pestanas" },
   { titulo: "Pon una pieza", texto: "Elige una pieza de la gaveta. Arrástrala al circuito, o tócala.", objetivo: "gaveta" },
   { titulo: "Une con cables", texto: "Arrastra de un punto a otro, o toca un punto y luego otro. Une los rieles + y -.", objetivo: "placa" },
-  { titulo: "Mide con el multímetro", texto: "Toca Tensión o Continuidad y luego un punto del circuito.", objetivo: "multimetro" },
+  { titulo: "Mide con el multímetro", texto: "Primero pon una pieza. Luego toca Tensión y toca la pieza.", objetivo: "multimetro" },
   { titulo: "Lee la aguja", texto: "Poco, correcto o demasiado. Busca el mensaje «¡Correcto!».", objetivo: "aguja" },
   { titulo: "Pieza quemada", texto: "Si se quema, queda bloqueada unos segundos. Prueba otra pieza.", objetivo: "gaveta" },
   { titulo: "Despacha el pod", texto: "Pulsa Probar en cada zona. Con todas reparadas, pulsa Despachar.", objetivo: "probar" },

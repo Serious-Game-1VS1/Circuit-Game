@@ -58,16 +58,16 @@ export function textoOpcion(pieza: string, circuito: Circuito): string {
 export const textoVolts = (v: number) => `${String(v).replace(".", ",")} V`;
 
 const CARGA: Record<Circuito, { poco: string; demasiado: string; quema: string }> = {
-  led: { poco: "Poco: el LED casi no brilla", demasiado: "Demasiado: el LED sufre", quema: "¡El LED se quemó!" },
-  cabina: { poco: "Poco: los LED casi no brillan", demasiado: "Demasiado: los LED sufren", quema: "¡Un LED se quemó!" },
-  luces: { poco: "Poco: las luces brillan débil", demasiado: "Demasiado: las luces sufren", quema: "¡Una luz se quemó!" },
-  interruptor: { poco: "Poco: el motor no arranca bien", demasiado: "Demasiado: el motor sufre", quema: "¡El motor se quemó!" },
-  fusible: { poco: "Poco: el fusible corta aunque no hay falla", demasiado: "Demasiado: el calefactor sufre", quema: "¡El fusible no protegió: el calefactor se quemó!" },
+  led: { poco: "El LED casi no brilla: llega poca corriente. Prueba una resistencia que frene menos.", demasiado: "El LED sufre: llega demasiada corriente. Prueba una que frene más.", quema: "¡El LED se quemó! Frenaste muy poco. Espera y prueba una que frene más." },
+  cabina: { poco: "Los LED casi no brillan: llega poca corriente. Prueba una resistencia que frene menos.", demasiado: "Los LED sufren: llega demasiada corriente. Prueba una que frene más.", quema: "¡Un LED se quemó! Frenaste muy poco. Espera y prueba una que frene más." },
+  luces: { poco: "Las luces brillan débil: no reciben toda la batería. Cambia cómo están conectadas.", demasiado: "Las luces sufren: reciben demasiado. Revisa cómo están conectadas.", quema: "¡Una luz se quemó! Recibió demasiado. Espera y revisa cómo están conectadas." },
+  interruptor: { poco: "El motor no arranca: le llega poca corriente. Revisa los cables.", demasiado: "El motor sufre: recibe demasiado. Revisa los cables.", quema: "¡El motor se quemó! Recibió demasiado. Espera y revisa los cables." },
+  fusible: { poco: "El fusible corta aunque no hay falla: es demasiado fino. Prueba otro.", demasiado: "El calefactor sufre: el fusible deja pasar demasiado. Prueba uno que corte antes.", quema: "El fusible no cortó a tiempo y el calefactor se quemó. Prueba uno que corte antes." },
 };
 
 /** Lo que se muestra a partir del veredicto que manda el árbitro (SCRUM-90): el cliente no decide. */
 export function vistaDeVeredicto(label: Verdict, circuito: Circuito = "led"): Vista {
-  if (label === "corto") return { aguja: null, quemado: false, cortocircuito: true, mensaje: "¡Cortocircuito!" };
+  if (label === "corto") return { aguja: null, quemado: false, cortocircuito: true, mensaje: "¡Cortocircuito! La corriente tiene un atajo sin carga. Revisa los cables." };
   const t = CARGA[circuito];
   if (label === "se quema") return { aguja: "demasiado", quemado: true, cortocircuito: false, mensaje: t.quema };
   return { aguja: label, quemado: false, cortocircuito: false, mensaje: label === "correcto" ? "¡Correcto!" : t[label] };

@@ -4,7 +4,7 @@
  */
 import { BURN_CARD_MS } from "../../spike/src/arbiter/penalties";
 import { validAlias, type End, type Medida, type Nivel, type PodView, type RivalView, type ServerMsg, type Station } from "../../spike/src/protocol";
-import { vistaDeVeredicto, type Vista } from "./vista";
+import { NOMBRE_ZONA, vistaDeVeredicto, type Vista } from "./vista";
 
 /** "carrera" y "podio": fin normal con carrera final; "fin": partida anulada (o árbitro sin carrera). */
 export type Fase = "entrar" | "sala" | "cuenta" | "taller" | "carrera" | "podio" | "fin";
@@ -67,6 +67,9 @@ export function inicial(): Pantalla {
   };
 }
 
+/** Nombres de las zonas aún sin reparar, separados por comas ("" si no falta ninguna). */
+export const faltan = (pod: PodView | undefined): string => pod?.zonas.filter((z) => !z.reparada).map((z) => NOMBRE_ZONA[z.nombre]).join(", ") ?? "";
+
 export const despachable = (p: Pantalla | undefined): boolean => 
   !!p && p.fase === "taller" && !p.despachando && !!p.pod?.zonas.every((z) => z.reparada);
 
@@ -96,9 +99,9 @@ export const textoRival = (r: RivalView | null, total = 5) => (r ? `${r.alias}: 
 
 const segundos = (ms: number) => Math.ceil(ms / 1000);
 export function textoRechazo(reason: string, waitMs: number): string {
-  if (reason === "enfriamiento") return `Espera ${segundos(waitMs)} s para volver a probar esta zona`;
+  if (reason === "enfriamiento") return `Espera ${segundos(waitMs)} s y vuelve a probar`;
   if (reason === "quemada") return `Pieza quemada: espera ${segundos(waitMs)} s`;
-  if (reason === "sin-cambios") return "Cambia la pieza antes de probar";
+  if (reason === "sin-cambios") return "No cambiaste nada. Cambia una pieza o un cable y prueba.";
   return reason.charAt(0).toUpperCase() + reason.slice(1);
 }
 
@@ -119,7 +122,7 @@ export const reloj = (p: Pantalla, ahora: number) => {
 /** El aviso con el "espera N s" descontando en vivo; al acabar el bloqueo se quita la espera. */
 export function avisoVivo(p: Pantalla, ahora: number): string | null {
   const s = segundos(p.esperaHasta - ahora);
-  const t = p.aviso?.replace(/( · )?espera \d+ s( para volver a probar esta zona)?/i, (m, sep: string | undefined) =>
+  const t = p.aviso?.replace(/( · )?espera \d+ s( y vuelve a probar)?/i, (m, sep: string | undefined) =>
     s > 0 ? m.replace(/\d+/, String(s)) : sep ? "" : "ya puedes volver a probar");
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : null;
 }
@@ -139,12 +142,12 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     case "result": {
       const circuito = p.pod?.zonas.find((z) => z.zona === m.zona)?.circuito;
       const vista = vistaDeVeredicto(m.veredicto, circuito);
-      const listo = m.pod.zonas.every((z) => z.reparada);
+      const listo = m.pod.zonas.every((z) => z.reparada), falta = faltan(m.pod);
       return {
         ...p, despachados: m.despachados, pod: m.pod, esperaHasta: ahora + m.waitMs,
         vistas: { ...p.vistas, [m.zona]: vista },
         tarjeta: vista.quemado || vista.cortocircuito ? { zona: m.zona, hasta: ahora + Math.max(BURN_CARD_MS, m.waitMs) } : p.tarjeta,
-        aviso: listo ? "¡Pod reparado! Pulsa Despachar" : m.waitMs ? `${vista.mensaje} · espera ${segundos(m.waitMs)} s` : vista.mensaje,
+        aviso: listo ? "¡Pod reparado! Pulsa Despachar" : m.veredicto === "correcto" && falta ? `${vista.mensaje} Falta reparar: ${falta}` : m.waitMs ? `${vista.mensaje} · espera ${segundos(m.waitMs)} s` : vista.mensaje,
       };
     }
     // El contador sube solo aquí: cuando el árbitro confirma el despacho.

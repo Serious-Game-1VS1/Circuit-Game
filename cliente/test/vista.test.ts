@@ -11,7 +11,7 @@ describe("vista de una zona", () => {
     expect(vistaDeVeredicto("poco")).toMatchObject({ aguja: "poco", quemado: false });
     expect(vistaDeVeredicto("correcto", "fusible")).toMatchObject({ aguja: "correcto", mensaje: "¡Correcto!" });
     expect(vistaDeVeredicto("se quema", "fusible")).toMatchObject({ aguja: "demasiado", quemado: true });
-    expect(vistaDeVeredicto("corto", "luces")).toEqual({ aguja: null, quemado: false, cortocircuito: true, mensaje: "¡Cortocircuito!" });
+    expect(vistaDeVeredicto("corto", "luces")).toEqual({ aguja: null, quemado: false, cortocircuito: true, mensaje: "¡Cortocircuito! La corriente tiene un atajo sin carga. Revisa los cables." });
   });
 
   it("los veredictos reales del motor dan una vista coherente en cada circuito", () => {

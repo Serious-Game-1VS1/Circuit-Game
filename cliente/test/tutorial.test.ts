@@ -17,6 +17,10 @@ describe("tutorial", () => {
     expect(t.pasos.some((p) => p.objetivo === "multimetro")).toBe(false);
   });
 
+  it("el paso del multímetro dice el orden: pieza, Tensión, pieza", () => {
+    expect(iniciar().pasos.find((p) => p.objetivo === "multimetro")!.texto).toBe("Primero pon una pieza. Luego toca Tensión y toca la pieza.");
+  });
+
   it("saltar lo desactiva en cualquier paso y no pierde el paso", () => {
     const t = saltar(siguiente(iniciar()));
     expect(t.activo).toBe(false);
