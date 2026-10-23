@@ -3,7 +3,8 @@ import { Arbiter } from "../../spike/src/arbiter/arbiter";
 import type { Transport } from "../../spike/src/transport/transport";
 import { crearTransporte, elegirTransporte, Net } from "../src/net";
 import { evaluar } from "../../spike/src/engine/pods";
-import { podVisible, reloj } from "../src/pantalla";
+import { despachable, reloj } from "../src/pantalla";
+import { conPlaca } from "../src/placa";
 import { botonesGaveta, pestanas, reparadas, vistaDeVeredicto } from "../src/vista";
 
 /** Cliente contra el árbitro real en memoria (sin red), con reloj falso. */
@@ -94,23 +95,71 @@ describe("cliente conectado al árbitro", () => {
     ana.probar(z.zona, mala);
     expect(ana.estado.aviso).toBe("Cambia la pieza antes de probar");
     ana.probar(z.zona, z.solucion);
-    // El pod reparado espera "Despachar"; el árbitro ya lo contó.
-    expect(ana.estado).toMatchObject({ despachados: 1, aviso: "¡Pod reparado! Pulsa Despachar" });
-    expect(podVisible(ana.estado)?.zonas.every((x) => x.reparada)).toBe(true);
-    ana.despachar();
-    expect(ana.estado).toMatchObject({ despachable: undefined, aviso: "¡Pod despachado!", vistas: {} });
-    expect(podVisible(ana.estado)?.numero).toBe(2);
+    // El pod reparado espera "Despachar": todavía no cuenta ni para mí ni para el rival.
+    expect(ana.estado).toMatchObject({ despachados: 0, aviso: "¡Pod reparado! Pulsa Despachar" });
+    expect(ana.estado.pod?.zonas.every((x) => x.reparada)).toBe(true);
+    expect(despachable(ana.estado)).toBe(true);
+    t += 4000;
     arb.tick();
+    expect(beto.estado.rival).toEqual({ alias: "ana", despachados: 0, estado: "reparando" });
+    ana.despachar();
+    expect(enviado.at(-1)).toMatchObject({ t: "despachar" });
+    expect(ana.estado).toMatchObject({ despachados: 1, despachando: false, aviso: "¡Pod despachado!", vistas: {} });
+    expect(ana.estado.pod?.numero).toBe(2);
     expect(beto.estado.rival).toEqual({ alias: "ana", despachados: 1, estado: "reparando" });
+  });
+
+  it("'Despachar' solo se activa con todo reparado; el rechazo del árbitro se muestra y no cuenta", async () => {
+    await empezar();
+    const enviado: unknown[] = [];
+    const mem = peers.get("p1")!;
+    const send = mem.send.bind(mem);
+    mem.send = (d) => { enviado.push(d); send(d); };
+    expect(despachable(ana.estado)).toBe(false);
+    ana.despachar();
+    expect(enviado).toEqual([]); // el botón inactivo no manda nada
+    mem.send({ t: "despachar", seq: 99, t0: 0 }); // p. ej. un cliente desfasado: decide el árbitro
+    expect(ana.estado).toMatchObject({ despachados: 0, despachando: false, aviso: "Faltan zonas por reparar" });
+    expect(beto.estado.rival?.despachados).toBe(0);
+  });
+
+  it("cambiar de pestaña de zona limpia el aviso", async () => {
+    await empezar();
+    const z = zonaReal(ana, 0);
+    ana.probar(z.zona, z.solucion);
+    expect(ana.estado.aviso).not.toBeNull();
+    ana.limpiarAviso();
+    expect(ana.estado.aviso).toBeNull();
   });
 
   it("al despachar 5 pods: ganaste / perdiste", async () => {
     await empezar();
     for (let i = 0; i < 5; i++) reparar(ana);
-    expect(ana.estado.fase).toBe("fin");
+    expect(ana.estado.fase).toBe("carrera");
     expect(ana.estado.fin?.titulo).toBe("¡Ganaste!");
     expect(beto.estado.fin?.titulo).toBe("Perdiste");
     expect(beto.estado.fin?.detalle).toContain("ana: 5 pods, 0 quemadas");
+    ana.verPodio();
+    expect(ana.estado.fase).toBe("podio");
+    expect(beto.estado.fase).toBe("carrera");
+  });
+
+  it("tras el fin, quien recarga (mismo alias, < 30 s) recupera el resultado; el podio no reinicia la carrera", async () => {
+    await empezar();
+    for (let i = 0; i < 5; i++) reparar(ana);
+    const end = ana.estado.end;
+    const antes = ana.estado;
+    await ana.reconectar(); // terminada: no reintenta ni toca el estado
+    expect(ana.estado).toBe(antes);
+    arb.leave("p1");
+    t += 20_000;
+    const vuelta = new Net(new Mem("p3"), () => t);
+    await vuelta.entrar(CODE, "ana");
+    expect(vuelta.estado).toMatchObject({ fase: "carrera", station: "A", fin: { titulo: "¡Ganaste!" } });
+    expect(vuelta.estado.end).toEqual(end);
+    vuelta.verPodio();
+    await vuelta.reconectar();
+    expect(vuelta.estado.fase).toBe("podio");
   });
 
   it("nivel 2: pods de 1 a 4 zonas con todos los circuitos; pestañas, gaveta e indicador por zona", async () => {
@@ -119,7 +168,7 @@ describe("cliente conectado al árbitro", () => {
     expect(ana.estado.nivel).toBe(2);
     const vistos = new Set<string>();
     for (let i = 0; i < 5 && ana.estado.fase === "taller"; i++) {
-      const pod = podVisible(ana.estado)!;
+      const pod = ana.estado.pod!;
       expect(pestanas(pod, pod.zonas[0]!.zona)).toHaveLength(pod.zonas.length);
       expect(reparadas(pod)).toBe(`Zonas reparadas: 0/${pod.zonas.length}`);
       for (const z of pod.zonas) {
@@ -132,6 +181,28 @@ describe("cliente conectado al árbitro", () => {
     expect(ana.estado.fin?.titulo).toBe("¡Ganaste!");
   });
 
+  it("demo de cableado: el cliente lo sabe por el start y cada pod trae solo Cabina y/o Turbina con su placa", async () => {
+    arb = new Arbiter((peer, m) => peers.get(peer)?.onMessage(copia(m), "0"), { now: () => t, semilla: 7, demo: "cableado" });
+    await empezar();
+    expect(ana.estado.demo).toBe(true);
+    for (let i = 0; i < 5 && ana.estado.fase === "taller"; i++) {
+      expect(ana.estado.pod!.zonas.every((z) => conPlaca(z.circuito) && (z.nombre === "cabina" || z.nombre === "turbina"))).toBe(true);
+      reparar(ana);
+    }
+    expect(ana.estado.fin?.titulo).toBe("¡Ganaste!");
+  });
+
+  it("demo radar (--demo radar): el cliente lo sabe por el start y los 5 pods son solo Radar con las 4 resistencias", async () => {
+    arb = new Arbiter((peer, m) => peers.get(peer)?.onMessage(copia(m), "0"), { now: () => t, semilla: 7, demo: "radar" });
+    await empezar();
+    expect(ana.estado.demo).toBe(true);
+    for (let i = 0; i < 5 && ana.estado.fase === "taller"; i++) {
+      expect(ana.estado.pod!.zonas.map((z) => [z.nombre, z.opciones.length])).toEqual([["radar", 4]]);
+      reparar(ana);
+    }
+    expect(ana.estado.fin?.titulo).toBe("¡Ganaste!");
+  });
+
   it("el cliente nunca recibe ni muestra la solución", async () => {
     for (const nivel of [1, 2] as const) for (const semilla of [1, 2, 3]) {
       arb = new Arbiter((peer, m) => peers.get(peer)?.onMessage(copia(m), "0"), { now: () => t, semilla, nivel });
@@ -140,7 +211,7 @@ describe("cliente conectado al árbitro", () => {
       await empezar();
       for (let i = 0; i < 5 && ana.estado.fase === "taller"; i++) {
         expect(JSON.stringify(ana.estado)).not.toMatch(/solucion/);
-        for (const z of podVisible(ana.estado)!.zonas) {
+        for (const z of ana.estado.pod!.zonas) {
           // Lo que se pinta solo depende de la ZonaView: ningún botón se distingue sin elegirlo.
           expect(botonesGaveta(z, undefined).every((b) => !b.elegida && Object.keys(b).join() === "pieza,texto,elegida")).toBe(true);
         }
@@ -168,7 +239,7 @@ describe("cliente conectado al árbitro", () => {
     await ana.reconectar(); // lo que dispara Transport.onClose
     expect(beto.estado.rival?.estado).toBe("reparando");
     expect(ana.estado).toMatchObject({ fase: "taller", station: "A", aviso: null });
-    expect(ana.estado).toMatchObject({ despachados: 1, despachable: undefined });
+    expect(ana.estado).toMatchObject({ despachados: 1, despachando: false });
   });
 
   it("sin red durante toda la ventana: vuelve a Entrar con aviso; 'Volver a jugar' conserva el alias", async () => {

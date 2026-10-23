@@ -32,6 +32,20 @@ export const GAVETA: Record<Circuito, string> = {
   interruptor: "Elige el montaje", fusible: "Elige un fusible",
 };
 
+/** Nombre estable de cada resistencia por valor (textos.js, gaveta.res): más Ω, más freno. */
+export const FRENA: Record<string, string> = { "100": "Frena poco", "220": "Frena algo", "470": "Frena medio", "1000": "Frena mucho" };
+
+/**
+ * Pistas visuales del primer pod en modo demo (sin narrador). Textos de textos.js: errores.sin_resistencia,
+ * circuito.cablesAyuda y tutorial.p6; «colocar» no existe en textos.js (el prototipo no arrastraba piezas).
+ */
+export const PISTA_DEMO = {
+  elegir: "Pon una pieza que frene la corriente.",
+  colocar: "Arrastra cada pieza a la placa.",
+  cablear: "Arrastra de un punto a otro, o tócalos uno y luego otro.",
+  probar: "Prueba si funciona",
+} as const;
+
 const MONTAJE: Record<string, string> = { serie: "Serie", paralelo: "Paralelo", puente: "Puente" };
 
 /** Etiqueta de la pieza tal como viene impresa ("470 Ω", "0,5 A") o el nombre del montaje. */

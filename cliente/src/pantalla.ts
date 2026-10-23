@@ -3,10 +3,11 @@
  * los mensajes del árbitro. La prueba vive en test/pantalla.test.ts.
  */
 import { BURN_CARD_MS } from "../../spike/src/arbiter/penalties";
-import { validAlias, type End, type Nivel, type PodView, type RivalView, type ServerMsg, type Station } from "../../spike/src/protocol";
+import { validAlias, type End, type Medida, type Nivel, type PodView, type RivalView, type ServerMsg, type Station } from "../../spike/src/protocol";
 import { vistaDeVeredicto, type Vista } from "./vista";
 
-export type Fase = "entrar" | "sala" | "cuenta" | "taller" | "fin";
+/** "carrera" y "podio": fin normal con carrera final; "fin": partida anulada (o árbitro sin carrera). */
+export type Fase = "entrar" | "sala" | "cuenta" | "taller" | "carrera" | "podio" | "fin";
 
 export interface Pantalla {
   fase: Fase;
@@ -19,12 +20,11 @@ export interface Pantalla {
   despachados: number;
   total: number;
   nivel: Nivel;
+  /** Modo demo del árbitro (--demo): solo Radar; el Taller oculta pestañas y multímetro. */
+  demo: boolean;
   pod?: PodView;
-  /**
-   * Pod recién terminado que espera "Despachar". El árbitro ya lo contó al reparar la última zona
-   * (el protocolo no tiene mensaje de despacho); el botón solo da paso al pod siguiente.
-   */
-  despachable?: PodView;
+  /** "Despachar" enviado, esperando la confirmación o el rechazo del árbitro. */
+  despachando: boolean;
   rival: RivalView | null;
   /** Tarjeta "pieza quemada": zona y hora local hasta la que se muestra (≥ BURN_CARD_MS). */
   tarjeta: { zona: number; hasta: number } | null;
@@ -35,18 +35,47 @@ export interface Pantalla {
   /** Hora local (ms) en que termina el bloqueo que anuncia el aviso ("espera N s"). */
   esperaHasta: number;
   fin?: { titulo: string; detalle: string };
+  /** Mensaje de fin tal cual (carrera y podio se pintan desde aquí). */
+  end?: End;
+  /** Última lectura del multímetro (la escena la muestra tras ~1 s; ver multimetro.ts). */
+  medida?: Medida;
 }
 
-export const inicial = (): Pantalla => ({
-  fase: "entrar", aviso: null, jugadores: [], cuenta: 0, despachados: 0, total: 5, nivel: 1, rival: null, vistas: {}, terminaEn: 0,
-  esperaHasta: 0, tarjeta: null,
-});
+/** La partida ya terminó: no se reconecta y el resultado se conserva. */
+export const terminada = (p: Pantalla) => p.fase === "fin" || p.fase === "carrera" || p.fase === "podio";
 
-/** El pod que se ve: el terminado mientras espera "Despachar", si no el actual. */
-export const podVisible = (p: Pantalla) => p.despachable ?? p.pod;
+export function inicial(): Pantalla {
+  return {
+    fase: 'entrar',
+    alias: '',
+    aviso: null,
+    jugadores: [],
+    cuenta: 0,
+    despachados: 0,
+    total: 5,
+    nivel: 1,
+    demo: false,
+    despachando: false,
+    rival: null,
+    tarjeta: null,
+    vistas: {},
+    terminaEn: 0,
+    esperaHasta: 0
+  };
+}
 
-/** "Despachar": pasa al pod siguiente que el árbitro ya envió. */
-export const despachar = (p: Pantalla): Pantalla => ({ ...p, despachable: undefined, vistas: {}, tarjeta: null, aviso: "¡Pod despachado!" });
+export const despachable = (p: Pantalla | undefined): boolean => 
+  !!p && p.fase === "taller" && !p.despachando && !!p.pod?.zonas.every((z) => z.reparada);
+
+/** Lo que le falta al jugador en la zona: elegir pieza (Radar), poner piezas en la placa o cablearlas. null = puede probar. */
+export type Falta = "elegir" | "colocar" | "cablear" | null;
+/**
+ * Pista del primer pod en modo demo: lo que falta (`falta`: flecha o resalte de la gaveta o la placa) y,
+ * cuando ya no falta nada, "probar" (resalte en Probar). Desaparece para siempre al primer intento
+ * (`intento`) o con cualquier veredicto.
+ */
+export const pistaDemo = (p: Pantalla | undefined, intento: boolean, falta: Falta): Exclude<Falta, null> | "probar" | null =>
+  !p || !p.demo || intento || p.fase !== "taller" || p.pod?.numero !== 1 || Object.keys(p.vistas ?? {}).length > 0 ? null : falta ?? "probar";
 
 export const tarjetaVisible = (p: Pantalla, zona: number, ahora: number) => p.tarjeta?.zona === zona && ahora < p.tarjeta.hasta;
 
@@ -101,23 +130,32 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     case "lobby": return { ...p, jugadores: m.players, fase: p.fase === "cuenta" ? "sala" : p.fase };
     case "countdown": return { ...p, fase: "cuenta", cuenta: m.n };
     case "start": return {
-      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, nivel: m.nivel ?? 1, pod: m.pod, rival: m.rival,
-      despachable: undefined, vistas: {}, tarjeta: null, terminaEn: ahora + m.restanteMs,
+      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, nivel: m.nivel ?? 1, demo: m.demo ?? false, pod: m.pod, rival: m.rival,
+      despachando: false, vistas: {}, tarjeta: null, terminaEn: ahora + m.restanteMs,
     };
     case "result": {
-      const nuevoPod = m.despachados !== p.despachados;
       const circuito = p.pod?.zonas.find((z) => z.zona === m.zona)?.circuito;
       const vista = vistaDeVeredicto(m.veredicto, circuito);
-      const despachable = nuevoPod && p.pod ? { ...p.pod, zonas: p.pod.zonas.map((z) => ({ ...z, reparada: true })) } : undefined;
+      const listo = m.pod.zonas.every((z) => z.reparada);
       return {
-        ...p, despachados: m.despachados, pod: m.pod, despachable, esperaHasta: ahora + m.waitMs,
+        ...p, despachados: m.despachados, pod: m.pod, esperaHasta: ahora + m.waitMs,
         vistas: { ...p.vistas, [m.zona]: vista },
         tarjeta: vista.quemado || vista.cortocircuito ? { zona: m.zona, hasta: ahora + Math.max(BURN_CARD_MS, m.waitMs) } : p.tarjeta,
-        aviso: nuevoPod ? "¡Pod reparado! Pulsa Despachar" : m.waitMs ? `${vista.mensaje} · espera ${segundos(m.waitMs)} s` : vista.mensaje,
+        aviso: listo ? "¡Pod reparado! Pulsa Despachar" : m.waitMs ? `${vista.mensaje} · espera ${segundos(m.waitMs)} s` : vista.mensaje,
       };
     }
-    case "reject": return { ...p, aviso: textoRechazo(m.reason, m.waitMs), esperaHasta: ahora + m.waitMs };
+    // El contador sube solo aquí: cuando el árbitro confirma el despacho.
+    case "despachado": return {
+      ...p, despachados: m.despachados, pod: m.pod, despachando: false, vistas: {}, tarjeta: null, aviso: "¡Pod despachado!",
+    };
+    case "reject": return { ...p, despachando: false, aviso: textoRechazo(m.reason, m.waitMs), esperaHasta: ahora + m.waitMs };
+    // Medir no toca avisos ni bloqueos: solo guarda la lectura.
+    case "medida": return { ...p, medida: m };
     case "rival": return { ...p, rival: { alias: m.alias, despachados: m.despachados, estado: m.estado } };
-    case "end": return { ...p, fase: "fin", fin: textoFin(m, p.station) };
+    case "end": return { ...p, fase: m.phase === "fin" && m.carrera ? (p.fase === "podio" ? "podio" : "carrera") : "fin", fin: textoFin(m, p.station), end: m };
+    default: return p;
   }
 }
+
+
+

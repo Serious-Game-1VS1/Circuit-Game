@@ -1,0 +1,22 @@
+import { describe, expect, it } from "vitest";
+import type { Medida } from "../../spike/src/protocol";
+import { anguloTension, lecturaLista, MEDIR_MS, textoMedida, textoModo } from "../src/multimetro";
+
+const tension = (fraccion: number, t: Medida["tension"]): Medida => ({ t: "medida", seq: 3, t0: 0, zona: 1, modo: "tension", punto: "carga1", tension: t, fraccion });
+
+describe("multímetro del Taller", () => {
+  it("la lectura solo aparece tras ~1 s y con la respuesta de esa medición", () => {
+    const m = { seq: 3, desde: 1000, punto: "carga1" };
+    expect(lecturaLista(m, tension(0.5, "parte"), 1000 + MEDIR_MS - 1)).toBeNull();
+    expect(lecturaLista(m, undefined, 5000)).toBeNull();
+    expect(lecturaLista(m, { ...tension(0.5, "parte"), seq: 2 }, 5000)).toBeNull();
+    expect(lecturaLista(m, tension(0.5, "parte"), 1000 + MEDIR_MS)).toMatchObject({ fraccion: 0.5 });
+  });
+
+  it("aguja y textos de tensión y continuidad", () => {
+    expect([0, 0.5, 1, 2].map(anguloTension)).toEqual([-60, 0, 60, 60]);
+    expect(textoMedida(tension(1, "toda"))).toMatch(/camino está cortado/);
+    expect(textoMedida({ ...tension(0, "nada"), modo: "continuidad", pasa: false })).toMatch(/^No pasa/);
+    expect(textoModo("continuidad")).toMatch(/^Batería desconectada/);
+  });
+});

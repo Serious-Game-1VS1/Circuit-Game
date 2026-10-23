@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { avisoVivo, despachar, inicial, podVisible, tarjetaVisible, reducir, reloj, textoFin, textoRival, validarEntrada } from "../src/pantalla";
+import { avisoVivo, despachable, inicial, pistaDemo, tarjetaVisible, reducir, reloj, textoFin, textoRival, validarEntrada } from "../src/pantalla";
+import { vistaDeVeredicto } from "../src/vista";
 
 describe("lógica de pantalla", () => {
   it("valida código (6) y alias (1–12)", () => {
@@ -60,19 +61,47 @@ describe("lógica de pantalla", () => {
     expect(tarjetaVisible(p, 0, 4000)).toBe(false);
   });
 
-  it("al reparar la última zona el pod queda listo para 'Despachar' y luego se ve el siguiente", () => {
+  it("al reparar la última zona 'Despachar' se activa; el contador sube solo con la confirmación del árbitro", () => {
+    expect(despachable(taller)).toBe(false);
+    const hecho = { ...pod, zonas: pod.zonas.map((z) => ({ ...z, reparada: true })) };
+    const p = reducir(taller, { t: "result", seq: 1, t0: 0, zona: 0, veredicto: "correcto", waitMs: 0, despachados: 1, pod: hecho }, 0);
+    expect(p).toMatchObject({ despachados: 1, aviso: "¡Pod reparado! Pulsa Despachar" });
+    expect(despachable(p)).toBe(true);
+    expect(despachable({ ...p, despachando: true })).toBe(false); // sin doble envío mientras espera
     const sig = { numero: 3, zonas: [{ ...pod.zonas[0]!, zona: 1, nombre: "cabina" as const, circuito: "cabina" as const }] };
-    const p = reducir(taller, { t: "result", seq: 1, t0: 0, zona: 0, veredicto: "correcto", waitMs: 0, despachados: 2, pod: sig }, 0);
-    expect(podVisible(p)).toMatchObject({ numero: 2, zonas: [{ reparada: true }, { reparada: true }] });
-    expect(p.aviso).toBe("¡Pod reparado! Pulsa Despachar");
-    const q = despachar(p);
-    expect(podVisible(q)).toBe(sig);
-    expect(q).toMatchObject({ aviso: "¡Pod despachado!", vistas: {}, despachados: 2 });
+    const q = reducir({ ...p, despachando: true }, { t: "despachado", seq: 2, t0: 0, despachados: 2, pod: sig }, 0);
+    expect(q).toMatchObject({ pod: sig, aviso: "¡Pod despachado!", vistas: {}, despachados: 2, despachando: false });
+    const r = reducir({ ...p, despachando: true }, { t: "reject", seq: 2, t0: 0, reason: "faltan zonas por reparar", waitMs: 0 }, 0);
+    expect(r).toMatchObject({ despachados: 1, despachando: false, aviso: "Faltan zonas por reparar" });
   });
 
-  it("el start guarda el nivel y limpia lo del pod anterior", () => {
-    const p = reducir({ ...taller, despachable: pod, tarjeta: { zona: 0, hasta: 9e9 } },
-      { t: "start", restanteMs: 1000, despachados: 1, total: 5, nivel: 2, pod, rival: null }, 0);
-    expect(p).toMatchObject({ nivel: 2, despachable: undefined, tarjeta: null, vistas: {} });
+  it("el start guarda el nivel y el modo demo y limpia lo del pod anterior", () => {
+    const p = reducir({ ...taller, despachando: true, tarjeta: { zona: 0, hasta: 9e9 } },
+      { t: "start", restanteMs: 1000, despachados: 1, total: 5, nivel: 2, demo: true, pod, rival: null }, 0);
+    expect(p).toMatchObject({ nivel: 2, demo: true, despachando: false, tarjeta: null, vistas: {} });
+    expect(inicial().demo).toBe(false);
+  });
+  it("la lectura del multímetro solo se guarda: no toca aviso, bloqueo ni veredictos", () => {
+    const p = { ...inicial(), fase: "taller" as const, aviso: "¡Correcto!", esperaHasta: 5 };
+    const q = reducir(p, { t: "medida", seq: 4, t0: 0, zona: 1, modo: "continuidad", punto: "carga1", pasa: true }, 100);
+    expect(q).toEqual({ ...p, medida: { t: "medida", seq: 4, t0: 0, zona: 1, modo: "continuidad", punto: "carga1", pasa: true } });
+  });
+
+  it("modo demo: pista del primer pod (elegir → probar) que desaparece al primer intento", () => {
+    const p = { ...inicial(), fase: "taller" as const, demo: true, pod: { ...pod, numero: 1 } };
+    expect(pistaDemo(p, false, "elegir")).toBe("elegir");
+    expect(pistaDemo(p, false, null)).toBe("probar");
+    expect(pistaDemo(p, true, null)).toBeNull();
+    expect(pistaDemo({ ...p, vistas: { 0: vistaDeVeredicto("poco") } }, false, null)).toBeNull();
+    expect(pistaDemo({ ...p, pod: { ...pod, numero: 2 } }, false, "elegir")).toBeNull();
+    expect(pistaDemo({ ...p, demo: false }, false, "elegir")).toBeNull();
+  });
+
+  it("demo de cableado: pista colocar → cablear → probar, y se va al primer intento", () => {
+    const p = { ...inicial(), fase: "taller" as const, demo: true, pod: { ...pod, numero: 1 } };
+    expect(pistaDemo(p, false, "colocar")).toBe("colocar");
+    expect(pistaDemo(p, false, "cablear")).toBe("cablear");
+    expect(pistaDemo(p, false, null)).toBe("probar");
+    expect(pistaDemo(p, true, "cablear")).toBeNull();
   });
 });

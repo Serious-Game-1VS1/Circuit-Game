@@ -1,7 +1,18 @@
 node_modules/
-.env
-.env.*
+.env*
 !.env.example
 dist/
 bench-out/
 *.antes-de-*.docx
+
+# Documentos y notas locales (fuera del repo)
+*.docx
+*.pdf
+handoff*.md
+decisiones-circuitsync*.md
+jira-estado-despues.md
+.claude/
+
+# Carpetas de trabajo locales; cliente/ solo usa la copia en cliente/public/arte/
+/juego/
+/arte/
