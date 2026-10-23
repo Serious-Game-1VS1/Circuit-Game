@@ -10,6 +10,7 @@
     "bench:local": "tsx src/bench/latency.ts",
     "poc:photon": "tsx src/bench/photon-poc.ts",
     "bench:photon4": "tsx src/bench/photon4.ts",
+    "bench:remoto": "tsx src/bench/remoto.ts",
     "sim:duel": "tsx src/sim/cli.ts",
     "validar:sorteos": "tsx src/engine/validar-sorteos.ts",
     "export:csv": "tsx src/sim/cli.ts --csv",
