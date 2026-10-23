@@ -7,7 +7,9 @@ on:
     branches: [ "main" ]
 
 jobs:
-  # Job para el proyecto Spike (Árbitro)
+  # ==========================================
+  # JOB 1: SPIKE (ÁRBITRO)
+  # ==========================================
   spike:
     name: Spike (Árbitro)
     runs-on: ubuntu-latest
@@ -41,13 +43,12 @@ jobs:
       - name: Compilar proyecto
         run: npm run build --if-present
 
-  # Job para el proyecto Cliente (Juego)
+  # ==========================================
+  # JOB 2: CLIENTE (JUEGO)
+  # ==========================================
   cliente:
     name: Cliente (Juego)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: cliente
 
     steps:
       - name: Checkout del repositorio
@@ -58,24 +59,36 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: cliente/package-lock.json
 
-      - name: Instalar dependencias
+      # Solución al error: Instalar dependencias de spike primero,
+      # ya que el cliente importa archivos de spike (photon-realtime).
+      - name: Instalar dependencias de Spike
         run: npm ci
+        working-directory: spike
 
-      - name: Ejecutar Lint (si existe)
+      - name: Instalar dependencias de Cliente
+        run: npm ci
+        working-directory: cliente
+
+      - name: Ejecutar Lint en Cliente (si existe)
         run: npm run lint --if-present
+        working-directory: cliente
 
-      - name: Ejecutar Typecheck (si existe)
+      - name: Ejecutar Typecheck en Cliente (si existe)
         run: npm run typecheck --if-present
+        working-directory: cliente
 
-      - name: Ejecutar Pruebas
+      - name: Ejecutar Pruebas en Cliente
         run: npm test
+        working-directory: cliente
 
-      - name: Compilar proyecto
+      - name: Compilar Cliente
         run: npm run build --if-present
+        working-directory: cliente
 
-  # Job de Despliegue (Stub condicional para main)
+  # ==========================================
+  # JOB 3: DESPLIEGUE (STUB / SIMULACIÓN)
+  # ==========================================
   deploy:
     name: Despliegue (Stub)
     needs: [spike, cliente]
@@ -92,7 +105,7 @@ jobs:
         run: |
           echo "Iniciando despliegue de prueba (Stub)..."
           if [ -z "$PHOTON_APP_ID" ]; then
-            echo "Aviso: PHOTON_APP_ID no está configurado en los Secrets."
+            echo "Aviso: PHOTON_APP_ID no está configurado en los Secrets de GitHub."
           else
             echo "Photon App ID recibido de forma segura (longitud: ${#PHOTON_APP_ID} caracteres)."
           fi
