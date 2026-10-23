@@ -1,0 +1,160 @@
+/**
+ * Escenas de la carrera final y del podio (propuesta A+D). La carrera solo celebra: el ganador ya
+ * viene decidido en el End del árbitro; el pod que corre, las llamas y «qué repasar» también.
+ * Sprites del kit (arte/carrera, arte/pods/*_carrera_*, arte/ui/cartel_*). Escala 2 en la carrera.
+ */
+import * as Phaser from "phaser";
+import type { Station } from "../../spike/src/protocol";
+import type { Net } from "./net";
+import { cargarArte, letras, marco, toque } from "./arte";
+import { chasis, CHASIS, decision, f, podio, TXT } from "./podio";
+
+const W = 360, H = 640;
+/** x de la línea de meta en la carrera. */
+const META = 318;
+
+// Los PNG de la carrera vienen en public/arte/ como el resto del kit (ya en caché si se pasó por el Taller; no al reconectar tras el fin).
+const cargar = cargarArte;
+
+function animaciones(s: Phaser.Scene) {
+  const anim = (key: string, frames: string[], frameRate: number) => {
+    if (!s.anims.exists(key)) s.anims.create({ key, frames: frames.map((k) => ({ key: k })), frameRate, repeat: -1 });
+  };
+  for (const c of CHASIS) anim(`${c}_carrera`, [0, 1, 2].map((i) => `${c}_carrera_${i}`), 12);
+  anim("llama_turbo_cian", [0, 1, 2].map((i) => `llama_turbo_cian_${i}`), 12);
+  anim("resalte_ganador", ["resalte_ganador_0", "resalte_ganador_1"], 4);
+  anim("bandera_cuadros", ["bandera_cuadros_0", "bandera_cuadros_1"], 6);
+}
+
+/** Profundidades: el confeti va entre el fondo y los textos, para que no tape lo que hay que leer. */
+const CAPA = { confeti: 5, texto: 10 } as const;
+
+/**
+ * Texto centrado con la fuente pixel del kit (k = escala: 2 -> 16 px de alto, ~8 px por letra),
+ * con sombra oscura para leerse sobre el fondo y el confeti. Corta líneas al ancho de la pantalla.
+ */
+const texto = (s: Phaser.Scene, x: number, y: number, t: string, k = 2, color = 0xffffff) =>
+  letras(s, x, y, t, k, color).setOrigin(0.5, 0).setCenterAlign().setMaxWidth(W - 24).setDropShadow(1, 1, 0x140f1f, 1).setDepth(CAPA.texto);
+
+/** Cielo y dos capas de parallax (fondos móviles 90×200 a escala 4). */
+function fondo(s: Phaser.Scene) {
+  s.add.image(0, 0, "capa_cielo_movil").setOrigin(0).setScale(4);
+  return ["capa_lejana_movil", "capa_cercana_movil"].map((k) => s.add.tileSprite(0, 0, 90, 200, k).setOrigin(0).setScale(4));
+}
+
+export class Carrera extends Phaser.Scene {
+  private capas: Phaser.GameObjects.TileSprite[] = [];
+  private corriendo = false;
+  constructor(private readonly net: Net) { super("Carrera"); }
+
+  preload() { cargar(this); }
+  /** main.ts repinta la escena activa en cada cambio; aquí no hay nada que repintar. */
+  pintar() {}
+
+  create() {
+    animaciones(this);
+    const e = this.net.estado.end!, yo = this.net.estado.station ?? "A";
+    this.capas = fondo(this);
+    this.corriendo = false;
+    texto(this, W / 2, 16, TXT.carreraTitulo, 3);
+    texto(this, W / 2, 56, decision(e), 2);
+    texto(this, W / 2, 132, TXT.carreraAyuda, 2, 0xccddee);
+
+    // Dos carriles: el mío arriba. Meta a la derecha.
+    const carriles: Station[] = [yo, yo === "A" ? "B" : "A"];
+    const Y = [420, 540];
+    for (const y of Y) this.add.tileSprite(0, y - 12, 180, 24, "pista_recta").setOrigin(0).setScale(2);
+    this.add.tileSprite(META, Y[0]! - 70, 4, 100, "meta").setOrigin(0).setScale(2);
+    this.add.image(META + 4, Y[0]! - 70, "cartel_meta").setScale(2);
+
+    const pods = carriles.map((s, i) => {
+      const c = e.carrera?.[s], sc = e.score[s];
+      const y = Y[i]!;
+      const ch = chasis(c?.pod ?? 1);
+      const llamas = Array.from({ length: c?.llamas ?? 0 }, () =>
+        this.add.sprite(0, 0, "llama_turbo_cian_0").setOrigin(1, 0.5).setScale(2).play("llama_turbo_cian"));
+      const pod = this.add.sprite(0, 0, `${ch}_carrera_0`).setOrigin(0.5, 1).setScale(2).play(`${ch}_carrera`);
+      const etq = texto(this, 0, 0, `${sc?.alias ?? "-"}${s === yo ? " (tú)" : ""} · ${f(TXT.podLuce, { n: c?.pod ?? 1 })}`, 2);
+      const grupo = this.add.container(-110, y, [...llamas, pod, etq]).setDepth(CAPA.texto);
+      // Llamas detrás del pod, apiladas; la etiqueta encima.
+      llamas.forEach((l, k) => l.setPosition(-90, -18 - (k - (llamas.length - 1) / 2) * 9));
+      etq.setPosition(0, -110);
+      return { s, grupo };
+    });
+
+    // Semáforo 3-2-1-¡YA! (0,5 s cada luz) y luego la carrera (~3 s).
+    const sem = this.add.image(W / 2, 300, "semaforo_3").setOrigin(0.5, 1).setScale(3);
+    ["semaforo_2", "semaforo_1", "semaforo_ya"].forEach((k, i) => this.time.delayedCall(500 * (i + 1), () => sem.setTexture(k)));
+    this.time.delayedCall(2000, () => {
+      sem.setVisible(false);
+      this.corriendo = true;
+      for (const { s, grupo } of pods) {
+        const gana = e.winner === null || s === e.winner;
+        // supuesto: el ganador cruza la meta; el otro queda atrás (en empate, cruzan juntos).
+        this.tweens.add({ targets: grupo, x: gana ? META - 70 : META - 170, duration: gana ? 2600 : 3000, ease: "Sine.easeInOut" });
+      }
+      this.time.delayedCall(3000, () => this.llegada(pods.find((p) => p.s === e.winner)?.grupo, e.winner === yo));
+    });
+    // Toca para saltar (tras 1 s, para que no se salte por el toque del despacho).
+    this.time.delayedCall(1000, () => {
+      texto(this, W / 2, H - 40, TXT.saltar, 2, 0xccddee);
+      this.input.once("pointerdown", () => this.net.verPodio());
+    });
+  }
+
+  private llegada(ganador: Phaser.GameObjects.Container | undefined, gane: boolean) {
+    this.corriendo = false;
+    if (ganador) {
+      const r = this.add.sprite(ganador.x, ganador.y - 23, "resalte_ganador_0").setScale(2).play("resalte_ganador");
+      this.children.moveBelow(r, ganador);
+      // La bandera ondea en el hueco del semáforo (ya oculto), lejos de las etiquetas de los carriles.
+      this.add.sprite(W / 2, 290, "bandera_cuadros_0").setOrigin(0.1, 1).setScale(3).play("bandera_cuadros");
+    }
+    if (gane) {
+      // Confeti semitransparente y debajo de los textos.
+      const confeti = this.add.tileSprite(0, 0, 90, 160, "confeti_0").setOrigin(0).setScale(4).setAlpha(0.55).setDepth(CAPA.confeti);
+      let i = 0;
+      this.time.addEvent({ delay: 100, loop: true, callback: () => confeti.setTexture(`confeti_${++i % 4}`) });
+    }
+    this.time.delayedCall(1800, () => this.net.verPodio());
+  }
+
+  update(_t: number, dt: number) {
+    const v = this.corriendo ? 1 : 0.15;
+    this.capas.forEach((c, i) => { c.tilePositionX += dt * 0.02 * (i + 1) * v; });
+  }
+}
+
+export class Podio extends Phaser.Scene {
+  constructor(private readonly net: Net) { super("Podio"); }
+
+  preload() { cargar(this); }
+  pintar() {}
+
+  create() {
+    animaciones(this);
+    const p = this.net.estado, e = p.end!, yo = p.station;
+    fondo(this);
+    const cartel = e.winner === null ? "cartel_empate" : e.winner === yo ? "cartel_ganaste" : "cartel_perdiste";
+    this.add.image(W / 2, 40, cartel).setScale(e.winner === null ? 2 : 3);
+    texto(this, W / 2, 76, decision(e), 2);
+
+    // Podio con el pod que corrió el ganador (o el mío en empate).
+    const quien = e.winner ?? yo ?? "A";
+    this.add.image(W / 2, 290, "podio").setOrigin(0.5, 1).setScale(3);
+    const ch = chasis(e.carrera?.[quien]?.pod ?? 1);
+    this.add.sprite(W / 2, 290 - 3 * 26, `${ch}_carrera_0`).setOrigin(0.5, 1).setScale(1.5).play(`${ch}_carrera`);
+
+    const { filas, repasar, podLento } = podio(e, yo);
+    const tabla = filas.map((x) => `${x.puesto} ${x.alias}${x.yo ? " (tú)" : ""}\nTiempo ${x.tiempo} · Pods ${x.pods}/5\nLimpios ${x.limpios} · Quemados ${x.quemados}`);
+    texto(this, W / 2, 298, tabla.join("\n"), 2);
+
+    const caja = this.add.rectangle(W / 2, 498, W - 24, 124, 0x140f1f, 0.85).setStrokeStyle(2, 0xe0a43c);
+    texto(this, W / 2, caja.y - 54, TXT.repasar, 2, 0xe0a43c);
+    texto(this, W / 2, caja.y - 30, [...repasar.map((r) => `- ${r}`), ...(podLento ? [podLento] : [])].join("\n"), 2);
+
+    marco(this, W / 2, 600, "boton_primario", W - 32, 52);
+    texto(this, W / 2, 592, "Volver a jugar", 2, 0x140f1f).setDropShadow(0, 0, 0, 0);
+    toque(this, W / 2, 600, W - 32, 52, () => void this.net.salir());
+  }
+}

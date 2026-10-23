@@ -1,13 +1,25 @@
 /// <reference types="vite/client" />
 import * as Phaser from "phaser";
 import { crearTransporte, Net, type Config } from "./net";
-import { avisoVivo, reloj, textoRival, type Fase, type Pantalla } from "./pantalla";
-import { OPCIONES, textoOpcion, type Aguja } from "./vista";
+import type { Transport } from "../../spike/src/transport/transport";
+import { Carrera, Podio } from "./carrera";
+import type { Fase, Pantalla } from "./pantalla";
+import { Taller } from "./taller";
 
 const W = 360, H = 640; // diseño vertical; Scale.FIT lo ajusta a cualquier pantalla
-const ANGULO: Record<Aguja, number> = { poco: -60, correcto: 0, demasiado: 60 };
-const ESCENA: Record<Fase, string> = { entrar: "Entrar", sala: "Sala", cuenta: "Cuenta", taller: "Taller", fin: "Fin" };
-const net = new Net(crearTransporte(import.meta.env as Config, location));
+const ESCENA: Record<Fase, string> = { entrar: "Entrar", sala: "Sala", cuenta: "Cuenta", taller: "Taller", carrera: "Carrera", podio: "Podio", fin: "Fin" };
+
+/** Sin transporte de duelo válido (p. ej. Photon sin App ID) la práctica sigue funcionando; entrar avisa que no hay sala. */
+function transporteDuelo(): Transport {
+  try {
+    return crearTransporte(import.meta.env as Config, location);
+  } catch (error) {
+    console.error(error);
+    return { onMessage: () => {}, create: async () => {}, join: async () => { throw error; }, send: () => {}, close: async () => {} };
+  }
+}
+const net = new Net(transporteDuelo());
+if (import.meta.env.DEV) Object.assign(window, { net }); // solo en desarrollo: inspección desde la consola
 
 const texto = (s: Phaser.Scene, x: number, y: number, t: string, size = 18, color = "#fff") =>
   s.add.text(x, y, t, { fontSize: `${size}px`, color, align: "center", wordWrap: { width: W - 32 } }).setOrigin(0.5, 0);
@@ -25,9 +37,9 @@ class Entrar extends Base {
   private aviso!: Phaser.GameObjects.Text;
   constructor() { super("Entrar"); }
   create() {
-    texto(this, W / 2, 60, "CircuitSync", 30);
-    texto(this, W / 2, 104, "Duelo de reparación de pods", 16, "#9ab");
-    const form = this.add.dom(W / 2, 260).createFromHTML(`
+    texto(this, W / 2, 40, "CircuitSync", 30);
+    texto(this, W / 2, 84, "Duelo de reparación de pods", 16, "#9ab");
+    const form = this.add.dom(W / 2, 220).createFromHTML(`
       <div style="display:flex;flex-direction:column;gap:12px;width:280px;font:18px sans-serif">
         <label style="color:#ddd">Código de sala<input name="codigo" maxlength="6" autocomplete="off"
           style="width:100%;box-sizing:border-box;font-size:22px;padding:10px;text-transform:uppercase"></label>
@@ -37,8 +49,15 @@ class Entrar extends Base {
     const campo = (n: string) => form.getChildByName(n) as HTMLInputElement | null;
     const valor = (n: string) => campo(n)?.value ?? "";
     if (net.estado.alias) campo("alias")!.value = net.estado.alias; // "Volver a jugar" conserva el alias
-    boton(this, W / 2, 420, "Entrar", W - 32, "#3bb273", () => void net.entrar(valor("codigo"), valor("alias")));
-    this.aviso = texto(this, W / 2, 470, "", 16, "#ff6b6b");
+    boton(this, W / 2, 360, "Entrar", W - 32, "#3bb273", () => void net.entrar(valor("codigo"), valor("alias")));
+    // Práctica (SCRUM-151): sin código ni rival; el alias es opcional y por defecto "Aprendiz".
+    const nivel = this.add.dom(W - 16 - 56, 436).createFromHTML(`
+      <select name="nivel" aria-label="Nivel de práctica" style="width:112px;font-size:18px;padding:12px 4px">
+        <option value="1">Nivel 1</option><option value="2">Nivel 2</option></select>`);
+    const elegido = () => ((nivel.getChildByName("nivel") as HTMLSelectElement | null)?.value === "2" ? 2 : 1);
+    boton(this, 16 + 104, 436, "Practicar", 208, "#3a4466", () => void net.practicar(valor("alias").trim() || "Aprendiz", elegido()));
+    boton(this, W / 2, 500, "Tutorial", W - 32, "#3a4466", () => void net.practicar(valor("alias").trim() || "Aprendiz", 1, true));
+    this.aviso = texto(this, W / 2, 548, "", 16, "#ff6b6b");
     this.pintar(net.estado);
   }
   pintar(p: Pantalla) { this.aviso.setText(p.aviso ?? ""); }
@@ -70,78 +89,6 @@ class Cuenta extends Base {
   pintar(p: Pantalla) { this.n.setText(String(p.cuenta)); }
 }
 
-class Taller extends Base {
-  private zona = 0;
-  private elegida = 470;
-  private ui!: {
-    estado: Phaser.GameObjects.Text; rival: Phaser.GameObjects.Text; reloj: Phaser.GameObjects.Text; reto: Phaser.GameObjects.Text;
-    pieza: Phaser.GameObjects.Text; leds: Phaser.GameObjects.Arc[]; aguja: Phaser.GameObjects.Rectangle; aviso: Phaser.GameObjects.Text;
-    zonas: Phaser.GameObjects.Text[]; opciones: Phaser.GameObjects.Text[];
-  };
-  constructor() { super("Taller"); }
-
-  create() {
-    const estado = texto(this, 16, 8, "", 16).setOrigin(0, 0);
-    const relojT = texto(this, W - 16, 8, "", 16).setOrigin(1, 0);
-    const rival = texto(this, W / 2, 32, "", 14, "#9ab");
-    const zonas = [0, 1].map((z) => boton(this, 92 + z * 176, 76, "", 168, "#2c3344", () => { this.zona = z; this.pintar(net.estado); }));
-    const reto = texto(this, W / 2, 104, "", 15, "#9ab");
-
-    // Circuito: batería 9 V → pieza elegida → LED (o dos LED en paralelo en la cabina)
-    this.add.graphics().lineStyle(4, 0xcccccc).strokeRect(60, 140, 240, 100);
-    this.add.rectangle(60, 190, 36, 60, 0x3a6ea5).setStrokeStyle(2, 0xffffff);
-    this.add.text(60, 190, "9 V", { fontSize: "14px", color: "#fff" }).setOrigin(0.5);
-    this.add.rectangle(180, 140, 80, 28, 0xc8a46e).setStrokeStyle(2, 0xffffff);
-    const pieza = this.add.text(180, 140, "", { fontSize: "14px", color: "#000" }).setOrigin(0.5);
-    const leds = [170, 210].map((y) => this.add.circle(300, y, 16, 0x551111).setStrokeStyle(3, 0xffffff));
-
-    // Aguja: tres zonas sin números
-    const cx = W / 2, cy = 360;
-    const arcos: [Aguja, number][] = [["poco", 0x888888], ["correcto", 0x3bb273], ["demasiado", 0xe06c3c]];
-    arcos.forEach(([nombre, color], i) => {
-      const a0 = Phaser.Math.DegToRad(-180 + i * 60), a1 = Phaser.Math.DegToRad(-120 + i * 60);
-      this.add.graphics().lineStyle(18, color).beginPath().arc(cx, cy, 80, a0, a1).strokePath();
-      const am = (a0 + a1) / 2;
-      this.add.text(cx + Math.cos(am) * 130, cy + Math.sin(am) * 108, nombre, { fontSize: "14px", color: "#ddd" }).setOrigin(0.5);
-    });
-    const aguja = this.add.rectangle(cx, cy, 4, 70, 0xffffff).setOrigin(0.5, 1).setVisible(false);
-    const aviso = texto(this, cx, 380, "", 16);
-
-    const opciones = OPCIONES.map((ohms, i) =>
-      boton(this, 16 + (i % 2) * 168 + 80, 462 + Math.floor(i / 2) * 60, textoOpcion(ohms), 160, "#2c3344", () => { this.elegida = ohms; this.pintar(net.estado); }));
-    boton(this, W / 2, 596, "Probar", W - 32, "#3bb273", () => net.probar(this.zona, this.elegida));
-
-    this.ui = { estado, rival, reloj: relojT, reto, pieza, leds, aguja, aviso, zonas, opciones };
-    this.pintar(net.estado);
-  }
-
-  update() {
-    this.ui.reloj.setText(reloj(net.estado, Date.now()));
-    this.ui.aviso.setText(avisoVivo(net.estado, Date.now()) ?? "Elige una resistencia y pulsa Probar");
-  }
-
-  pintar(p: Pantalla) {
-    const u = this.ui;
-    const zonas = p.pod?.zonas ?? [];
-    const z = zonas.find((x) => x.zona === this.zona) ?? zonas[0];
-    if (!z) return;
-    this.zona = z.zona;
-    u.estado.setText(`Pod ${Math.min(p.pod!.numero, p.total)} · ${p.despachados}/${p.total}`);
-    u.rival.setText(textoRival(p.rival, p.total));
-    zonas.forEach((x, i) => u.zonas[i]?.setText(`${x.circuito === "led" ? "Motor" : "Cabina"} ${x.reparada ? "✔" : ""}`)
-      .setBackgroundColor(x.zona === this.zona ? "#3a6ea5" : "#2c3344"));
-    u.reto.setText(z.reparada ? "Zona reparada" : z.circuito === "led" ? "Enciende el LED sin quemarlo" : "Enciende los dos LED en paralelo");
-    u.pieza.setText(textoOpcion(this.elegida));
-    u.opciones.forEach((b, i) => b.setBackgroundColor(OPCIONES[i] === this.elegida ? "#3a6ea5" : "#2c3344"));
-    const v = p.vistas[this.zona];
-    u.aguja.setVisible(!!v?.aguja).setAngle(v?.aguja ? ANGULO[v.aguja] : 0);
-    const color = !v ? 0x551111 : v.quemado || v.cortocircuito ? 0x222222 : v.aguja === "correcto" ? 0xff2020 : v.aguja === "poco" ? 0x882222 : 0xff7070;
-    u.leds.forEach((l, i) => l.setVisible(i === 0 || z.circuito === "cabina").setFillStyle(color));
-    u.aviso.setText(p.aviso ?? "Elige una resistencia y pulsa Probar").setColor(v?.quemado || v?.cortocircuito ? "#ff6b6b" : "#fff");
-    if (v?.cortocircuito) this.cameras.main.shake(250, 0.01);
-  }
-}
-
 class Fin extends Base {
   constructor() { super("Fin"); }
   create() {
@@ -159,12 +106,21 @@ const game = new Phaser.Game({
   parent: document.body,
   dom: { createContainer: true },
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: W, height: H },
-  scene: [Entrar, Sala, Cuenta, Taller, Fin],
+  scene: [Entrar, Sala, Cuenta, new Taller(net), new Carrera(net), new Podio(net), Fin],
 });
+if (import.meta.env.DEV) Object.assign(window, { game }); // solo en desarrollo: capturas e inspección
 
 net.onCambio = (p) => {
   const key = ESCENA[p.fase];
   if (game.scene.isActive(key)) return (game.scene.getScene(key) as Base).pintar(p);
-  for (const s of game.scene.getScenes(true)) s.scene.stop();
+  // Se paran también las que siguen cargando (si no, su create() las mostraría encima) y por el SceneManager:
+  // s.scene.stop() encola hasta el próximo frame y dos cambios seguidos (welcome → sala → taller de la práctica)
+  // dejaban la escena vieja activa y saltaban la nueva.
+  for (const s of game.scene.getScenes(false)) {
+    const st = s.sys.settings.status;
+    if (s.sys.settings.key !== key && st >= Phaser.Scenes.START && st < Phaser.Scenes.SHUTDOWN) game.scene.stop(s.sys.settings.key);
+  }
+  // Escena aún en su preload (arte del kit): create() la pintará con net.estado; reiniciarla cortaría la carga.
+  if (game.scene.getScene(key)?.sys.settings.status === Phaser.Scenes.LOADING) return;
   game.scene.start(key);
 };

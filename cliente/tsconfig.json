@@ -8,6 +8,7 @@
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "resolveJsonModule": true,
     "types": []
   },
   "include": ["src", "test", "../spike/src/transport/photon-realtime.d.ts"]

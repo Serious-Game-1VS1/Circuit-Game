@@ -8,7 +8,8 @@ import { Bot } from "./bot.js";
 /**
  * Duelo completo de extremo a extremo (SCRUM-21/22/23/89/129/92): árbitro + dos clientes simulados
  * sobre un Transport real. Falla con AssertionError si algo del flujo no se cumple.
- *  ana: falla una vez (el rival la ve "penalizado") y luego despacha los 5 pods.
+ *  ana: intenta despachar sin reparar (rechazado), falla una vez (su pod 1 no es limpio: 4 llamas) (el rival la ve "penalizado") y luego
+ *  repara y despacha los 5 pods (cada despacho es un mensaje "despachar" explícito).
  *  beto: despacha 2, se desconecta, vuelve con el mismo alias y recupera su progreso.
  */
 export async function simulateDuel(make: () => Transport): Promise<{ arbiter: Arbiter; outcome: End; csv: string }> {
@@ -31,10 +32,20 @@ export async function simulateDuel(make: () => Transport): Promise<{ arbiter: Ar
     const counts = ana.log.flatMap((m) => (m.t === "countdown" ? [m.n] : []));
     assert.deepEqual(counts, [3, 2, 1]);
 
+    // Ambos reciben el mismo primer pod; ninguno recibe la solución.
+    assert.deepEqual(ana.pod, beto.pod);
+    assert.ok(!JSON.stringify(ana.log).includes("solucion"));
+
+    // Despachar con zonas sin reparar se rechaza (RF-03).
+    const d = ana.dispatch();
+    const rj = await ana.until((m) => m.t === "reject" && m.seq === d);
+    assert.ok(rj.t === "reject" && rj.reason === "faltan zonas por reparar" && ana.despachados === 0);
+
     // Un fallo cuesta tiempo y el rival lo ve como "penalizado" (nunca ve la pieza).
-    const seq = ana.test(0, 1000);
+    const z = ana.pod!.zonas[0]!;
+    const seq = ana.test(z.zona, Bot.answer(z, (v) => v !== "correcto"));
     const r = await ana.until((m) => m.t === "result" && m.seq === seq);
-    assert.ok(r.t === "result" && r.veredicto === "poco" && r.waitMs === 2000);
+    assert.ok(r.t === "result" && r.veredicto !== "correcto" && r.waitMs >= 2000);
     await beto.until((m) => m.t === "rival" && m.estado === "penalizado");
 
     // beto despacha 2 pods, se cae y vuelve antes de 30 s con el mismo alias.
@@ -55,9 +66,19 @@ export async function simulateDuel(make: () => Transport): Promise<{ arbiter: Ar
     assert.ok(endA?.t === "end" && endA.winner === "A" && endA.score.A?.despachados === 5 && endA.score.B?.despachados === 2);
 
     const csv = host.arbiter.toCsv();
-    assert.ok(csv.startsWith("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada\r\n"));
-    assert.match(csv, /\r\nA;1;0;R=1000;fallo;\d+;no\r\n/);
-    assert.equal(csv.trimEnd().split("\r\n").length - 1, 11 + 4); // ana: 1 fallo + 10 aciertos; beto: 4 aciertos
+    assert.ok(csv.startsWith("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms\r\n"));
+    assert.match(csv, new RegExp(`\r\nA;1;${z.zona};[^;]+;fallo;\\d+;(no|si);1;\r\n`));
+    assert.match(csv, /\r\nA;;;;despacho;\d+;no;5;\d+\r\n/);
+    // ana: 1 fallo + un acierto por zona de los 5 pods; beto: los pods 1 y 2 tienen una zona cada uno;
+    // más una fila "despacho" por pod despachado (cronómetro por pod): 5 de ana y 2 de beto.
+    const zonas = host.arbiter.pods.reduce((n, p) => n + p.zonas.length, 0);
+    assert.equal(csv.trimEnd().split("\r\n").length - 1, 1 + zonas + 2 + 5 + 2);
+    // Carrera final: el ganador ya lo decidió el árbitro; cada uno corre uno de sus pods despachados.
+    const c = endA.carrera;
+    assert.ok(c?.A && c.B && c.A.pod >= 1 && c.A.pod <= 5 && c.B.pod >= 1 && c.B.pod <= 2);
+    // ana falló una vez en el pod 1: 4 despachos limpios = 4 llamas; un concepto que repasar.
+    assert.ok(c.A.podMs.length === 5 && c.A.llamas === 4 && c.A.repasar.length === 1 && c.A.repasar[0]!.fallos === 1);
+    assert.ok(c.B.podMs.length === 2 && c.B.llamas === 2 && c.B.repasar.length === 0);
     return { arbiter: host.arbiter, outcome: endA, csv };
   } finally {
     host.stop();

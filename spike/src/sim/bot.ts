@@ -1,11 +1,12 @@
 import { performance } from "node:perf_hooks";
-import { answer } from "../engine/pods.js";
-import type { ClientMsg, End, PodView, RivalView, ServerMsg, Station } from "../protocol.js";
+import { evaluar } from "../engine/pods.js";
+import type { ClientMsg, End, PodView, RivalView, ServerMsg, Station, ZonaView } from "../protocol.js";
 import type { Transport } from "../transport/transport.js";
 
 /**
  * Jugador simulado: habla el protocolo real sobre cualquier Transport. Lo usan el banco de latencia,
- * la simulación de duelo y las pruebas. Conoce las respuestas (pods.answer) porque es un bot.
+ * la simulación de duelo y las pruebas. Deduce la respuesta como un estudiante perfecto: prueba cada
+ * opción de la zona con el motor (solo usa lo que el árbitro le mostró, nunca la solución).
  */
 export class Bot {
   station?: Station;
@@ -34,17 +35,33 @@ export class Bot {
   ready() { this.sendMsg({ t: "ready" }); }
 
   /** Envía un intento y devuelve su seq. */
-  test(zone: number, ohms: number): number {
+  test(zone: number, pieza: string): number {
     const seq = ++this.seq;
-    this.sendMsg({ t: "test", seq, t0: performance.now(), zone, ohms });
+    this.sendMsg({ t: "test", seq, t0: performance.now(), zone, pieza });
     return seq;
   }
 
-  /** Prueba la respuesta correcta en la primera zona sin reparar y espera el veredicto. */
+  /** Pulsa "Despachar" y devuelve su seq. */
+  dispatch(): number {
+    const seq = ++this.seq;
+    this.sendMsg({ t: "despachar", seq, t0: performance.now() });
+    return seq;
+  }
+
+  /**
+   * Siguiente paso de un estudiante perfecto: prueba la respuesta correcta en la primera zona sin
+   * reparar o, si ya están todas, despacha el pod. Espera la respuesta del árbitro.
+   */
   async solveNext(): Promise<ServerMsg> {
-    const z = this.pod?.zonas.find((x) => !x.reparada) ?? { zona: 0, circuito: "led" as const };
-    const seq = this.test(z.zona, answer(z.circuito));
-    return this.until((m) => (m.t === "result" || m.t === "reject") && m.seq === seq);
+    if (!this.pod) throw new Error("sin pod a la vista");
+    const z = this.pod.zonas.find((x) => !x.reparada);
+    const seq = z ? this.test(z.zona, Bot.answer(z)) : this.dispatch();
+    return this.until((m) => (m.t === "result" || m.t === "despachado" || m.t === "reject") && m.seq === seq);
+  }
+
+  /** Primera opción que el motor da por correcta (o la que cumpla `want`). */
+  static answer(z: ZonaView, want: (v: string) => boolean = (v) => v === "correcto"): string {
+    return z.opciones.find((p) => want(evaluar(z, p)))!;
   }
 
   /** Juega hasta despachar `pods` pods, esperando los enfriamientos si los hay. */
@@ -72,8 +89,8 @@ export class Bot {
     this.log.push(m);
     if (m.t === "welcome") this.station = m.station;
     if (m.t === "start") { this.despachados = m.despachados; this.pod = m.pod; this.rival = m.rival ?? undefined; }
-    if (m.t === "result") { this.despachados = m.despachados; this.pod = m.pod; }
-    if (m.t === "result" || m.t === "reject") this.own.push(performance.now() - m.t0);
+    if (m.t === "result" || m.t === "despachado") { this.despachados = m.despachados; this.pod = m.pod; }
+    if (m.t === "result" || m.t === "despachado" || m.t === "reject") this.own.push(performance.now() - m.t0);
     if (m.t === "rival") {
       this.rival = { alias: m.alias, despachados: m.despachados, estado: m.estado };
       if (m.t0 !== undefined) this.mirror.push(performance.now() - m.t0);

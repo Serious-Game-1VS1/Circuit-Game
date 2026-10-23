@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { runSession } from "../src/bench/session.js";
 import { LocalTransport, startLocalRelay } from "../src/transport/local.js";
 import { Bot } from "../src/sim/bot.js";
@@ -33,6 +33,14 @@ describe("transporte local", () => {
     await expect(local().join("ZZZZZZ")).rejects.toThrow(/no existe/);
   });
 
+  it("al cerrar el anfitrión el código se libera: serve lo reutiliza para \"Volver a jugar\"", async () => {
+    const viejo = local();
+    const code = await createRoom(viejo);
+    await viejo.close();
+    const nuevo = local();
+    await expect(vi.waitFor(() => nuevo.create(code))).resolves.toBeUndefined();
+  });
+
   it("empareja por orden de llegada y rechaza al tercero y al alias inválido", async () => {
     const arb = local();
     const code = await createRoom(arb);
@@ -55,12 +63,14 @@ describe("transporte local", () => {
     await Promise.all([a, b].map((x) => x.until((m) => m.t === "start")));
 
     const mark = b.log.length;
-    await expect(a.solveNext()).resolves.toMatchObject({ t: "result", veredicto: "correcto" });
-    await expect(a.solveNext()).resolves.toMatchObject({ t: "result", despachados: 1 });
+    expect(a.pod).toEqual(b.pod); // misma secuencia de pods para ambos
+    // El pod 1 tiene una sola zona: repararla no basta, cuenta al despacharlo.
+    await expect(a.solveNext()).resolves.toMatchObject({ t: "result", veredicto: "correcto", despachados: 0 });
+    await expect(a.solveNext()).resolves.toMatchObject({ t: "despachado", despachados: 1 });
     await b.until((m) => m.t === "rival" && m.despachados === 1 && "t0" in m, mark);
     expect(b.log.some((m) => m.t === "result")).toBe(false);
 
-    a.t.send({ t: "test", seq: 7, t0: 0, zone: 1, ohms: "nope" });
+    a.t.send({ t: "test", seq: 7, t0: 0, zone: a.pod!.zonas[0]!.zona, ohms: "nope" });
     await expect(a.until((m) => m.t === "reject" && m.seq === 7)).resolves.toMatchObject({ reason: "pieza no válida" });
     host.stop();
   });
@@ -68,7 +78,7 @@ describe("transporte local", () => {
   it("duelo completo de extremo a extremo con reconexión y CSV (SCRUM-21/22/23/89/92)", async () => {
     const { outcome, csv } = await simulateDuel(local);
     expect(outcome).toMatchObject({ winner: "A", reason: "5 pods despachados" });
-    expect(csv.split("\r\n")[0]).toBe("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada");
+    expect(csv.split("\r\n")[0]).toBe("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms");
   }, 20_000);
 
   it("dos clientes terminan con el mismo estado y se mide RTT", async () => {

@@ -11,6 +11,7 @@
     "poc:photon": "tsx src/bench/photon-poc.ts",
     "bench:photon4": "tsx src/bench/photon4.ts",
     "sim:duel": "tsx src/sim/cli.ts",
+    "validar:sorteos": "tsx src/engine/validar-sorteos.ts",
     "export:csv": "tsx src/sim/cli.ts --csv",
     "serve": "tsx src/serve.ts",
     "serve:photon": "tsx src/serve.ts --photon"

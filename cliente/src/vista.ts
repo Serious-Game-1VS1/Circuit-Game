@@ -1,9 +1,9 @@
 /**
- * Lógica de vista del pod de ejemplo (reto 1), sin Phaser: decide qué ve el
- * jugador a partir de solve(). Nunca expone cifras (amperios, voltios).
+ * Lógica de vista de una zona del taller, sin Phaser: textos y aguja a partir de lo que manda el
+ * árbitro (ZonaView y veredicto). El cliente no conoce la solución ni muestra cifras eléctricas
+ * (amperios, voltios medidos); solo las etiquetas impresas en las piezas y en la batería.
  */
-import { solve, RESISTOR_OHMS, type Part, type SolveResult } from "../../spike/src/engine/circuit";
-import type { Verdict } from "../../spike/src/protocol";
+import type { Circuito, PodView, Verdict, ZonaNombre, ZonaView } from "../../spike/src/protocol";
 
 export type Aguja = "poco" | "correcto" | "demasiado";
 
@@ -15,31 +15,71 @@ export interface Vista {
   mensaje: string;
 }
 
-export const OPCIONES = RESISTOR_OHMS;
+export const NOMBRE_ZONA: Record<ZonaNombre, string> = { radar: "Radar", cabina: "Cabina", turbina: "Turbina", reactor: "Reactor" };
 
-export const textoOpcion = (ohms: number) => `${ohms} Ω`;
+/** Qué pide cada zona, sin decir cómo. */
+export const RETO: Record<Circuito, string> = {
+  led: "Enciende el LED sin quemarlo",
+  cabina: "Enciende los dos LED sin quemarlos",
+  luces: "Monta las luces: si una falla, la otra sigue",
+  interruptor: "Conecta el interruptor para que gire el motor",
+  fusible: "Elige el fusible que protege al calefactor",
+};
 
-const LED = 2; // índice del LED en retoLed()
+/** Qué se elige en la gaveta: pieza o montaje. */
+export const GAVETA: Record<Circuito, string> = {
+  led: "Elige una resistencia", cabina: "Elige una resistencia", luces: "Elige el montaje",
+  interruptor: "Elige el montaje", fusible: "Elige un fusible",
+};
 
-/** Reto 1: batería 9 V → resistencia → LED rojo → batería. */
-export function retoLed(ohms: number): Part[] {
-  return [
-    { kind: "battery", a: 1, b: 0, volts: 9 },
-    { kind: "resistor", a: 1, b: 2, ohms },
-    { kind: "led", a: 2, b: 0 },
-  ];
+/** Nombre estable de cada resistencia por valor (textos.js, gaveta.res): más Ω, más freno. */
+export const FRENA: Record<string, string> = { "100": "Frena poco", "220": "Frena algo", "470": "Frena medio", "1000": "Frena mucho" };
+
+/**
+ * Pistas visuales del primer pod en modo demo (sin narrador). Textos de textos.js: errores.sin_resistencia,
+ * circuito.cablesAyuda y tutorial.p6; «colocar» no existe en textos.js (el prototipo no arrastraba piezas).
+ */
+export const PISTA_DEMO = {
+  elegir: "Pon una pieza que frene la corriente.",
+  colocar: "Arrastra cada pieza a la placa.",
+  cablear: "Arrastra de un punto a otro, o tócalos uno y luego otro.",
+  probar: "Prueba si funciona",
+} as const;
+
+const MONTAJE: Record<string, string> = { serie: "Serie", paralelo: "Paralelo", puente: "Puente" };
+
+/** Etiqueta de la pieza tal como viene impresa ("470 Ω", "0,5 A") o el nombre del montaje. */
+export function textoOpcion(pieza: string, circuito: Circuito): string {
+  if (circuito === "led" || circuito === "cabina") return `${pieza} Ω`;
+  if (circuito === "fusible") return `${pieza.replace(".", ",")} A`;
+  return MONTAJE[pieza] ?? pieza;
 }
 
-export function vistaDe(r: SolveResult, led = LED): Vista {
-  return vistaDeVeredicto(r.short ? "corto" : r.parts[led]?.label ?? "poco");
-}
+export const textoVolts = (v: number) => `${String(v).replace(".", ",")} V`;
+
+const CARGA: Record<Circuito, { poco: string; demasiado: string; quema: string }> = {
+  led: { poco: "Poco: el LED casi no brilla", demasiado: "Demasiado: el LED sufre", quema: "¡El LED se quemó!" },
+  cabina: { poco: "Poco: los LED casi no brillan", demasiado: "Demasiado: los LED sufren", quema: "¡Un LED se quemó!" },
+  luces: { poco: "Poco: las luces brillan débil", demasiado: "Demasiado: las luces sufren", quema: "¡Una luz se quemó!" },
+  interruptor: { poco: "Poco: el motor no arranca bien", demasiado: "Demasiado: el motor sufre", quema: "¡El motor se quemó!" },
+  fusible: { poco: "Poco: el fusible corta aunque no hay falla", demasiado: "Demasiado: el calefactor sufre", quema: "¡El fusible no protegió: el calefactor se quemó!" },
+};
 
 /** Lo que se muestra a partir del veredicto que manda el árbitro (SCRUM-90): el cliente no decide. */
-export function vistaDeVeredicto(label: Verdict): Vista {
+export function vistaDeVeredicto(label: Verdict, circuito: Circuito = "led"): Vista {
   if (label === "corto") return { aguja: null, quemado: false, cortocircuito: true, mensaje: "¡Cortocircuito!" };
-  if (label === "se quema") return { aguja: "demasiado", quemado: true, cortocircuito: false, mensaje: "¡El LED se quemó!" };
-  const mensaje = { poco: "Poco: el LED casi no brilla", correcto: "¡Correcto!", demasiado: "Demasiado: el LED sufre" }[label];
-  return { aguja: label, quemado: false, cortocircuito: false, mensaje };
+  const t = CARGA[circuito];
+  if (label === "se quema") return { aguja: "demasiado", quemado: true, cortocircuito: false, mensaje: t.quema };
+  return { aguja: label, quemado: false, cortocircuito: false, mensaje: label === "correcto" ? "¡Correcto!" : t[label] };
 }
 
-export const probar = (ohms: number): Vista => vistaDe(solve(retoLed(ohms)));
+/** Pestañas de las zonas dañadas del pod (1 a 4), en orden de zona. */
+export const pestanas = (pod: PodView, actual: number) =>
+  [...pod.zonas].sort((a, b) => a.zona - b.zona)
+    .map((z) => ({ zona: z.zona, texto: `${NOMBRE_ZONA[z.nombre]}${z.reparada ? " ✔" : ""}`, activa: z.zona === actual, reparada: z.reparada }));
+
+export const reparadas = (pod: PodView) => `Zonas reparadas: ${pod.zonas.filter((z) => z.reparada).length}/${pod.zonas.length}`;
+
+/** Botones de la gaveta en el orden que manda el árbitro (ya aleatorio); ninguno se distingue salvo el elegido. */
+export const botonesGaveta = (z: ZonaView, elegida: string | undefined) =>
+  z.opciones.map((pieza) => ({ pieza, texto: textoOpcion(pieza, z.circuito), elegida: pieza === elegida }));
