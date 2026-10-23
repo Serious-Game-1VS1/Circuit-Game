@@ -45,11 +45,13 @@ const play = () => {
 };
 const test = (peer: string, zone: number, pieza: string, seq = 1) => arb.handle(peer, { t: "test", seq, t0: 0, zone, pieza });
 /** Pod que el jugador está viendo (último start/result). */
-const podOf = (peer: string) => sent(peer).flatMap((m) => (m.t === "start" || m.t === "result" ? [m.pod] : [])).at(-1)!;
+const podOf = (peer: string) => sent(peer).flatMap((m) => (m.t === "start" || m.t === "result" || m.t === "despachado" ? [m.pod] : [])).at(-1)!;
+const despachar = (peer: string, seq = 1) => arb.handle(peer, { t: "despachar", seq, t0: 0 });
 /** Repara cada zona como un estudiante perfecto: con lo que ve y el motor, no con la solución. */
-const solvePod = (peer: string) => {
+const repairPod = (peer: string) => {
   for (const z of podOf(peer).zonas) test(peer, z.zona, z.opciones.find((p) => evaluar(z, p) === "correcto")!);
 };
+const solvePod = (peer: string) => { repairPod(peer); despachar(peer); };
 
 describe("sala: alias, Listo y cuenta 3-2-1 (SCRUM-21, SCRUM-22)", () => {
   it("empareja A/B por llegada, rechaza alias inválido, repetido y tercer jugador", () => {
@@ -77,7 +79,7 @@ describe("sala: alias, Listo y cuenta 3-2-1 (SCRUM-21, SCRUM-22)", () => {
     for (const ms of [999, 1, 999, 1, 999, 1]) { t += ms; arb.tick(); }
     expect(sent("p2").filter((m) => m.t === "countdown").map((m) => m.t === "countdown" && m.n)).toEqual([3, 2, 1]);
     expect(arb.phase).toBe("jugando");
-    expect(last("p1", "start")).toMatchObject({ despachados: 0, total: 5, nivel: 1, pod: { numero: 1 }, rival: { alias: "beto", estado: "reparando" } });
+    expect(last("p1", "start")).toMatchObject({ despachados: 0, total: 5, nivel: 1, demo: false, pod: { numero: 1 }, rival: { alias: "beto", estado: "reparando" } });
   });
 
   it("si alguien se va durante la cuenta, se cancela y se libera el asiento", () => {
@@ -119,7 +121,7 @@ describe("reparar pods con penalizaciones (SCRUM-129, SCRUM-90)", () => {
 
   it("compatibilidad: un cliente que manda `ohms` en vez de `pieza` sigue funcionando", () => {
     arb.handle("p1", { t: "test", seq: 1, t0: 0, zone: Z, ohms: Number(OK) });
-    expect(last("p1", "result")).toMatchObject({ veredicto: "correcto", despachados: 1 });
+    expect(last("p1", "result")).toMatchObject({ veredicto: "correcto", pod: { zonas: [{ zona: Z, reparada: true }] } });
   });
 
   it("enfriamiento por zona, 'sin cambios' y piezas fuera de catálogo", () => {
@@ -151,11 +153,32 @@ describe("reparar pods con penalizaciones (SCRUM-129, SCRUM-90)", () => {
     expect(last("p2", "rival")).toMatchObject({ estado: "reparando" });
   });
 
-  it("reparar todas las zonas despacha el pod y el rival ve el progreso (SCRUM-23)", () => {
-    solvePod("p1");
-    expect(last("p1", "result")).toMatchObject({ despachados: 1, pod: { numero: 2, zonas: [{ reparada: false }] } });
+  it("despachar un pod reparado lo cuenta; el rival ve el progreso solo tras despachar (RF-03, SCRUM-23)", () => {
+    repairPod("p1");
+    expect(last("p1", "result")).toMatchObject({ despachados: 0, pod: { numero: 1 } });
+    expect(podOf("p1").zonas.every((z) => z.reparada)).toBe(true);
+    expect(sent("p2").some((m) => m.t === "rival" && m.despachados > 0)).toBe(false);
+    despachar("p1", 9);
+    expect(last("p1", "despachado")).toMatchObject({ seq: 9, despachados: 1, pod: { numero: 2, zonas: [{ reparada: false }] } });
     expect(last("p2", "rival")).toEqual({ t: "rival", alias: "ana", despachados: 1, estado: "reparando", t0: 0 });
-    expect(sent("p2").some((m) => m.t === "result")).toBe(false);
+    expect(sent("p2").some((m) => m.t === "result" || m.t === "despachado")).toBe(false);
+  });
+
+  it("despachar con zonas sin reparar se rechaza con motivo y no cuenta", () => {
+    despachar("p1", 4);
+    expect(last("p1", "reject")).toEqual({ t: "reject", seq: 4, t0: 0, reason: "faltan zonas por reparar", waitMs: 0 });
+    // Nivel 2: pods de varias zonas; con una sola reparada tampoco se puede despachar.
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA, nivel: 2 });
+    play();
+    const varias = arb.pods.findIndex((p) => p.zonas.length > 1);
+    expect(varias).toBeGreaterThanOrEqual(0);
+    for (let i = 0; i < varias; i++) solvePod("p1");
+    const z = podOf("p1").zonas[0]!;
+    test("p1", z.zona, z.opciones.find((p) => evaluar(z, p) === "correcto")!);
+    despachar("p1", 5);
+    expect(last("p1", "reject")).toMatchObject({ seq: 5, reason: "faltan zonas por reparar" });
+    expect(arb.outcome).toBeUndefined();
+    expect(last("p2", "rival")).toMatchObject({ despachados: varias });
   });
 });
 
@@ -168,6 +191,23 @@ describe("fin, desempate y reconexión (SCRUM-89)", () => {
     solvePod("p1");
     expect(arb.outcome).toMatchObject({ phase: "fin", winner: "B", reason: "5 pods despachados", score: { A: { despachados: 4 }, B: { despachados: 5 } } });
     expect(last("p1", "end")).toEqual(last("p2", "end"));
+  });
+
+  it("despachos casi simultáneos del último pod: gana el que llega primero al árbitro", () => {
+    for (let i = 0; i < 4; i++) { solvePod("p1"); solvePod("p2"); }
+    repairPod("p1");
+    repairPod("p2"); // ambos con el quinto pod listo; p1 terminó de reparar antes
+    despachar("p2", 7);
+    despachar("p1", 8);
+    expect(arb.outcome).toMatchObject({ winner: "B", score: { A: { despachados: 4 }, B: { despachados: 5 } } });
+    expect(last("p1", "reject")).toMatchObject({ seq: 8, reason: "la partida no está en juego" });
+  });
+
+  it("un pod reparado pero sin despachar no cuenta para el desempate", () => {
+    repairPod("p1");
+    t += 12 * 60_000;
+    arb.tick();
+    expect(arb.outcome).toMatchObject({ winner: null, reason: "tiempo", score: { A: { despachados: 0 } } });
   });
 
   it("al agotar el tiempo: más pods, luego menos quemadas, luego empate", () => {
@@ -201,7 +241,7 @@ describe("fin, desempate y reconexión (SCRUM-89)", () => {
     expect(last("p9", "start")).toMatchObject({ despachados: 1, restanteMs: 12 * 60_000 - 29_999, rival: { alias: "ana" } });
     expect(last("p1", "rival")).toMatchObject({ estado: "reparando" });
     solvePod("p9");
-    expect(last("p9", "result")).toMatchObject({ despachados: 2 });
+    expect(last("p9", "despachado")).toMatchObject({ despachados: 2 });
   });
 
   it("después de 30 s ya no se recupera el asiento", () => {
@@ -233,13 +273,104 @@ describe("registro por intento (SCRUM-92)", () => {
     test("p1", Z, POCO);
     test("p2", Z, OK);
     expect(arb.toCsv()).toBe(
-      "﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada\r\n" +
-        `A;1;${Z};R=${POCO};fallo;1500;no\r\n` +
-        `B;1;${Z};R=${OK};ok;1500;no\r\n`,
+      "﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms\r\n" +
+        `A;1;${Z};R=${POCO};fallo;1500;no;1;\r\n` +
+        `B;1;${Z};R=${OK};ok;1500;no;1;\r\n`,
     );
   });
 
+  it("cronómetro por pod: cada despacho suma una fila con la duración del pod", () => {
+    play();
+    t += 1500;
+    repairPod("p1");
+    t += 500;
+    despachar("p1"); // pod 1: 2000 ms
+    t += 3000;
+    repairPod("p1");
+    despachar("p1"); // pod 2: 3000 ms
+    const filas = arb.toCsv().trimEnd().split("\r\n").slice(1);
+    expect(filas[1]).toBe("A;;;;despacho;2000;no;1;2000");
+    expect(filas.at(-1)).toBe("A;;;;despacho;5000;no;2;3000");
+    expect(filas.filter((f) => f.includes(";despacho;"))).toHaveLength(2);
+  });
+
   it("sin intentos solo trae la cabecera", () => {
-    expect(arb.toCsv()).toBe("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada\r\n");
+    expect(arb.toCsv()).toBe("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms\r\n");
+  });
+});
+
+describe("carrera final y podio (propuesta A+D)", () => {
+  it("el árbitro decide el ganador; el azar solo elige el pod; llamas = despachos limpios", () => {
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA, azar: () => 0.99 });
+    play();
+    test("p1", Z, POCO); // falla el pod 1: no es limpio
+    t += 2000;
+    for (let i = 0; i < 5; i++) { t += 1000; solvePod("p1"); }
+    const end = last("p1", "end");
+    expect(end).toEqual(last("p2", "end"));
+    expect(end).toMatchObject({ winner: "A", reason: "5 pods despachados" });
+    const c = arb.outcome!.carrera!;
+    // azar 0.99: el último de los despachados; B no despachó ninguno y corre el pod 1.
+    expect(c.A).toMatchObject({ pod: 5, llamas: 4, podMs: [3000, 1000, 1000, 1000, 1000] });
+    expect(c.A!.repasar).toEqual([{ zona: Z1.nombre, circuito: Z1.circuito, fallos: 1, quemadas: 0 }]);
+    expect(c.B).toMatchObject({ pod: 1, llamas: 0, podMs: [] });
+    // La solución y la semilla nunca salen del árbitro.
+    const txt = JSON.stringify(end);
+    expect(txt).not.toMatch(/solucion|semilla/);
+  });
+
+  it("al agotar el tiempo también hay carrera, con el desempate de siempre", () => {
+    play();
+    solvePod("p2");
+    t += 12 * 60_000;
+    arb.tick();
+    expect(arb.outcome).toMatchObject({ winner: "B", reason: "tiempo", carrera: { B: { llamas: 1 }, A: { llamas: 0 } } });
+  });
+
+  it("quien vuelve antes de 30 s tras el fin recibe el mismo resultado; después, no", () => {
+    play();
+    for (let i = 0; i < 5; i++) solvePod("p1");
+    const end = last("p1", "end");
+    arb.leave("p1");
+    arb.leave("p2");
+    t += 29_999;
+    arb.handle("p9", { t: "hello", alias: "ana" });
+    expect(last("p9", "welcome")).toMatchObject({ station: "A" });
+    expect(last("p9", "end")).toEqual(end);
+    t += 1;
+    arb.handle("p8", { t: "hello", alias: "beto" });
+    expect(last("p8", "full")).toMatchObject({ reason: "tiempo de reconexión agotado" });
+    expect(last("p8", "end")).toBeUndefined();
+  });
+});
+
+describe("modo demo: una sola mecánica (Radar)", () => {
+  it("avisa del modo en start, los 5 pods son solo Radar con LED y se juega hasta el fin", () => {
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA, demo: "radar" });
+    play();
+    expect(last("p1", "start")).toMatchObject({ demo: true, pod: { numero: 1, zonas: [{ nombre: "radar", circuito: "led" }] } });
+    for (let i = 0; i < 5; i++) {
+      const pod = podOf("p1");
+      expect(pod.zonas.map((z) => [z.nombre, z.circuito, z.opciones.length])).toEqual([["radar", "led", 4]]);
+      solvePod("p1");
+    }
+    expect(arb.phase).toBe("fin");
+    expect(JSON.stringify([...sent("p1"), ...sent("p2")])).not.toMatch(/solucion|semilla|amps/);
+  });
+});
+
+describe("modo demo de cableado (Cabina y Turbina)", () => {
+  it("start lleva demo: true, solo Cabina/Turbina con montajes, mismos pods para ambos y se juega hasta el fin", () => {
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA, demo: "cableado" });
+    play();
+    expect(last("p1", "start")).toMatchObject({ demo: true });
+    expect(podOf("p2")).toEqual(podOf("p1"));
+    for (let i = 0; i < 5; i++) {
+      const pod = podOf("p1");
+      expect(pod.zonas.every((z) => (z.nombre === "cabina" && z.circuito === "luces") || (z.nombre === "turbina" && z.circuito === "interruptor"))).toBe(true);
+      solvePod("p1");
+    }
+    expect(arb.phase).toBe("fin");
+    expect(JSON.stringify([...sent("p1"), ...sent("p2")])).not.toMatch(/solucion|semilla|amps/);
   });
 });

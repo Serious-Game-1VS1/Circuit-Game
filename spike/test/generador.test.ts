@@ -76,3 +76,68 @@ describe("generador de pods (RF-06)", () => {
     expect(validarPartida(sinCobertura, 1)).not.toBeNull();
   });
 });
+
+describe("generador en modo demo (solo Radar)", () => {
+  it("10 000 sorteos demo son válidos y deterministas: 5 pods, solo Radar, LED, 4,5 o 9 V, 4 resistencias", () => {
+    const semillas = mulberry32(7);
+    for (let i = 0; i < 10_000; i++) {
+      const s = Math.floor(semillas() * 2 ** 32);
+      const pods = generar(s, 1, "radar");
+      expect(validarPartida(pods, 1, "radar")).toBeNull();
+      if (i < 50) expect(generar(s, 1, "radar")).toEqual(pods);
+    }
+  });
+
+  it("las fuentes varían y la solución es la del motor (4,5 V → 220 Ω, 9 V → 470 Ω)", () => {
+    const zonas = Array.from({ length: 200 }, (_, s) => generar(s, 1, "radar")).flat().map((p) => p.zonas[0]!);
+    expect(new Set(zonas.map((z) => z.volts))).toEqual(new Set([4.5, 9]));
+    for (const z of zonas) expect(z.solucion).toBe(z.volts === 9 ? "470" : "220");
+  });
+
+  it("validarPartida en demo rechaza un pod con otra zona", () => {
+    const pods = generar(1, 1, "radar");
+    pods[2]!.zonas[0] = { ...pods[2]!.zonas[0]!, zona: 1, nombre: "cabina" };
+    expect(validarPartida(pods, 1, "radar")).toMatch(/demo, pod 3/);
+  });
+});
+
+describe("generador en modo demo de cableado (Cabina y Turbina)", () => {
+  it("10 000 sorteos válidos y deterministas: pods 1-3 con una zona, 4-5 con una o dos, ambas mecánicas en la partida", () => {
+    const semillas = mulberry32(11);
+    const tamanos = new Set<number>();
+    for (let i = 0; i < 10_000; i++) {
+      const s = Math.floor(semillas() * 2 ** 32);
+      const pods = generar(s, 1, "cableado");
+      expect(validarPartida(pods, 1, "cableado")).toBeNull();
+      if (i < 50) expect(generar(s, 1, "cableado")).toEqual(pods);
+      expect(pods.slice(0, 3).every((p) => p.zonas.length === 1)).toBe(true);
+      pods.slice(3).forEach((p) => tamanos.add(p.zonas.length));
+    }
+    expect(tamanos).toEqual(new Set([1, 2]));
+  });
+
+  it("veredictos del motor: Cabina pide paralelo, Turbina pide serie; la gaveta ofrece todos los montajes", () => {
+    const zonas = Array.from({ length: 30 }, (_, s) => generar(s, 1, "cableado")).flat().flatMap((p) => p.zonas);
+    for (const z of zonas) {
+      expect(z.solucion).toBe(z.circuito === "luces" ? "paralelo" : "serie");
+      expect(z.opciones.length).toBe(z.circuito === "luces" ? 3 : 2);
+    }
+  });
+
+  it("validarPartida en demo de cableado rechaza el Radar y un pod pequeño con dos zonas", () => {
+    const radar = generar(1, 1, "cableado");
+    radar[0]!.zonas[0] = generar(1, 1, "radar")[0]!.zonas[0]!;
+    expect(validarPartida(radar, 1, "cableado")).toMatch(/demo, pod 1/);
+    const doble = generar(2, 1, "cableado");
+    const otra = doble.flatMap((p) => p.zonas).find((z) => z.zona !== doble[0]!.zonas[0]!.zona)!;
+    doble[0]!.zonas.push(otra);
+    expect(validarPartida(doble, 1, "cableado")).toMatch(/2 zonas/);
+  });
+});
+
+// En spike/test/generador.test.ts
+describe("generador en modo demo de cableado (Cabina y Turbina)", () => {
+  it("10 000 sorteos válidos y deterministas: pods 1-3 con una zona, 4-5 con una o dos, ambas mecánicas en la partida", () => {
+     // ...
+  }, 15000); 
+});

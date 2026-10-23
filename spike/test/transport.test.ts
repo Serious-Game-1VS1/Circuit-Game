@@ -56,8 +56,9 @@ describe("transporte local", () => {
 
     const mark = b.log.length;
     expect(a.pod).toEqual(b.pod); // misma secuencia de pods para ambos
-    // El pod 1 tiene una sola zona: repararla lo despacha.
-    await expect(a.solveNext()).resolves.toMatchObject({ t: "result", veredicto: "correcto", despachados: 1 });
+    // El pod 1 tiene una sola zona: repararla no basta, cuenta al despacharlo.
+    await expect(a.solveNext()).resolves.toMatchObject({ t: "result", veredicto: "correcto", despachados: 0 });
+    await expect(a.solveNext()).resolves.toMatchObject({ t: "despachado", despachados: 1 });
     await b.until((m) => m.t === "rival" && m.despachados === 1 && "t0" in m, mark);
     expect(b.log.some((m) => m.t === "result")).toBe(false);
 
@@ -69,7 +70,7 @@ describe("transporte local", () => {
   it("duelo completo de extremo a extremo con reconexión y CSV (SCRUM-21/22/23/89/92)", async () => {
     const { outcome, csv } = await simulateDuel(local);
     expect(outcome).toMatchObject({ winner: "A", reason: "5 pods despachados" });
-    expect(csv.split("\r\n")[0]).toBe("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada");
+    expect(csv.split("\r\n")[0]).toBe("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms");
   }, 20_000);
 
   it("dos clientes terminan con el mismo estado y se mide RTT", async () => {

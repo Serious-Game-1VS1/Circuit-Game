@@ -100,6 +100,6 @@ export class PenaltyTracker {
   }
 }
 
-function csvField(v: string): string {
+export function csvField(v: string): string {
   return /[;"\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }

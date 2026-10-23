@@ -24,8 +24,12 @@ export const PIEZAS: Record<Circuito, readonly string[]> = {
 const RANK: Label[] = ["correcto", "poco", "demasiado", "se quema"];
 const worst = (ls: Label[]) => ls.reduce((a, b) => (RANK.indexOf(b) > RANK.indexOf(a) ? b : a));
 
-/** Veredicto de una zona con la pieza `pieza` y la batería `volts`. Sin cifras. */
-export function evaluar(z: { circuito: Circuito; volts: number }, pieza: string): Verdict {
+/**
+ * Circuito de una zona con la pieza `pieza` (la batería es siempre parts[0]). `puntos` nombra las
+ * piezas que el multímetro puede medir: "pieza" (la elegida en la gaveta), "carga1" y "carga2".
+ */
+export interface Montaje { parts: Part[]; puntos: Record<string, number> }
+export function montar(z: { circuito: Circuito; volts: number }, pieza: string, calefactorOhms: number = HEATER_OHMS.falla): Montaje {
   const bat: Part = { kind: "battery", a: 1, b: 0, volts: z.volts };
   switch (z.circuito) {
     case "led":
@@ -33,31 +37,50 @@ export function evaluar(z: { circuito: Circuito; volts: number }, pieza: string)
       // Radar (y luz testigo): R → LED. Cabina de nivel 1: R → dos LED en paralelo.
       const parts: Part[] = [bat, { kind: "resistor", a: 1, b: 2, ohms: Number(pieza) }, { kind: "led", a: 2, b: 0 }];
       if (z.circuito === "cabina") parts.push({ kind: "led", a: 2, b: 0 });
-      const r = solve(parts);
+      return { parts, puntos: z.circuito === "cabina" ? { pieza: 1, carga1: 2, carga2: 3 } : { pieza: 1, carga1: 2 } };
+    }
+    case "luces": {
+      const lamps: Part[] = pieza === "serie"
+        ? [{ kind: "lamp", a: 1, b: 2 }, { kind: "lamp", a: 2, b: 0 }]
+        : [{ kind: "lamp", a: 1, b: 0 }, { kind: "lamp", a: 1, b: 0 }];
+      return { parts: [bat, ...lamps, ...(pieza === "puente" ? [{ kind: "wire", a: 1, b: 0 } as Part] : [])], puntos: { carga1: 1, carga2: 2 } };
+    }
+    case "interruptor":
+      // Interruptor cerrado (= cable) en serie con el motor; en paralelo, al cerrarlo cortocircuita la batería.
+      // carga1 = motor, carga2 = interruptor (columnas 1 y 2 de la placa del cliente).
+      return pieza === "serie"
+        ? { parts: [bat, { kind: "wire", a: 1, b: 2 }, { kind: "motor", a: 2, b: 0 }], puntos: { carga1: 2, carga2: 1 } }
+        : { parts: [bat, { kind: "motor", a: 1, b: 0 }, { kind: "wire", a: 1, b: 0 }], puntos: { carga1: 1, carga2: 2 } };
+    case "fusible":
+      return {
+        parts: [bat, { kind: "fuse", a: 1, b: 2, maxA: Number(pieza) }, { kind: "heater", a: 2, b: 0, ohms: calefactorOhms, maxA: HEATER_MAX_A }],
+        puntos: { pieza: 1, carga1: 2 },
+      };
+  }
+}
+
+/** Veredicto de una zona con la pieza `pieza` y la batería `volts`. Sin cifras. */
+export function evaluar(z: { circuito: Circuito; volts: number }, pieza: string): Verdict {
+  switch (z.circuito) {
+    case "led":
+    case "cabina": {
+      const r = solve(montar(z, pieza).parts);
       return r.short ? "corto" : worst(r.parts.slice(2).map((p) => p.label!));
     }
     case "luces": {
       // Meta: paralelo, para que si una luz se funde la otra siga encendida (RF-04: se quita cada carga por turno).
-      const lamps: Part[] = pieza === "serie"
-        ? [{ kind: "lamp", a: 1, b: 2 }, { kind: "lamp", a: 2, b: 0 }]
-        : [{ kind: "lamp", a: 1, b: 0 }, { kind: "lamp", a: 1, b: 0 }];
-      const parts = [bat, ...lamps, ...(pieza === "puente" ? [{ kind: "wire", a: 1, b: 0 } as Part] : [])];
+      const { parts } = montar(z, pieza);
       if (solve(parts).short) return "corto";
       return classify(parts, [1, 2]) === "paralelo" ? "correcto" : "poco";
     }
     case "interruptor": {
-      // Interruptor cerrado (= cable) en serie con el motor; en paralelo, al cerrarlo cortocircuita la batería.
-      const parts: Part[] = pieza === "serie"
-        ? [bat, { kind: "wire", a: 1, b: 2 }, { kind: "motor", a: 2, b: 0 }]
-        : [bat, { kind: "motor", a: 1, b: 0 }, { kind: "wire", a: 1, b: 0 }];
+      const { parts, puntos } = montar(z, pieza);
       const r = solve(parts);
       if (r.short) return "corto";
-      return Math.abs(r.parts[2]!.amps) >= 0.9 * (z.volts / (MOTOR_OHMS + R_INTERNA)) ? "correcto" : "poco";
+      return Math.abs(r.parts[puntos.carga1!]!.amps) >= 0.9 * (z.volts / (MOTOR_OHMS + R_INTERNA)) ? "correcto" : "poco";
     }
     case "fusible": {
-      const run = (ohms: number) => solve([
-        bat, { kind: "fuse", a: 1, b: 2, maxA: Number(pieza) }, { kind: "heater", a: 2, b: 0, ohms, maxA: HEATER_MAX_A },
-      ]);
+      const run = (ohms: number) => solve(montar(z, pieza, ohms).parts);
       const falla = run(HEATER_OHMS.falla);
       if (falla.short) return "corto";
       if (falla.parts[2]!.label === "se quema") return "se quema"; // fusible grueso: no corta la falla

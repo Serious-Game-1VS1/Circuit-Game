@@ -66,24 +66,50 @@ function shuffle<T>(rnd: Rnd, xs: readonly T[]): T[] {
 
 const MAX_INTENTOS = 1000;
 
-/** Sortea una zona válida: voltaje, 3 de las 4 resistencias (o todo el cableado/fusibles) en orden aleatorio. */
-function sortearZona(rnd: Rnd, zona: number, circuito: Circuito): ZonaPod {
+/**
+ * Modos demo (para mostrar una sola mecánica; las reglas son las mismas):
+ *  - "cableado" (`npm run serve -- --demo`): cada pod trae Cabina (2 focos, montaje "luces") y/o
+ *    Turbina (motor + interruptor, montaje "interruptor"); el jugador arrastra las piezas a la placa
+ *    y las une con cables. Pods 1 a 3: una zona; pods 4 y 5: una o dos. Batería de 9 V.
+ *  - "radar" (`npm run serve -- --demo radar`): los 5 pods solo con Radar (LED + resistencia), con
+ *    las 4 resistencias en la gaveta; solo varía la batería.
+ * Apagado (false), todo sigue como antes.
+ */
+export type Demo = false | "cableado" | "radar";
+// supuesto: el demo Radar usa 4,5 y 9 V (sin 3,7 V), como pidió el usuario.
+export const VOLTS_DEMO = [4.5, 9] as const;
+/** Zonas del demo de cableado: Cabina (1) y Turbina (2), con la familia de nivel 2 de cada una. */
+const ZONAS_CABLEADO: Record<number, Circuito> = { 1: "luces", 2: "interruptor" };
+
+/** Sortea una zona válida: voltaje, 3 de las 4 resistencias (o todo el cableado/fusibles) en orden aleatorio. En demo, las 4. */
+function sortearZona(rnd: Rnd, zona: number, circuito: Circuito, demo = false): ZonaPod {
   const resistencias = circuito === "led" || circuito === "cabina";
   for (let i = 0; i < MAX_INTENTOS; i++) {
-    const volts = resistencias ? pick(rnd, VOLTS_SORTEO) : VOLTS_FIJO;
+    const volts = resistencias ? pick(rnd, demo ? VOLTS_DEMO : VOLTS_SORTEO) : VOLTS_FIJO;
     const z = { circuito, volts };
     const solucion = PIEZAS[circuito].find((p) => evaluar(z, p) === "correcto");
     if (!solucion) continue;
-    const distractores = shuffle(rnd, PIEZAS[circuito].filter((p) => p !== solucion)).slice(0, resistencias ? 2 : undefined);
+    const distractores = shuffle(rnd, PIEZAS[circuito].filter((p) => p !== solucion)).slice(0, resistencias && !demo ? 2 : undefined);
     const cand: ZonaPod = { zona, nombre: ZONAS[zona]!, circuito, volts, opciones: shuffle(rnd, [solucion, ...distractores]), solucion };
     if (!validarZona(cand)) return cand;
   }
   throw new Error(`sin zona válida para ${circuito}`);
 }
 
-/** Los 5 pods de una partida. Pods 1 a 3: una zona sin cables; pods 4 y 5: de 1 a 4 zonas. */
-export function generar(semilla: number, nivel: Nivel): Pod[] {
+/** Los 5 pods de una partida. Pods 1 a 3: una zona sin cables; pods 4 y 5: de 1 a 4 zonas. Ver `Demo` para los modos demo. */
+export function generar(semilla: number, nivel: Nivel, demo: Demo = false): Pod[] {
   const rnd = mulberry32(semilla);
+  if (demo === "radar") return Array.from({ length: PODS_POR_PARTIDA }, (_, p) => ({ numero: p + 1, zonas: [sortearZona(rnd, 0, "led", true)] }));
+  if (demo === "cableado") {
+    for (let i = 0; i < MAX_INTENTOS; i++) {
+      // Pods 1-3: Cabina o Turbina; pods 4-5: una o las dos.
+      const zonasPorPod = [0, 1, 2, 3, 4].map((p) => shuffle(rnd, [1, 2]).slice(0, p < 3 ? 1 : 1 + Math.floor(rnd() * 2)).sort((a, b) => a - b));
+      // Las dos mecánicas deben salir en la partida (si no, se vuelve a sortear; sigue siendo determinista).
+      if (![1, 2].every((z) => zonasPorPod.some((zs) => zs.includes(z)))) continue;
+      return zonasPorPod.map((zs, p) => ({ numero: p + 1, zonas: zs.map((z) => sortearZona(rnd, z, ZONAS_CABLEADO[z]!)) }));
+    }
+    throw new Error("sin partida demo con Cabina y Turbina");
+  }
   for (let i = 0; i < MAX_INTENTOS; i++) {
     const primeras = shuffle(rnd, [0, 1, 2, 3]).slice(0, 3);
     const zonasPorPod = [
@@ -114,8 +140,34 @@ export function validarZona(z: ZonaPod): string | null {
 }
 
 /** null si la partida cumple estructura, unicidad, márgenes, cobertura y presupuesto; si no, el motivo. */
-export function validarPartida(pods: Pod[], nivel: Nivel): string | null {
+export function validarPartida(pods: Pod[], nivel: Nivel, demo: Demo = false): string | null {
   if (pods.length !== PODS_POR_PARTIDA) return "no son 5 pods";
+  if (demo === "cableado") {
+    for (const [i, p] of pods.entries()) {
+      const zs = p.zonas.map((z) => z.zona);
+      if (p.numero !== i + 1) return `demo, pod ${i + 1}: número ${p.numero}`;
+      if (i < 3 ? zs.length !== 1 : zs.length < 1 || zs.length > 2) return `demo, pod ${i + 1}: ${zs.length} zonas`;
+      if (new Set(zs).size !== zs.length) return `demo, pod ${i + 1}: zonas repetidas`;
+      for (const z of p.zonas) {
+        if (ZONAS_CABLEADO[z.zona] !== z.circuito || z.nombre !== ZONAS[z.zona]) return `demo, pod ${i + 1}: no es Cabina/Turbina con cableado`;
+        if (z.volts !== VOLTS_FIJO || z.opciones.length !== PIEZAS[z.circuito].length) return `demo, pod ${i + 1}: batería u opciones`;
+        const e = validarZona(z);
+        if (e) return `demo, pod ${i + 1}: ${e}`;
+      }
+    }
+    const familias = pods.flatMap((p) => p.zonas.map((z) => z.circuito));
+    return familias.includes("luces") && familias.includes("interruptor") ? null : "demo: falta Cabina o Turbina";
+  }
+  if (demo === "radar") {
+    for (const [i, p] of pods.entries()) {
+      const z = p.zonas[0];
+      if (p.numero !== i + 1 || p.zonas.length !== 1 || !z || z.zona !== 0 || z.nombre !== "radar" || z.circuito !== "led") return `demo, pod ${i + 1}: no es solo Radar con LED`;
+      if (!VOLTS_DEMO.includes(z.volts as 4.5 | 9) || z.opciones.length !== PIEZAS.led.length) return `demo, pod ${i + 1}: batería u opciones`;
+      const e = validarZona(z);
+      if (e) return `demo, pod ${i + 1}: ${e}`;
+    }
+    return null;
+  }
   for (const [i, p] of pods.entries()) {
     const zs = p.zonas.map((z) => z.zona);
     if (p.numero !== i + 1) return `pod ${i + 1}: número ${p.numero}`;
