@@ -1,69 +1,42 @@
-// src/multimetro.ts
+/**
+ * Multímetro del Taller, sin Phaser (se prueba en test/multimetro.test.ts): textos y aguja a partir
+ * de la Medida del árbitro. Medir cuesta ~1 s (MEDIR_MS) y no cuenta como «Probar».
+ * Textos de diseno-taller/prototipo-v3/textos.js (T.medidor, T.ayudas) salvo los marcados.
+ */
+import type { Medida, ModoMedir, Tramo } from "../../spike/src/protocol";
 
 export const MEDIR_MS = 1000;
 
-export interface Medida {
-  t?: 'medida';
-  seq?: number;
-  modo?: 'tension' | 'continuidad';
-  pasa?: boolean;
-  tension?: 'nada' | 'parte' | 'toda';
-  fraccion?: number;
-  punto?: string;
-  vPila?: number;
-  vMedido?: number;
-  v?: number;
-}
+export const T = {
+  tension: "Tensión",
+  continuidad: "Continuidad",
+  ayuda: "Toca un modo y luego una pieza para medir.",
+  tocaPieza: "Toca una pieza para medirla.",
+  midiendo: "Midiendo…",
+  desconectada: "Batería desconectada para medir",
+  pasaTexto: "Pasa: la corriente puede cruzar esta pieza.",
+  noPasaTexto: "No pasa: esta pieza está cortada por dentro.",
+  // sin entrada en textos.js: el árbitro necesita la pieza o el montaje puesto para medir.
+  sinPieza: "Elige una pieza o termina los cables antes de medir.",
+} as const;
 
-export function anguloTension(v: number): number {
-  if (v <= 0) return -60;
-  if (v >= 1) return 60;
-  return -60 + v * 120;
-}
+export const TRAMO: Record<Tramo, { etiqueta: string; texto: string }> = {
+  nada: { etiqueta: "Nada", texto: "Aquí no cae tensión." },
+  parte: { etiqueta: "Parte", texto: "Aquí cae parte de la batería." },
+  toda: { etiqueta: "Toda", texto: "Cae casi toda la batería aquí: el camino está cortado." },
+};
 
-export function textoMedida(medida?: Medida): string {
-  if (!medida) return '';
-  if (medida.modo === 'continuidad') {
-    return medida.pasa ? 'Pasa: hay continuidad' : 'No pasa: el camino está cortado';
-  }
-  if (medida.tension === 'toda' || medida.vMedido === 1 || medida.v === 1 || medida.pasa === false) {
-    return 'El camino está cortado';
-  }
-  if (medida.fraccion !== undefined) {
-    const vPila = medida.vPila ?? 0;
-    return `${(vPila * medida.fraccion).toFixed(2)} V`;
-  }
-  const valor = medida.vMedido ?? medida.v ?? 0;
-  return `${valor.toFixed(2)} V`;
-}
+/** Aguja del medidor (−60° a 60°) para la fracción de la batería que cae en el tramo. */
+export const anguloTension = (fraccion: number) => -60 + 120 * Math.max(0, Math.min(1, fraccion));
 
-export function textoModo(modo: 'continuidad' | 'tension'): string {
-  return modo === 'continuidad'
-    ? 'Batería desconectada para medir continuidad'
-    : 'Batería conectada para medir tensión';
-}
+/** Texto de la lectura para el aviso del panel. */
+export const textoMedida = (m: Medida) =>
+  m.modo === "continuidad" ? (m.pasa ? T.pasaTexto : T.noPasaTexto) : TRAMO[m.tension ?? "nada"].texto;
 
-export function lecturaLista(
-  solicitud: { seq: number; desde: number; punto: string },
-  respuesta: Medida | undefined,
-  ahora: number
-): Medida | null {
-  if (!respuesta || respuesta.seq !== solicitud.seq) return null;
-  if (ahora - solicitud.desde < MEDIR_MS) return null;
-  return respuesta;
-}
+/** Aviso mientras el modo está activo y no hay lectura. */
+export const textoModo = (modo: ModoMedir) => (modo === "continuidad" ? `${T.desconectada}. ${T.tocaPieza}` : T.tocaPieza);
 
-export class Multimetro {
-  private modo: 'VOLT' | 'AMP' | 'OFF' = 'OFF';
-
-  public setModo(nuevoModo: 'VOLT' | 'AMP' | 'OFF'): void {
-    this.modo = nuevoModo;
-  }
-
-  public medir(voltaje: number, corriente: number): string {
-    if (this.modo === 'OFF') return '0.00';
-    if (this.modo === 'VOLT') return `${voltaje.toFixed(2)} V`;
-    if (this.modo === 'AMP') return `${(corriente * 1000).toFixed(1)} mA`;
-    return '0.00';
-  }
-}
+/** Estado de una medición en curso: se muestra cuando pasó MEDIR_MS y llegó la Medida con ese seq. */
+export interface Midiendo { seq: number; desde: number; punto: string }
+export const lecturaLista = (m: Midiendo, medida: Medida | undefined, ahora: number) =>
+  ahora - m.desde >= MEDIR_MS && medida?.seq === m.seq ? medida : null;

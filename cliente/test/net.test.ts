@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { Arbiter } from "../../spike/src/arbiter/arbiter";
 import type { Transport } from "../../spike/src/transport/transport";
+import { PracticaTransport } from "../src/practica";
 import { crearTransporte, elegirTransporte, Net } from "../src/net";
 import { evaluar } from "../../spike/src/engine/pods";
 import { despachable, reloj } from "../src/pantalla";
@@ -73,6 +74,14 @@ describe("cliente conectado al árbitro", () => {
     expect(fases).toEqual(["sala", "cuenta", "taller"]);
     expect(reloj(ana.estado, t)).toBe("12:00");
     expect(ana.estado.rival).toEqual({ alias: "beto", despachados: 0, estado: "reparando" });
+  });
+
+  it("'medir' devuelve el seq con el que llega su Medida (el Taller espera esa lectura)", async () => {
+    await empezar();
+    const z = zonaReal(ana, 0);
+    const seq = ana.medir(z.zona, z.solucion, "continuidad", "carga1");
+    expect(ana.estado.medida).toMatchObject({ t: "medida", seq, modo: "continuidad" });
+    expect(ana.medir(z.zona, z.solucion, "tension", "carga1")).toBe(seq + 1);
   });
 
   it("'Probar' manda `pieza` y muestra el veredicto del árbitro; el rival lo ve penalizado (SCRUM-90, SCRUM-23, SCRUM-129)", async () => {
@@ -253,6 +262,28 @@ describe("cliente conectado al árbitro", () => {
     for (let i = 0; i < 5; i++) reparar(ana);
     await ana.salir();
     expect(ana.estado).toMatchObject({ fase: "entrar", alias: "ana", aviso: null });
+  });
+
+  it("práctica: entra sola al Taller sin rival ni sala y al despachar los 5 pods vuelve a Entrar", async () => {
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const solo = new Net(new Mem("p5"), () => t);
+    await solo.practicar("  ", 2);
+    expect(solo.estado.aviso).toMatch(/alias/);
+    const fases: string[] = [];
+    solo.onCambio = (p) => { if (fases.at(-1) !== p.fase) fases.push(p.fase); };
+    await solo.practicar("pepa", 2);
+    await flush();
+    expect(fases).not.toContain("sala");
+    expect(solo.estado).toMatchObject({ fase: "taller", practica: true, nivel: 2, rival: null, alias: "pepa" });
+    const practica = (solo as unknown as { transport: PracticaTransport }).transport;
+    for (let i = 0; i < 5; i++) {
+      for (const z of practica.arbiter.pods[i]!.zonas) solo.probar(z.zona, z.solucion);
+      await flush();
+      solo.despachar();
+      await flush();
+    }
+    expect(solo.estado).toMatchObject({ fase: "entrar", alias: "pepa", practica: false, aviso: "Práctica terminada: ¡buen trabajo!" });
+    expect((solo as unknown as { transport: unknown }).transport).not.toBe(practica);
   });
 
   it("elige el transporte por configuración", () => {

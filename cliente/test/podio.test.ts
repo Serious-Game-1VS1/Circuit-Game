@@ -44,6 +44,11 @@ describe("carrera final y podio", () => {
     expect(podio(END, "B")).toMatchObject({ repasar: ["Nada: todo salió a la primera."] });
   });
 
+  it("podio: sin pods despachados, «qué repasar» manda a practicar", () => {
+    const sin = { ...END, carrera: undefined, score: { ...END.score, A: { ...END.score.A!, despachados: 0 } } };
+    expect(podio(sin, "A").repasar).toEqual(["No despachaste ningún pod. Practica en el modo Practicar."]);
+  });
+
   it("utilidades", () => {
     expect(mmss(0)).toBe("0:00");
     expect(chasis(1)).toBe("pod1_cometa");

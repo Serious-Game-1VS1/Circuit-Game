@@ -42,6 +42,12 @@ describe("lógica de pantalla", () => {
     expect(p.fase).toBe("taller");
   });
 
+  it("en práctica el welcome no pasa por la Sala; en duelo sí", () => {
+    const w = { t: "welcome", station: "A", alias: "ana" } as const;
+    expect(reducir({ ...inicial(), practica: true }, w, 0).fase).toBe("entrar");
+    expect(reducir(inicial(), w, 0).fase).toBe("sala");
+  });
+
   it("empate y anulada", () => {
     expect(textoFin({ t: "end", phase: "fin", winner: null, reason: "tiempo", score: {} }, "A").titulo).toBe("Empate");
     expect(textoFin({ t: "end", phase: "anulada", winner: null, reason: "x", score: {} }, "A").titulo).toBe("Partida anulada");

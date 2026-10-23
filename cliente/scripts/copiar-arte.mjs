@@ -26,6 +26,11 @@ const USADOS = [
   /^(placa_4x4|casilla_(vacia|valida|resaltada|ocupada))$/,
   /^(multimetro_modo_(tension|continuidad)|icono_(pasa|no_pasa))$/,
   /^(flecha_guia_\d|recuadro_resaltado)$/, // pistas del primer pod (modo demo)
+  // Carrera final y podio (src/carrera.ts).
+  /^(capa_(cielo|lejana|cercana)_movil|pista_recta|meta|cartel_meta|podio|semaforo_(1|2|3|ya))$/,
+  /^(confeti|resalte_ganador|bandera_cuadros|llama_turbo_cian)_\d$/,
+  /^pod\d_[a-z]+_carrera_\d$/,
+  /^cartel_(ganaste|perdiste|empate)$/,
 ];
 
 const atlas = JSON.parse(readFileSync(join(arte, "atlas.json"), "utf8"));

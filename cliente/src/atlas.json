@@ -417,6 +417,150 @@
    }
   },
   {
+   "nombre": "pod1_cometa_carrera_0",
+   "archivo": "pods/pod1_cometa/pod1_cometa_carrera_0.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 20,
+      "y": 18
+     },
+     {
+      "x": 20,
+      "y": 32
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 42,
+      "y": 10,
+      "w": 13,
+      "h": 12
+     },
+     "cabina": {
+      "x": 38,
+      "y": 17,
+      "w": 53,
+      "h": 16
+     },
+     "turbina": {
+      "x": 18,
+      "y": 12,
+      "w": 40,
+      "h": 25
+     },
+     "reactor": {
+      "x": 26,
+      "y": 21,
+      "w": 15,
+      "h": 9
+     }
+    }
+   }
+  },
+  {
+   "nombre": "pod1_cometa_carrera_1",
+   "archivo": "pods/pod1_cometa/pod1_cometa_carrera_1.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 20,
+      "y": 18
+     },
+     {
+      "x": 20,
+      "y": 32
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 42,
+      "y": 10,
+      "w": 13,
+      "h": 12
+     },
+     "cabina": {
+      "x": 38,
+      "y": 17,
+      "w": 53,
+      "h": 16
+     },
+     "turbina": {
+      "x": 18,
+      "y": 12,
+      "w": 40,
+      "h": 25
+     },
+     "reactor": {
+      "x": 26,
+      "y": 21,
+      "w": 15,
+      "h": 9
+     }
+    }
+   }
+  },
+  {
+   "nombre": "pod1_cometa_carrera_2",
+   "archivo": "pods/pod1_cometa/pod1_cometa_carrera_2.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 20,
+      "y": 18
+     },
+     {
+      "x": 20,
+      "y": 32
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 42,
+      "y": 10,
+      "w": 13,
+      "h": 12
+     },
+     "cabina": {
+      "x": 38,
+      "y": 17,
+      "w": 53,
+      "h": 16
+     },
+     "turbina": {
+      "x": 18,
+      "y": 12,
+      "w": 40,
+      "h": 25
+     },
+     "reactor": {
+      "x": 26,
+      "y": 21,
+      "w": 15,
+      "h": 9
+     }
+    }
+   }
+  },
+  {
    "nombre": "pod1_cometa_mini_espera",
    "archivo": "pods/pod1_cometa/pod1_cometa_mini_espera.png",
    "ancho": 27,
@@ -835,6 +979,138 @@
    }
   },
   {
+   "nombre": "pod2_burbuja_carrera_0",
+   "archivo": "pods/pod2_burbuja/pod2_burbuja_carrera_0.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 15,
+      "y": 28
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 77,
+      "y": 10,
+      "w": 9,
+      "h": 19
+     },
+     "cabina": {
+      "x": 31,
+      "y": 14,
+      "w": 56,
+      "h": 25
+     },
+     "turbina": {
+      "x": 13,
+      "y": 18,
+      "w": 31,
+      "h": 20
+     },
+     "reactor": {
+      "x": 43,
+      "y": 35,
+      "w": 32,
+      "h": 7
+     }
+    }
+   }
+  },
+  {
+   "nombre": "pod2_burbuja_carrera_1",
+   "archivo": "pods/pod2_burbuja/pod2_burbuja_carrera_1.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 15,
+      "y": 28
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 77,
+      "y": 10,
+      "w": 9,
+      "h": 19
+     },
+     "cabina": {
+      "x": 31,
+      "y": 14,
+      "w": 56,
+      "h": 25
+     },
+     "turbina": {
+      "x": 13,
+      "y": 18,
+      "w": 31,
+      "h": 20
+     },
+     "reactor": {
+      "x": 43,
+      "y": 35,
+      "w": 32,
+      "h": 7
+     }
+    }
+   }
+  },
+  {
+   "nombre": "pod2_burbuja_carrera_2",
+   "archivo": "pods/pod2_burbuja/pod2_burbuja_carrera_2.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 15,
+      "y": 28
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 77,
+      "y": 10,
+      "w": 9,
+      "h": 19
+     },
+     "cabina": {
+      "x": 31,
+      "y": 14,
+      "w": 56,
+      "h": 25
+     },
+     "turbina": {
+      "x": 13,
+      "y": 18,
+      "w": 31,
+      "h": 20
+     },
+     "reactor": {
+      "x": 43,
+      "y": 35,
+      "w": 32,
+      "h": 7
+     }
+    }
+   }
+  },
+  {
    "nombre": "pod2_burbuja_mini_espera",
    "archivo": "pods/pod2_burbuja/pod2_burbuja_mini_espera.png",
    "ancho": 27,
@@ -1211,6 +1487,138 @@
   {
    "nombre": "pod3_aguijon_reparado_1",
    "archivo": "pods/pod3_aguijon/pod3_aguijon_reparado_1.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 17,
+      "y": 28
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 70,
+      "y": 15,
+      "w": 10,
+      "h": 9
+     },
+     "cabina": {
+      "x": 35,
+      "y": 13,
+      "w": 57,
+      "h": 23
+     },
+     "turbina": {
+      "x": 15,
+      "y": 6,
+      "w": 26,
+      "h": 30
+     },
+     "reactor": {
+      "x": 39,
+      "y": 24,
+      "w": 15,
+      "h": 9
+     }
+    }
+   }
+  },
+  {
+   "nombre": "pod3_aguijon_carrera_0",
+   "archivo": "pods/pod3_aguijon/pod3_aguijon_carrera_0.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 17,
+      "y": 28
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 70,
+      "y": 15,
+      "w": 10,
+      "h": 9
+     },
+     "cabina": {
+      "x": 35,
+      "y": 13,
+      "w": 57,
+      "h": 23
+     },
+     "turbina": {
+      "x": 15,
+      "y": 6,
+      "w": 26,
+      "h": 30
+     },
+     "reactor": {
+      "x": 39,
+      "y": 24,
+      "w": 15,
+      "h": 9
+     }
+    }
+   }
+  },
+  {
+   "nombre": "pod3_aguijon_carrera_1",
+   "archivo": "pods/pod3_aguijon/pod3_aguijon_carrera_1.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 17,
+      "y": 28
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 70,
+      "y": 15,
+      "w": 10,
+      "h": 9
+     },
+     "cabina": {
+      "x": 35,
+      "y": 13,
+      "w": 57,
+      "h": 23
+     },
+     "turbina": {
+      "x": 15,
+      "y": 6,
+      "w": 26,
+      "h": 30
+     },
+     "reactor": {
+      "x": 39,
+      "y": 24,
+      "w": 15,
+      "h": 9
+     }
+    }
+   }
+  },
+  {
+   "nombre": "pod3_aguijon_carrera_2",
+   "archivo": "pods/pod3_aguijon/pod3_aguijon_carrera_2.png",
    "ancho": 96,
    "alto": 46,
    "origen": {
@@ -1687,6 +2095,162 @@
    }
   },
   {
+   "nombre": "pod4_yunque_carrera_0",
+   "archivo": "pods/pod4_yunque/pod4_yunque_carrera_0.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 13,
+      "y": 19
+     },
+     {
+      "x": 13,
+      "y": 27
+     },
+     {
+      "x": 13,
+      "y": 35
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 38,
+      "y": 6,
+      "w": 23,
+      "h": 12
+     },
+     "cabina": {
+      "x": 30,
+      "y": 15,
+      "w": 57,
+      "h": 23
+     },
+     "turbina": {
+      "x": 12,
+      "y": 13,
+      "w": 23,
+      "h": 28
+     },
+     "reactor": {
+      "x": 37,
+      "y": 21,
+      "w": 22,
+      "h": 12
+     }
+    }
+   }
+  },
+  {
+   "nombre": "pod4_yunque_carrera_1",
+   "archivo": "pods/pod4_yunque/pod4_yunque_carrera_1.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 13,
+      "y": 19
+     },
+     {
+      "x": 13,
+      "y": 27
+     },
+     {
+      "x": 13,
+      "y": 35
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 38,
+      "y": 6,
+      "w": 23,
+      "h": 12
+     },
+     "cabina": {
+      "x": 30,
+      "y": 15,
+      "w": 57,
+      "h": 23
+     },
+     "turbina": {
+      "x": 12,
+      "y": 13,
+      "w": 23,
+      "h": 28
+     },
+     "reactor": {
+      "x": 37,
+      "y": 21,
+      "w": 22,
+      "h": 12
+     }
+    }
+   }
+  },
+  {
+   "nombre": "pod4_yunque_carrera_2",
+   "archivo": "pods/pod4_yunque/pod4_yunque_carrera_2.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 13,
+      "y": 19
+     },
+     {
+      "x": 13,
+      "y": 27
+     },
+     {
+      "x": 13,
+      "y": 35
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 38,
+      "y": 6,
+      "w": 23,
+      "h": 12
+     },
+     "cabina": {
+      "x": 30,
+      "y": 15,
+      "w": 57,
+      "h": 23
+     },
+     "turbina": {
+      "x": 12,
+      "y": 13,
+      "w": 23,
+      "h": 28
+     },
+     "reactor": {
+      "x": 37,
+      "y": 21,
+      "w": 22,
+      "h": 12
+     }
+    }
+   }
+  },
+  {
    "nombre": "pod4_yunque_mini_espera",
    "archivo": "pods/pod4_yunque/pod4_yunque_mini_espera.png",
    "ancho": 27,
@@ -2067,6 +2631,150 @@
   {
    "nombre": "pod5_raya_reparado_1",
    "archivo": "pods/pod5_raya/pod5_raya_reparado_1.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 17,
+      "y": 30
+     },
+     {
+      "x": 19,
+      "y": 36
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 77,
+      "y": 23,
+      "w": 15,
+      "h": 14
+     },
+     "cabina": {
+      "x": 26,
+      "y": 19,
+      "w": 65,
+      "h": 18
+     },
+     "turbina": {
+      "x": 16,
+      "y": 25,
+      "w": 19,
+      "h": 15
+     },
+     "reactor": {
+      "x": 27,
+      "y": 8,
+      "w": 25,
+      "h": 18
+     }
+    }
+   }
+  },
+  {
+   "nombre": "pod5_raya_carrera_0",
+   "archivo": "pods/pod5_raya/pod5_raya_carrera_0.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 17,
+      "y": 30
+     },
+     {
+      "x": 19,
+      "y": 36
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 77,
+      "y": 23,
+      "w": 15,
+      "h": 14
+     },
+     "cabina": {
+      "x": 26,
+      "y": 19,
+      "w": 65,
+      "h": 18
+     },
+     "turbina": {
+      "x": 16,
+      "y": 25,
+      "w": 19,
+      "h": 15
+     },
+     "reactor": {
+      "x": 27,
+      "y": 8,
+      "w": 25,
+      "h": 18
+     }
+    }
+   }
+  },
+  {
+   "nombre": "pod5_raya_carrera_1",
+   "archivo": "pods/pod5_raya/pod5_raya_carrera_1.png",
+   "ancho": 96,
+   "alto": 46,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "escapes": [
+     {
+      "x": 17,
+      "y": 30
+     },
+     {
+      "x": 19,
+      "y": 36
+     }
+    ],
+    "zonas": {
+     "radar": {
+      "x": 77,
+      "y": 23,
+      "w": 15,
+      "h": 14
+     },
+     "cabina": {
+      "x": 26,
+      "y": 19,
+      "w": 65,
+      "h": 18
+     },
+     "turbina": {
+      "x": 16,
+      "y": 25,
+      "w": 19,
+      "h": 15
+     },
+     "reactor": {
+      "x": 27,
+      "y": 8,
+      "w": 25,
+      "h": 18
+     }
+    }
+   }
+  },
+  {
+   "nombre": "pod5_raya_carrera_2",
+   "archivo": "pods/pod5_raya/pod5_raya_carrera_2.png",
    "ancho": 96,
    "alto": 46,
    "origen": {
@@ -2961,6 +3669,240 @@
    }
   },
   {
+   "nombre": "capa_cielo_movil",
+   "archivo": "carrera/capa_cielo_movil.png",
+   "ancho": 90,
+   "alto": 200,
+   "origen": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "nombre": "capa_lejana_movil",
+   "archivo": "carrera/capa_lejana_movil.png",
+   "ancho": 180,
+   "alto": 200,
+   "origen": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "nombre": "capa_cercana_movil",
+   "archivo": "carrera/capa_cercana_movil.png",
+   "ancho": 180,
+   "alto": 200,
+   "origen": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "nombre": "pista_recta",
+   "archivo": "carrera/pista_recta.png",
+   "ancho": 32,
+   "alto": 24,
+   "origen": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "nombre": "meta",
+   "archivo": "carrera/meta.png",
+   "ancho": 8,
+   "alto": 8,
+   "origen": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "nombre": "cartel_meta",
+   "archivo": "carrera/cartel_meta.png",
+   "ancho": 36,
+   "alto": 13,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
+  },
+  {
+   "nombre": "llama_turbo_cian_0",
+   "archivo": "carrera/llama_turbo_cian_0.png",
+   "ancho": 16,
+   "alto": 8,
+   "origen": {
+    "x": 1,
+    "y": 0.5
+   }
+  },
+  {
+   "nombre": "llama_turbo_cian_1",
+   "archivo": "carrera/llama_turbo_cian_1.png",
+   "ancho": 16,
+   "alto": 8,
+   "origen": {
+    "x": 1,
+    "y": 0.5
+   }
+  },
+  {
+   "nombre": "llama_turbo_cian_2",
+   "archivo": "carrera/llama_turbo_cian_2.png",
+   "ancho": 16,
+   "alto": 8,
+   "origen": {
+    "x": 1,
+    "y": 0.5
+   }
+  },
+  {
+   "nombre": "resalte_ganador_0",
+   "archivo": "carrera/resalte_ganador_0.png",
+   "ancho": 104,
+   "alto": 52,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
+  },
+  {
+   "nombre": "resalte_ganador_1",
+   "archivo": "carrera/resalte_ganador_1.png",
+   "ancho": 104,
+   "alto": 52,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
+  },
+  {
+   "nombre": "semaforo_3",
+   "archivo": "carrera/semaforo_3.png",
+   "ancho": 18,
+   "alto": 44,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  {
+   "nombre": "semaforo_2",
+   "archivo": "carrera/semaforo_2.png",
+   "ancho": 18,
+   "alto": 44,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  {
+   "nombre": "semaforo_1",
+   "archivo": "carrera/semaforo_1.png",
+   "ancho": 18,
+   "alto": 44,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  {
+   "nombre": "semaforo_ya",
+   "archivo": "carrera/semaforo_ya.png",
+   "ancho": 18,
+   "alto": 44,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  {
+   "nombre": "podio",
+   "archivo": "carrera/podio.png",
+   "ancho": 72,
+   "alto": 38,
+   "origen": {
+    "x": 0.5,
+    "y": 1
+   },
+   "puntos": {
+    "primero": {
+     "x": 36,
+     "y": 10
+    },
+    "segundo": {
+     "x": 12,
+     "y": 18
+    },
+    "tercero": {
+     "x": 60,
+     "y": 24
+    }
+   }
+  },
+  {
+   "nombre": "bandera_cuadros_0",
+   "archivo": "carrera/bandera_cuadros_0.png",
+   "ancho": 20,
+   "alto": 24,
+   "origen": {
+    "x": 0.1,
+    "y": 1
+   }
+  },
+  {
+   "nombre": "bandera_cuadros_1",
+   "archivo": "carrera/bandera_cuadros_1.png",
+   "ancho": 20,
+   "alto": 24,
+   "origen": {
+    "x": 0.1,
+    "y": 1
+   }
+  },
+  {
+   "nombre": "confeti_0",
+   "archivo": "carrera/confeti_0.png",
+   "ancho": 48,
+   "alto": 48,
+   "origen": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "nombre": "confeti_1",
+   "archivo": "carrera/confeti_1.png",
+   "ancho": 48,
+   "alto": 48,
+   "origen": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "nombre": "confeti_2",
+   "archivo": "carrera/confeti_2.png",
+   "ancho": 48,
+   "alto": 48,
+   "origen": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "nombre": "confeti_3",
+   "archivo": "carrera/confeti_3.png",
+   "ancho": 48,
+   "alto": 48,
+   "origen": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
    "nombre": "hud_barra",
    "archivo": "ui/hud_barra.png",
    "ancho": 90,
@@ -3365,6 +4307,36 @@
     "x": 0.5,
     "y": 1
    }
+  },
+  {
+   "nombre": "cartel_ganaste",
+   "archivo": "ui/cartel_ganaste.png",
+   "ancho": 82,
+   "alto": 26,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
+  },
+  {
+   "nombre": "cartel_perdiste",
+   "archivo": "ui/cartel_perdiste.png",
+   "ancho": 80,
+   "alto": 26,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
+  },
+  {
+   "nombre": "cartel_empate",
+   "archivo": "ui/cartel_empate.png",
+   "ancho": 136,
+   "alto": 26,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
   }
  ],
  "animaciones": [
@@ -3378,12 +4350,32 @@
    "repeat": -1
   },
   {
+   "clave": "pod1_cometa_carrera",
+   "frames": [
+    "pod1_cometa_carrera_0",
+    "pod1_cometa_carrera_1",
+    "pod1_cometa_carrera_2"
+   ],
+   "frameRate": 12,
+   "repeat": -1
+  },
+  {
    "clave": "pod2_burbuja_reparado",
    "frames": [
     "pod2_burbuja_reparado_0",
     "pod2_burbuja_reparado_1"
    ],
    "frameRate": 4,
+   "repeat": -1
+  },
+  {
+   "clave": "pod2_burbuja_carrera",
+   "frames": [
+    "pod2_burbuja_carrera_0",
+    "pod2_burbuja_carrera_1",
+    "pod2_burbuja_carrera_2"
+   ],
+   "frameRate": 12,
    "repeat": -1
   },
   {
@@ -3396,6 +4388,16 @@
    "repeat": -1
   },
   {
+   "clave": "pod3_aguijon_carrera",
+   "frames": [
+    "pod3_aguijon_carrera_0",
+    "pod3_aguijon_carrera_1",
+    "pod3_aguijon_carrera_2"
+   ],
+   "frameRate": 12,
+   "repeat": -1
+  },
+  {
    "clave": "pod4_yunque_reparado",
    "frames": [
     "pod4_yunque_reparado_0",
@@ -3405,12 +4407,32 @@
    "repeat": -1
   },
   {
+   "clave": "pod4_yunque_carrera",
+   "frames": [
+    "pod4_yunque_carrera_0",
+    "pod4_yunque_carrera_1",
+    "pod4_yunque_carrera_2"
+   ],
+   "frameRate": 12,
+   "repeat": -1
+  },
+  {
    "clave": "pod5_raya_reparado",
    "frames": [
     "pod5_raya_reparado_0",
     "pod5_raya_reparado_1"
    ],
    "frameRate": 4,
+   "repeat": -1
+  },
+  {
+   "clave": "pod5_raya_carrera",
+   "frames": [
+    "pod5_raya_carrera_0",
+    "pod5_raya_carrera_1",
+    "pod5_raya_carrera_2"
+   ],
+   "frameRate": 12,
    "repeat": -1
   },
   {
@@ -3463,6 +4485,56 @@
     "humo_3"
    ],
    "frameRate": 8,
+   "repeat": -1
+  },
+  {
+   "clave": "llama_turbo_cian",
+   "frames": [
+    "llama_turbo_cian_0",
+    "llama_turbo_cian_1",
+    "llama_turbo_cian_2"
+   ],
+   "frameRate": 12,
+   "repeat": -1
+  },
+  {
+   "clave": "resalte_ganador",
+   "frames": [
+    "resalte_ganador_0",
+    "resalte_ganador_1"
+   ],
+   "frameRate": 4,
+   "repeat": -1
+  },
+  {
+   "clave": "semaforo",
+   "frames": [
+    "semaforo_3",
+    "semaforo_2",
+    "semaforo_1",
+    "semaforo_ya"
+   ],
+   "frameRate": 1,
+   "repeat": 0
+  },
+  {
+   "clave": "bandera_cuadros",
+   "frames": [
+    "bandera_cuadros_0",
+    "bandera_cuadros_1"
+   ],
+   "frameRate": 6,
+   "repeat": -1
+  },
+  {
+   "clave": "confeti",
+   "frames": [
+    "confeti_0",
+    "confeti_1",
+    "confeti_2",
+    "confeti_3"
+   ],
+   "frameRate": 10,
    "repeat": -1
   },
   {

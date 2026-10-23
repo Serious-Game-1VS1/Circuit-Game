@@ -22,6 +22,8 @@ export interface Pantalla {
   nivel: Nivel;
   /** Modo demo del árbitro (--demo): solo Radar; el Taller oculta pestañas y multímetro. */
   demo: boolean;
+  /** Práctica en solitario: sin rival ni reloj; al terminar se vuelve a la entrada (SCRUM-151). */
+  practica: boolean;
   pod?: PodView;
   /** "Despachar" enviado, esperando la confirmación o el rechazo del árbitro. */
   despachando: boolean;
@@ -55,6 +57,7 @@ export function inicial(): Pantalla {
     total: 5,
     nivel: 1,
     demo: false,
+    practica: false,
     despachando: false,
     rival: null,
     tarjeta: null,
@@ -123,14 +126,14 @@ export function avisoVivo(p: Pantalla, ahora: number): string | null {
 
 export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
   switch (m.t) {
-    // Al reconectar en plena partida no se pasa por la Sala: el "start" que sigue repone el taller.
-    case "welcome": return { ...p, fase: p.fase === "entrar" ? "sala" : p.fase, aviso: null, station: m.station, alias: m.alias };
+    // Al reconectar en plena partida no se pasa por la Sala: el "start" que sigue repone el taller. En práctica (marcada antes del welcome) tampoco.
+    case "welcome": return { ...p, fase: p.fase === "entrar" && !p.practica ? "sala" : p.fase, aviso: null, station: m.station, alias: m.alias };
     case "full": return { ...p, aviso: m.reason.charAt(0).toUpperCase() + m.reason.slice(1) };
     // Si alguien se va durante la cuenta, el árbitro vuelve a la sala.
     case "lobby": return { ...p, jugadores: m.players, fase: p.fase === "cuenta" ? "sala" : p.fase };
     case "countdown": return { ...p, fase: "cuenta", cuenta: m.n };
     case "start": return {
-      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, nivel: m.nivel ?? 1, demo: m.demo ?? false, pod: m.pod, rival: m.rival,
+      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, nivel: m.nivel ?? 1, demo: m.demo ?? false, practica: m.practica ?? false, pod: m.pod, rival: m.rival,
       despachando: false, vistas: {}, tarjeta: null, terminaEn: ahora + m.restanteMs,
     };
     case "result": {
@@ -152,7 +155,9 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     // Medir no toca avisos ni bloqueos: solo guarda la lectura.
     case "medida": return { ...p, medida: m };
     case "rival": return { ...p, rival: { alias: m.alias, despachados: m.despachados, estado: m.estado } };
-    case "end": return { ...p, fase: m.phase === "fin" && m.carrera ? (p.fase === "podio" ? "podio" : "carrera") : "fin", fin: textoFin(m, p.station), end: m };
+    case "end":
+      if (p.practica) return { ...inicial(), alias: p.alias, aviso: "Práctica terminada: ¡buen trabajo!" };
+      return { ...p, fase: m.phase === "fin" && m.carrera ? (p.fase === "podio" ? "podio" : "carrera") : "fin", fin: textoFin(m, p.station), end: m };
     default: return p;
   }
 }

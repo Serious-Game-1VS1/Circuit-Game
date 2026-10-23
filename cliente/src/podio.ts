@@ -19,6 +19,7 @@ export const TXT = {
   primero: "1.º", segundo: "2.º",
   repasar: "Qué repasar",
   repasarNada: "Nada: todo salió a la primera.",
+  repasarCero: "No despachaste ningún pod. Practica en el modo Practicar.",
   podLento: "Tu pod más lento fue el {n} ({t}).",
 };
 
@@ -73,7 +74,7 @@ export function podio(e: End, yo?: Station) {
   const lento = mio?.podMs.reduce((m, ms, i) => (ms > m.ms ? { n: i + 1, ms } : m), { n: 0, ms: -1 });
   return {
     filas,
-    repasar: repasar.length ? repasar : [TXT.repasarNada],
+    repasar: repasar.length ? repasar : [yo && e.score[yo]?.despachados === 0 ? TXT.repasarCero : TXT.repasarNada],
     podLento: lento && lento.n ? f(TXT.podLento, { n: lento.n, t: mmss(lento.ms) }) : null,
   };
 }

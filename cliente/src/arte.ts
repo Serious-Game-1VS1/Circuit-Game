@@ -44,10 +44,10 @@ export const marco = (s: Phaser.Scene, x: number, y: number, nombre: string, w: 
 };
 
 /**
- * La fuente pixel no trae º, •, —, =, «», … ni ✔: se cambian por glifos que sí tiene.
+ * La fuente pixel no trae º, •, —, −, =, «», … ni ✔: se cambian por glifos que sí tiene.
  * Si añades glifos a arte/ui/fuente_pixel.*, quita su línea de aquí.
  */
-export const aPixel = (t: string) => t.replace(/º/g, "").replace(/[•—]/g, "-").replace(/ ?= ?/g, ": ").replace(/[«»]/g, '"').replace(/…/g, "...").replace(/ ?✔/g, "");
+export const aPixel = (t: string) => t.replace(/º/g, "").replace(/[•—−]/g, "-").replace(/ ?= ?/g, ": ").replace(/[«»]/g, '"').replace(/…/g, "...").replace(/ ?✔/g, "");
 
 /** Texto con la fuente pixel del kit (glifos de 8 px de alto × k). Ancho ≈ 4·k px por letra. */
 export const letras = (s: Phaser.Scene, x: number, y: number, t: string, k = 2, color = 0xffffff) =>
