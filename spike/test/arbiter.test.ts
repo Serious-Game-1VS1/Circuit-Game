@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { Arbiter } from "../src/arbiter/arbiter.js";
+import { Arbiter, MATCH_LIMIT_MS } from "../src/arbiter/arbiter.js";
 import { generar } from "../src/engine/generador.js";
 import { evaluar } from "../src/engine/pods.js";
 import type { PodView, ServerMsg } from "../src/protocol.js";
@@ -222,6 +222,20 @@ describe("fin, desempate y reconexión (SCRUM-89)", () => {
     t += 12 * 60_000;
     arb.tick();
     expect(arb.outcome).toMatchObject({ winner: "B", score: { A: { quemadas: 1 }, B: { quemadas: 0 } } });
+  });
+
+  it("limitMs de 5 min: termina por tiempo a los 5 min y el cliente recibe ese restante; el default sigue en 12", () => {
+    expect(MATCH_LIMIT_MS).toBe(12 * 60_000);
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA, limitMs: 5 * 60_000 });
+    play();
+    expect(last("p1", "start")).toMatchObject({ restanteMs: 5 * 60_000 });
+    solvePod("p1");
+    t += 5 * 60_000 - 1;
+    arb.tick();
+    expect(arb.phase).toBe("jugando");
+    t += 1;
+    arb.tick();
+    expect(arb.outcome).toMatchObject({ winner: "A", reason: "tiempo" });
   });
 
   it("empate si todo es igual", () => {

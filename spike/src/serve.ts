@@ -17,6 +17,8 @@ import type { Transport } from "./transport/transport.js";
  * entero 0..2^32-1, por defecto aleatoria). Ej.: npm run serve -- --nivel 2 --semilla 42.
  * --demo (o DEMO=1): modo demo de cableado (Cabina y Turbina: arrastrar piezas a la placa y unirlas con cables).
  * --demo radar (o DEMO=radar): el demo anterior (5 pods solo con Radar: LED + resistencia).
+ * --limite-min N (o LIMITE_MIN=N): duración de la partida en minutos, de 1 a 30 (por defecto 12, el reglamento). Solo para
+ * demos: `npm run serve:demo5` la deja en 5. No cambia nada más (reloj del cliente y desempate siguen al árbitro).
  * La semilla se imprime en consola y va en el nombre del CSV (nunca se envía a los clientes); con
  * --semilla en Photon todas las salas usan la misma.
  */
@@ -31,6 +33,10 @@ const nivel: Nivel = nivelTxt === "2" ? 2 : 1;
 const semillaTxt = opcion("--semilla", "SEMILLA");
 const semilla = semillaTxt === undefined ? undefined : Number(semillaTxt);
 if (semilla !== undefined && !(/^\d+$/.test(semillaTxt!) && semilla < 2 ** 32)) throw new Error(`--semilla debe ser un entero de 0 a 2^32-1 (llegó "${semillaTxt}")`);
+const limiteTxt = opcion("--limite-min", "LIMITE_MIN");
+const limiteMin = limiteTxt === undefined ? undefined : Number(limiteTxt);
+if (limiteMin !== undefined && !(/^\d+$/.test(limiteTxt!) && limiteMin >= 1 && limiteMin <= 30)) throw new Error(`--limite-min debe ser un número de 1 a 30 (llegó "${limiteTxt}")`);
+const limitMs = limiteMin === undefined ? undefined : limiteMin * 60_000;
 // --demo (o DEMO=1) = demo de cableado; --demo radar (o DEMO=radar) = el demo anterior, solo Radar.
 const demoTxt = process.argv.includes("--demo") ? (opcion("--demo", "DEMO") === "radar" ? "radar" : "1") : process.env.DEMO;
 const demo: Demo = demoTxt === "radar" ? "radar" : demoTxt === "1" ? "cableado" : false;
@@ -69,9 +75,9 @@ async function crearConCodigo(t: Transport, code: string) {
 
 async function abrir(t: Transport, alTerminar: () => void, codigo?: string) {
   const code = codigo ? await crearConCodigo(t, codigo) : await createRoom(t);
-  const room = hostRoom(t, { nivel, semilla, demo });
+  const room = hostRoom(t, { nivel, semilla, demo, limitMs });
   vigilar(code, room.arbiter, () => { room.stop(); void t.close().then(alTerminar); });
-  console.log(`[${code}] nivel: ${room.arbiter.nivel}${demo === "radar" ? " · MODO DEMO (solo Radar)" : demo ? " · MODO DEMO (cableado: Cabina y Turbina)" : ""} · semilla: ${room.arbiter.semilla}`);
+  console.log(`[${code}] nivel: ${room.arbiter.nivel}${demo === "radar" ? " · MODO DEMO (solo Radar)" : demo ? " · MODO DEMO (cableado: Cabina y Turbina)" : ""} · semilla: ${room.arbiter.semilla}${limiteMin === undefined ? "" : ` · duración: ${limiteMin} min`}`);
   return { code, arbiter: room.arbiter };
 }
 
