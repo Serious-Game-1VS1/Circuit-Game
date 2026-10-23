@@ -1,0 +1,99 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # Job para el proyecto Spike (Árbitro)
+  spike:
+    name: Spike (Árbitro)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: spike
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js (Node 22)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: spike/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Ejecutar Lint (si existe)
+        run: npm run lint --if-present
+
+      - name: Ejecutar Typecheck (si existe)
+        run: npm run typecheck --if-present
+
+      - name: Ejecutar Pruebas
+        run: npm test
+
+      - name: Compilar proyecto
+        run: npm run build --if-present
+
+  # Job para el proyecto Cliente (Juego)
+  cliente:
+    name: Cliente (Juego)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cliente
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js (Node 22)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: cliente/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Ejecutar Lint (si existe)
+        run: npm run lint --if-present
+
+      - name: Ejecutar Typecheck (si existe)
+        run: npm run typecheck --if-present
+
+      - name: Ejecutar Pruebas
+        run: npm test
+
+      - name: Compilar proyecto
+        run: npm run build --if-present
+
+  # Job de Despliegue (Stub condicional para main)
+  deploy:
+    name: Despliegue (Stub)
+    needs: [spike, cliente]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Simular despliegue con Photon
+        env:
+          PHOTON_APP_ID: ${{ secrets.PHOTON_APP_ID }}
+        run: |
+          echo "Iniciando despliegue de prueba (Stub)..."
+          if [ -z "$PHOTON_APP_ID" ]; then
+            echo "Aviso: PHOTON_APP_ID no está configurado en los Secrets."
+          else
+            echo "Photon App ID recibido de forma segura (longitud: ${#PHOTON_APP_ID} caracteres)."
+          fi
+          echo "¡Despliegue simulado ejecutado con éxito!"
