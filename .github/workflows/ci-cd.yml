@@ -1,0 +1,113 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # ==========================================
+  # JOB 1: SPIKE (ÁRBITRO)
+  # ==========================================
+  spike:
+    name: Spike (Árbitro)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: spike
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js (Node 22)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: spike/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Ejecutar Lint (si existe)
+        run: npm run lint --if-present
+
+      - name: Ejecutar Typecheck (si existe)
+        run: npm run typecheck --if-present
+
+      - name: Ejecutar Pruebas
+        run: npm test
+
+      - name: Compilar proyecto
+        run: npm run build --if-present
+
+  # ==========================================
+  # JOB 2: CLIENTE (JUEGO)
+  # ==========================================
+  cliente:
+    name: Cliente (Juego)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js (Node 22)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            spike/package-lock.json
+            cliente/package-lock.json
+
+      - name: Instalar dependencias de Spike
+        run: npm ci
+        working-directory: spike
+
+      - name: Instalar dependencias de Cliente
+        run: npm ci
+        working-directory: cliente
+
+      - name: Ejecutar Lint en Cliente (si existe)
+        run: npm run lint --if-present
+        working-directory: cliente
+
+      - name: Ejecutar Typecheck en Cliente (si existe)
+        run: npm run typecheck --if-present
+        working-directory: cliente
+
+      - name: Ejecutar Pruebas en Cliente
+        run: npm test
+        working-directory: cliente
+
+      - name: Compilar Cliente
+        run: npm run build --if-present
+        working-directory: cliente
+
+  # ==========================================
+  # JOB 3: DESPLIEGUE (STUB / SIMULACIÓN)
+  # ==========================================
+  deploy:
+    name: Despliegue (Stub)
+    needs: [spike, cliente]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Simular despliegue con Photon
+        env:
+          PHOTON_APP_ID: ${{ secrets.PHOTON_APP_ID }}
+        run: |
+          echo "Iniciando despliegue de prueba (Stub)..."
+          if [ -z "$PHOTON_APP_ID" ]; then
+            echo "Aviso: PHOTON_APP_ID no está configurado en los Secrets de GitHub."
+          else
+            echo "Photon App ID recibido de forma segura (longitud: ${#PHOTON_APP_ID} caracteres)."
+          fi
+          echo "¡Despliegue simulado ejecutado con éxito!"
