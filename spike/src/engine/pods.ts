@@ -19,6 +19,9 @@ export const PIEZAS: Record<Circuito, readonly string[]> = {
   interruptor: ["serie", "paralelo"],
   // supuesto: tercer fusible de 0,5 A, que se funde con el consumo normal.
   fusible: ["0.5", "1", "3"],
+  // nivel 2: LED montado al revés (se corrige girándolo) y camino cortado (se empalma).
+  invertido: ["directa", "inversa"],
+  abierto: ["empalmar", "dejar"],
 };
 
 const RANK: Label[] = ["correcto", "poco", "demasiado", "se quema"];
@@ -39,6 +42,13 @@ export function montar(z: { circuito: Circuito; volts: number }, pieza: string, 
       if (z.circuito === "cabina") parts.push({ kind: "led", a: 2, b: 0 });
       return { parts, puntos: z.circuito === "cabina" ? { pieza: 1, carga1: 2, carga2: 3 } : { pieza: 1, carga1: 2 } };
     }
+    case "invertido": // R → LED; "inversa" = el LED con el ánodo a tierra (no conduce).
+      return { parts: [bat, { kind: "resistor", a: 1, b: 2, ohms: 470 }, pieza === "inversa" ? { kind: "led", a: 0, b: 2 } : { kind: "led", a: 2, b: 0 }], puntos: { pieza: 1, carga1: 2 } };
+    case "abierto": // R → hueco → LED; "empalmar" cierra el hueco con un cable, "dejar" lo deja (resistencia enorme).
+      return {
+        parts: [bat, pieza === "empalmar" ? { kind: "wire", a: 1, b: 2 } : { kind: "resistor", a: 1, b: 2, ohms: 1e9 }, { kind: "resistor", a: 2, b: 3, ohms: 470 }, { kind: "led", a: 3, b: 0 }],
+        puntos: { pieza: 1, carga1: 3 },
+      };
     case "luces": {
       const lamps: Part[] = pieza === "serie"
         ? [{ kind: "lamp", a: 1, b: 2 }, { kind: "lamp", a: 2, b: 0 }]
@@ -66,6 +76,11 @@ export function evaluar(z: { circuito: Circuito; volts: number }, pieza: string)
     case "cabina": {
       const r = solve(montar(z, pieza).parts);
       return r.short ? "corto" : worst(r.parts.slice(2).map((p) => p.label!));
+    }
+    case "invertido":
+    case "abierto": {
+      const r = solve(montar(z, pieza).parts);
+      return r.short ? "corto" : r.parts.at(-1)!.label!;
     }
     case "luces": {
       // Meta: paralelo, para que si una luz se funde la otra siga encendida (RF-04: se quita cada carga por turno).

@@ -66,9 +66,9 @@ export async function simulateDuel(make: () => Transport): Promise<{ arbiter: Ar
     assert.ok(endA?.t === "end" && endA.winner === "A" && endA.score.A?.despachados === 5 && endA.score.B?.despachados === 2);
 
     const csv = host.arbiter.toCsv();
-    assert.ok(csv.startsWith("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms\r\n"));
-    assert.match(csv, new RegExp(`\r\nA;1;${z.zona};[^;]+;fallo;\\d+;(no|si);1;\r\n`));
-    assert.match(csv, /\r\nA;;;;despacho;\d+;no;5;\d+\r\n/);
+    assert.ok(csv.startsWith("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms;nivel;zona_nombre;pieza_correcta\r\n"));
+    assert.match(csv, new RegExp(`\r\nA;1;${z.zona};[^;]+;fallo;\\d+;(no|si);1;;1;[a-z]+;[^;]*\r\n`));
+    assert.match(csv, /\r\nA;;;;despacho;\d+;no;5;\d+;1;;\r\n/);
     // ana: 1 fallo + un acierto por zona de los 5 pods; beto: los pods 1 y 2 tienen una zona cada uno;
     // más una fila "despacho" por pod despachado (cronómetro por pod): 5 de ana y 2 de beto.
     const zonas = host.arbiter.pods.reduce((n, p) => n + p.zonas.length, 0);

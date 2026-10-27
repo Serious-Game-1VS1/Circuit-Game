@@ -1,17 +1,17 @@
-import { generar, type Demo, type Pod } from "../engine/generador.js";
+import { generar, generarOleada, nivelDePod, type Demo, type Perfil, type Pod, type ZonaPod } from "../engine/generador.js";
 import { medir } from "../engine/medir.js";
 import { evaluar } from "../engine/pods.js";
 import {
-  validAlias, type Carril, type End, type Nivel, type Phase, type PodView, type RivalView, type ServerMsg, type Station,
+  validAlias, type Carril, type End, type Phase, type PodView, type RivalView, type ServerMsg, type Station,
 } from "../protocol.js";
-import { BURN_BLOCK_MS, csvField, PenaltyTracker } from "./penalties.js";
+import { BURN_BLOCK_MS, csvField, PenaltyTracker, QUEMADAS_OLEADAS } from "./penalties.js";
 
 export const PODS_TO_WIN = 5;
 // supuesto: límite de 12 min pendiente de confirmar con el tutor; configurable por opción.
 export const MATCH_LIMIT_MS = 12 * 60_000;
 export const RECONNECT_MS = 30_000;
 export const COUNTDOWN_MS = 3_000;
-export const CSV_HEADER = "jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms";
+export const CSV_HEADER = "jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms;nivel;zona_nombre;pieza_correcta";
 
 export interface ArbiterOptions {
   now?: () => number;
@@ -20,7 +20,8 @@ export interface ArbiterOptions {
   reconnectMs?: number;
   /** Semilla de los pods; por defecto se sortea. Nunca se envía a los clientes. */
   semilla?: number;
-  nivel?: Nivel;
+  /** 1, 2 o "mixto" (pods 1-4 de nivel 1 y el 5 con una falla de nivel 2; ver `Perfil`). */
+  nivel?: Perfil;
   /** Modo demo ("cableado": Cabina/Turbina con placa; "radar": solo Radar). El cliente solo recibe `start.demo` = true. */
   demo?: Demo;
   /** Azar de la carrera final (qué pod corre); por defecto Math.random. Nunca decide el ganador. */
@@ -30,6 +31,11 @@ export interface ArbiterOptions {
    * termina al despachar los 5 pods (sin carrera) y no deja intentos en el CSV. Lo corre el propio cliente.
    */
   practica?: boolean;
+  /**
+   * Modo Oleadas (solo con `practica`): los pods no se acaban en 5 (cada 3 sube la dificultad) y la partida
+   * termina al quemar `QUEMADAS_OLEADAS` piezas. El start lleva `total: 0` y `oleadas: true`.
+   */
+  oleadas?: boolean;
 }
 
 interface Seat {
@@ -53,6 +59,10 @@ interface Seat {
   llamas: number;
   /** Número de pod de cada intento (mismo orden que `penalties.attemptsLog`). */
   intentoPod: number[];
+  /** Zona evaluada en cada intento (incluye la encadenada); solo para el CSV docente, nunca viaja al cliente. */
+  intentoZona: ZonaPod[];
+  /** Oleadas: ya salió la segunda falla (encadenada) del pod actual. */
+  revelada: boolean;
 }
 
 /**
@@ -60,7 +70,7 @@ interface Seat {
  * de un `peer` (cadena opaca) y envía por el callback `send`. El reloj es inyectable y el tiempo
  * avanza con `tick()` (el anfitrión lo llama cada ~100 ms; las pruebas, a mano).
  *
- * Fases: esperando → listo (2 jugadores) → cuenta (ambos pulsaron Listo) → jugando → fin | anulada.
+ * Fases: esperando → listo (2 jugadores) → cuenta (ambos pulsaron Listo, aunque uno lo hiciera esperando) → jugando → fin | anulada.
  */
 export class Arbiter {
   phase: Phase = "esperando";
@@ -75,10 +85,13 @@ export class Arbiter {
   private readonly reconnectMs: number;
   private readonly azar: () => number;
   readonly semilla: number;
-  readonly nivel: Nivel;
+  readonly nivel: Perfil;
   readonly demo: Demo;
   readonly practica: boolean;
-  /** Los 5 pods de la partida, con su solución: los mismos para ambos jugadores. */
+  readonly oleadas: boolean;
+  /** Mejora «Escudo» (solo práctica): absorbe la próxima quemada. */
+  private escudo = false;
+  /** Los 5 pods de la partida, con su solución: los mismos para ambos jugadores. En Oleadas se llena a demanda (`podAt`). */
   readonly pods: Pod[];
 
   constructor(private readonly send: (peer: string, msg: ServerMsg) => void, opts: ArbiterOptions = {}) {
@@ -91,7 +104,24 @@ export class Arbiter {
     this.nivel = opts.nivel ?? 1;
     this.demo = opts.demo ?? false;
     this.practica = opts.practica ?? false;
-    this.pods = generar(this.semilla, this.nivel, this.demo);
+    this.oleadas = this.practica && (opts.oleadas ?? false);
+    this.pods = this.oleadas ? [] : generar(this.semilla, this.nivel, this.demo);
+  }
+
+  /** Práctica: aplica las mejoras del jugador (factor del enfriamiento sobre 2/4/8 s y escudo contra la próxima quemada). */
+  ajustar(a: { enfriamiento: number; escudo: boolean }): void {
+    if (!this.practica) return;
+    this.escudo = a.escudo;
+    for (const s of this.seats) s.penalties.cooldownFactor = a.enfriamiento;
+  }
+
+  private podAt(i: number): Pod {
+    return (this.pods[i] ??= generarOleada(this.semilla, nivelDePod(this.nivel, 0), i + 1));
+  }
+
+  /** La zona tal como está ahora para `s`: su segunda falla si ya salió (encadenada), si no la primera. */
+  private zonaDe(s: Seat, pod: Pod, zona: unknown): ZonaPod | undefined {
+    return pod.encadenada?.zona === zona && s.revelada ? pod.encadenada : pod.zonas.find((x) => x.zona === zona);
   }
 
   /** Mensaje de un participante. Los datos de la red no son de confianza: se validan aquí. */
@@ -163,17 +193,23 @@ export class Arbiter {
       const despacho = () => {
         const ms = s.podMs[hechos++]!;
         fin += ms;
-        rows.push(`${s.station};;;;despacho;${fin};no;${hechos};${ms}`);
+        rows.push(`${s.station};;;;despacho;${fin};no;${hechos};${ms};${nivelDePod(this.nivel, hechos - 1)};;`);
       };
       s.penalties.attemptsLog.forEach((a, i) => {
         const pod = s.intentoPod[i]!;
         while (hechos < pod - 1) despacho();
-        rows.push([s.station, i + 1, a.zone, a.pieces.join("|"), a.passed ? "ok" : "fallo", a.atMs, a.burned ? "si" : "no", pod, ""]
+        rows.push([s.station, i + 1, a.zone, a.pieces.join("|"), a.passed ? "ok" : "fallo", a.atMs, a.burned ? "si" : "no", pod, "", nivelDePod(this.nivel, pod - 1), s.intentoZona[i]!.nombre, s.intentoZona[i]!.solucion]
           .map((v) => csvField(String(v))).join(";"));
       });
       while (hechos < s.podMs.length) despacho();
     }
     return "﻿" + [CSV_HEADER, ...rows].join("\r\n") + "\r\n";
+  }
+
+  /** Estado en vivo para el panel docente (solo lectura): sin piezas ni soluciones. */
+  vivo(): { restanteMs: number; jugadores: RivalView[] } {
+    const restanteMs = this.phase === "jugando" && !this.practica ? Math.max(0, this.limitMs - (this.now() - this.startAt)) : 0;
+    return { restanteMs, jugadores: this.seats.map((s) => this.rivalView(s)) };
   }
 
   private hello(peer: string, alias: unknown): void {
@@ -207,7 +243,7 @@ export class Arbiter {
     this.seats.push({
       station, alias: name, peer, goneAt: 0, ready: false, penalties: new PenaltyTracker(this.now),
       despachados: 0, repaired: new Set(), lastPieza: new Map(), penalUntil: 0, lastRival: "",
-      podInicio: 0, podMs: [], podFallos: 0, llamas: 0, intentoPod: [],
+      podInicio: 0, podMs: [], podFallos: 0, llamas: 0, intentoPod: [], intentoZona: [], revelada: false,
     });
     this.seats.sort((a, b) => a.station.localeCompare(b.station));
     this.phase = this.seats.length === 2 ? "listo" : "esperando";
@@ -217,10 +253,11 @@ export class Arbiter {
   }
 
   private ready(s: Seat): void {
-    if (this.phase !== "listo") return;
+    // Listo pulsado antes de que llegue el rival se recuerda; la cuenta espera a los 2 asientos.
+    if (this.phase !== "listo" && this.phase !== "esperando") return;
     s.ready = true;
     this.broadcastLobby();
-    if (this.seats.every((x) => x.ready)) {
+    if (this.phase === "listo" && this.seats.every((x) => x.ready)) {
       this.phase = "cuenta";
       this.countdownAt = this.now();
       this.countdown(3);
@@ -245,8 +282,8 @@ export class Arbiter {
   private test(s: Seat, zone: unknown, pieza: string | null, seq: number, t0: number): void {
     const reject = (reason: string, waitMs = 0) => this.send(s.peer!, { t: "reject", seq, t0, reason, waitMs });
     if (this.phase !== "jugando") return reject("la partida no está en juego");
-    const pod = this.pods[s.despachados]!;
-    const z = pod.zonas.find((x) => x.zona === zone);
+    const pod = this.podAt(s.despachados);
+    const z = this.zonaDe(s, pod, zone);
     if (!z || s.repaired.has(z.zona)) return reject("zona no válida");
     if (pieza === null || !z.opciones.includes(pieza)) return reject("pieza no válida");
 
@@ -256,22 +293,33 @@ export class Arbiter {
 
     const v = evaluar(z, pieza);
     const pieces = [z.circuito === "led" || z.circuito === "cabina" ? `R=${pieza}` : `${z.circuito}=${pieza}`];
-    let waitMs = 0;
+    let waitMs = 0, escudo = false, hayMas = false;
     if (v === "correcto") {
       s.penalties.registerSuccess(z.zona, pieces);
-      s.repaired.add(z.zona);
+      // Falla encadenada: acertar la primera no repara la zona; sale la segunda y se vuelve a elegir pieza (sin castigo extra).
+      hayMas = pod.encadenada?.zona === z.zona && !s.revelada;
+      if (hayMas) { s.revelada = true; s.lastPieza.delete(z.zona); } else s.repaired.add(z.zona);
     } else if (v === "se quema" || v === "corto") {
       // supuesto: un cortocircuito penaliza igual que una pieza quemada.
-      s.penalties.registerBurn(z.zona, pieces);
-      waitMs = BURN_BLOCK_MS;
+      if (this.escudo) {
+        // El escudo se gasta: cuenta como un fallo normal (enfriamiento), sin bloqueo de 4 s ni quemada.
+        escudo = true;
+        this.escudo = false;
+        waitMs = s.penalties.registerFailure(z.zona, pieces);
+      } else {
+        s.penalties.registerBurn(z.zona, pieces);
+        waitMs = BURN_BLOCK_MS;
+      }
     } else {
       waitMs = s.penalties.registerFailure(z.zona, pieces);
     }
     s.intentoPod.push(s.despachados + 1);
+    s.intentoZona.push(z);
     if (v !== "correcto") s.podFallos++;
     s.penalUntil = Math.max(s.penalUntil, this.now() + waitMs);
-    this.send(s.peer!, { t: "result", seq, t0, zona: z.zona, veredicto: v, waitMs, despachados: s.despachados, pod: this.podView(s) });
+    this.send(s.peer!, { t: "result", seq, t0, zona: z.zona, veredicto: v, waitMs, despachados: s.despachados, pod: this.podView(s), ...(escudo && { escudo }), ...(hayMas && { hayMas }) });
     this.syncRival(s, t0);
+    if (this.oleadas && burned(s) >= QUEMADAS_OLEADAS) this.finish(`${QUEMADAS_OLEADAS} piezas quemadas`, s.station);
   }
 
   /**
@@ -282,7 +330,7 @@ export class Arbiter {
   private measure(s: Seat, m: Record<string, unknown>, seq: number, t0: number): void {
     const reject = (reason: string) => this.send(s.peer!, { t: "reject", seq, t0, reason, waitMs: 0 });
     if (this.phase !== "jugando") return reject("la partida no está en juego");
-    const z = this.pods[s.despachados]!.zonas.find((x) => x.zona === m.zone);
+    const z = this.zonaDe(s, this.podAt(s.despachados), m.zone);
     const { pieza, modo, punto } = m;
     if (!z || typeof pieza !== "string" || !z.opciones.includes(pieza) || (modo !== "continuidad" && modo !== "tension") || typeof punto !== "string") {
       return reject("medida no válida");
@@ -296,19 +344,20 @@ export class Arbiter {
   private dispatch(s: Seat, seq: number, t0: number): void {
     const reject = (reason: string) => this.send(s.peer!, { t: "reject", seq, t0, reason, waitMs: 0 });
     if (this.phase !== "jugando") return reject("la partida no está en juego");
-    if (s.repaired.size < this.pods[s.despachados]!.zonas.length) return reject("faltan zonas por reparar");
+    if (s.repaired.size < this.podAt(s.despachados).zonas.length) return reject("faltan zonas por reparar");
     s.despachados++;
     s.podMs.push(this.now() - s.podInicio);
     s.podInicio = this.now();
     if (s.podFallos === 0) s.llamas++;
     s.podFallos = 0;
     s.repaired.clear();
+    s.revelada = false;
     s.lastPieza.clear();
     s.penalties.newPod();
     this.send(s.peer!, { t: "despachado", seq, t0, despachados: s.despachados, pod: this.podView(s) });
     this.syncRival(s, t0);
     // Despachos casi simultáneos: gana el primero que llega aquí (el árbitro procesa en orden de llegada).
-    if (s.despachados >= PODS_TO_WIN) this.finish("5 pods despachados", s.station);
+    if (!this.oleadas && s.despachados >= PODS_TO_WIN) this.finish("5 pods despachados", s.station);
   }
 
   private finish(reason: string, winner?: Station): void {
@@ -348,13 +397,15 @@ export class Arbiter {
 
   private podView(s: Seat): PodView {
     // Tras el quinto despacho se sigue mostrando el último pod (la partida ya terminó).
-    const pod = this.pods[Math.min(s.despachados, PODS_TO_WIN - 1)]!;
+    const pod = this.podAt(this.oleadas ? s.despachados : Math.min(s.despachados, PODS_TO_WIN - 1));
     // Campo por campo, sin `solucion`: la solución nunca sale del árbitro.
     return {
       numero: s.despachados + 1,
-      zonas: pod.zonas.map(({ zona, nombre, circuito, volts, opciones }) => ({
-        zona, nombre, circuito, volts, opciones: [...opciones], reparada: s.repaired.has(zona),
-      })),
+      nivel: nivelDePod(this.nivel, this.oleadas ? 0 : Math.min(s.despachados, PODS_TO_WIN - 1)),
+      zonas: pod.zonas.map((z) => {
+        const { zona, nombre, circuito, volts, opciones } = this.zonaDe(s, pod, z.zona)!;
+        return { zona, nombre, circuito, volts, opciones: [...opciones], reparada: s.repaired.has(zona) };
+      }),
     };
   }
 
@@ -367,8 +418,8 @@ export class Arbiter {
     const other = this.seats.find((x) => x !== s);
     return {
       t: "start", restanteMs: this.practica ? 0 : this.limitMs - (this.now() - this.startAt), despachados: s.despachados,
-      total: PODS_TO_WIN, nivel: this.nivel, demo: this.demo !== false, pod: this.podView(s), rival: other ? this.rivalView(other) : null,
-      ...(this.practica && { practica: true }),
+      total: this.oleadas ? 0 : PODS_TO_WIN, nivel: nivelDePod(this.nivel, 0), demo: this.demo !== false, pod: this.podView(s), rival: other ? this.rivalView(other) : null,
+      ...(this.practica && { practica: true }), ...(this.oleadas && { oleadas: true }),
     };
   }
 

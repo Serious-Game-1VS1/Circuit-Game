@@ -18,13 +18,17 @@ export async function createRoom(t: Transport, tries = 5): Promise<string> {
   }
 }
 
-/** El árbitro atiende la sala: el protocolo completo vive en Arbiter; aquí solo se conecta a la red. */
-export function hostRoom(t: Transport, opts?: ArbiterOptions) {
+/** Espera antes de reabrir una sala tras `fallos` intentos seguidos fallidos: 2 s, 4 s, 8 s… tope 30 s. */
+export const pausaReapertura = (fallos: number) => Math.min(2000 * 2 ** Math.max(0, fallos - 1), 30_000);
+
+/** El árbitro atiende la sala: el protocolo completo vive en Arbiter; aquí solo se conecta a la red. `alCaer`: la conexión se perdió (sala muerta, ya detenida). */
+export function hostRoom(t: Transport, opts?: ArbiterOptions, alCaer?: () => void) {
   const arbiter = new Arbiter((peer, msg) => t.send(msg, peer), opts);
   t.onMessage = (raw, from) => arbiter.handle(from, raw);
   t.onLeave = (peer) => arbiter.leave(peer);
   const timer = setInterval(() => arbiter.tick(), 100);
   timer.unref();
+  t.onClose = () => { clearInterval(timer); alCaer?.(); };
   return { arbiter, stop: () => clearInterval(timer) };
 }
 

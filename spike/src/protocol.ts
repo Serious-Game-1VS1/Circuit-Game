@@ -14,6 +14,8 @@
  *    "1000" (Ω); cableado: "serie", "paralelo", "puente"; fusibles: "0.5", "1", "3" (A).
  *  - TestMsg suma `pieza` (uno de `opciones`). Si falta, se usa String(ohms), como antes.
  *  - Snapshot suma `nivel`. Cada pod trae de 1 a 4 zonas (antes, siempre las mismas 2).
+ *  - PodView suma `nivel` (opcional): el nivel de ese pod. En el perfil "mixto" el pod 5 es de nivel 2 y el Snapshot
+ *    trae el nivel base (1).
  *
  * Despacho explícito (anteproyecto, RF-03). NO compatible con el cliente anterior:
  *  - Reparar la última zona ya no despacha: el Result trae el pod con todas sus zonas `reparada` y
@@ -49,7 +51,7 @@ import type { Label } from "./engine/circuit.js";
 export type Station = "A" | "B";
 export type Phase = "esperando" | "listo" | "cuenta" | "jugando" | "fin" | "anulada";
 export type RivalStatus = "reparando" | "penalizado" | "sin-conexion";
-export type Circuito = "led" | "cabina" | "luces" | "interruptor" | "fusible";
+export type Circuito = "led" | "cabina" | "luces" | "interruptor" | "fusible" | "invertido" | "abierto";
 export type ZonaNombre = "radar" | "cabina" | "turbina" | "reactor";
 export type Nivel = 1 | 2;
 export type Verdict = Label | "corto";
@@ -64,7 +66,7 @@ export type ClientMsg = Hello | Ready | TestMsg | Dispatch | MedirMsg;
 
 /** Lo que el jugador ve de una zona dañada: nunca cuál de las opciones es la correcta. */
 export interface ZonaView { zona: number; nombre: ZonaNombre; circuito: Circuito; volts: number; opciones: string[]; reparada: boolean }
-export interface PodView { numero: number; zonas: ZonaView[] }
+export interface PodView { numero: number; nivel?: Nivel; zonas: ZonaView[] }
 export interface RivalView { alias: string; despachados: number; estado: RivalStatus }
 
 export interface Welcome { t: "welcome"; station: Station; alias: string }
@@ -72,8 +74,12 @@ export interface Full { t: "full"; reason: string }
 export interface Lobby { t: "lobby"; phase: Phase; players: { station: Station; alias: string; ready: boolean }[] }
 export interface Countdown { t: "countdown"; n: number }
 /** Inicio de partida o estado completo al reconectar. */
-export interface Snapshot { t: "start"; restanteMs: number; despachados: number; total: number; nivel: Nivel; demo: boolean; practica?: boolean; pod: PodView; rival: RivalView | null }
-export interface Result { t: "result"; seq: number; t0: number; zona: number; veredicto: Verdict; waitMs: number; despachados: number; pod: PodView }
+export interface Snapshot { t: "start"; restanteMs: number; despachados: number; total: number; nivel: Nivel; demo: boolean; practica?: boolean; oleadas?: boolean; pod: PodView; rival: RivalView | null }
+/**
+ * `escudo`: la mejora «Escudo» (solo práctica) absorbió la quemada: sin bloqueo de 4 s ni quemada contada.
+ * `hayMas`: falla encadenada (solo Oleadas): el veredicto es «correcto» pero la zona sigue sin reparar; `pod` ya trae su segunda falla (otra batería y opciones).
+ */
+export interface Result { t: "result"; seq: number; t0: number; zona: number; veredicto: Verdict; waitMs: number; despachados: number; pod: PodView; escudo?: boolean; hayMas?: boolean }
 /** Despacho aceptado: `despachados` ya incluye este pod y `pod` es el siguiente. */
 export interface Dispatched { t: "despachado"; seq: number; t0: number; despachados: number; pod: PodView }
 export interface Reject { t: "reject"; seq: number; t0: number; reason: string; waitMs: number }
