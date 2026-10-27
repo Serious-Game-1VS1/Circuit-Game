@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluar, PIEZAS } from "../../spike/src/engine/pods";
 import type { Circuito, Verdict } from "../../spike/src/protocol";
-import { botonesGaveta, GAVETA, pestanas, reparadas, RETO, textoOpcion, textoVolts, vistaDeVeredicto } from "../src/vista";
+import { botonesGaveta, GAVETA, pestanas, probarActivo, reparadas, RETO, textoOpcion, textoVolts, vistaDeVeredicto } from "../src/vista";
 
 const CIRCUITOS: Circuito[] = ["led", "cabina", "luces", "interruptor", "fusible"];
 const VEREDICTOS: Verdict[] = ["poco", "correcto", "demasiado", "se quema", "corto"];
@@ -44,5 +44,16 @@ describe("vista de una zona", () => {
     expect(botonesGaveta(pod.zonas[0]!, "220")).toEqual([
       { pieza: "1000", texto: "1000 Ω", elegida: false }, { pieza: "220", texto: "220 Ω", elegida: true }, { pieza: "470", texto: "470 Ω", elegida: false },
     ]);
+  });
+});
+
+describe("botón Probar", () => {
+  it("se apaga sin cambios desde la última prueba y vuelve al cambiar algo", () => {
+    expect(probarActivo("470", undefined, false, false)).toBe(true);
+    expect(probarActivo("470", "470", false, false)).toBe(false);
+    expect(probarActivo("220", "470", false, false)).toBe(true);
+    expect(probarActivo(undefined, undefined, false, false)).toBe(false);
+    expect(probarActivo("220", "470", true, false)).toBe(false);
+    expect(probarActivo("220", "470", false, true)).toBe(false);
   });
 });

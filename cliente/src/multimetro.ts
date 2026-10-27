@@ -17,7 +17,11 @@ export const T = {
   pasaTexto: "Pasa: la corriente puede cruzar esta pieza.",
   noPasaTexto: "No pasa: esta pieza está cortada por dentro.",
   // sin entrada en textos.js: el árbitro necesita la pieza o el montaje puesto para medir.
-  sinPieza: "Elige una pieza o termina los cables antes de medir.",
+  // Con gaveta (sin placa) lo que falta es elegir; con placa, colocar y cablear. 
+  sinEleccion: "Primero elige una opción de la gaveta y luego mide.",
+  sinMontaje: "Primero coloca y cablea las piezas, y luego mide.",
+  ledSentido: "Cae casi toda la batería en el LED: el LED no deja pasar, mira su sentido.",
+  ledNoPasa: "No pasa: el LED solo deja pasar la corriente en un sentido, mira el suyo.",
 } as const;
 
 export const TRAMO: Record<Tramo, { etiqueta: string; texto: string }> = {
@@ -30,13 +34,17 @@ export const TRAMO: Record<Tramo, { etiqueta: string; texto: string }> = {
 export const anguloTension = (fraccion: number) => -60 + 120 * Math.max(0, Math.min(1, fraccion));
 
 /** Texto de la lectura para el aviso del panel. */
-export const textoMedida = (m: Medida) =>
-  m.modo === "continuidad" ? (m.pasa ? T.pasaTexto : T.noPasaTexto) : TRAMO[m.tension ?? "nada"].texto;
+export const textoMedida = (m: Medida, circuito?: string) => {
+  // LED invertido: mismo veredicto que el circuito abierto, pero la pista es la polaridad.
+  const led = circuito === "invertido";
+  if (m.modo === "continuidad") return m.pasa ? T.pasaTexto : led ? T.ledNoPasa : T.noPasaTexto;
+  return led && m.tension === "toda" ? T.ledSentido : TRAMO[m.tension ?? "nada"].texto;
+};
 
 /** Aviso mientras el modo está activo y no hay lectura. */
 export const textoModo = (modo: ModoMedir) => (modo === "continuidad" ? `${T.desconectada}. ${T.tocaPieza}` : T.tocaPieza);
 
 /** Estado de una medición en curso: se muestra cuando pasó MEDIR_MS y llegó la Medida con ese seq. */
 export interface Midiendo { seq: number; desde: number; punto: string }
-export const lecturaLista = (m: Midiendo, medida: Medida | undefined, ahora: number) =>
-  ahora - m.desde >= MEDIR_MS && medida?.seq === m.seq ? medida : null;
+export const lecturaLista = (m: Midiendo, medida: Medida | undefined, ahora: number, medirMs = MEDIR_MS) =>
+  ahora - m.desde >= medirMs && medida?.seq === m.seq ? medida : null;

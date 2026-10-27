@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Arbiter } from "../../spike/src/arbiter/arbiter";
 import type { Transport } from "../../spike/src/transport/transport";
 import { PracticaTransport } from "../src/practica";
 import { crearTransporte, elegirTransporte, Net } from "../src/net";
 import { evaluar } from "../../spike/src/engine/pods";
 import { despachable, reloj } from "../src/pantalla";
+import { DIAGNOSTICO } from "../src/progreso";
 import { conPlaca } from "../src/placa";
 import { botonesGaveta, pestanas, reparadas, vistaDeVeredicto } from "../src/vista";
 
@@ -186,7 +187,7 @@ describe("cliente conectado al árbitro", () => {
       }
       reparar(ana);
     }
-    expect([...vistos].sort()).toEqual(expect.arrayContaining(["fusible", "interruptor", "led", "luces"]));
+    expect([...vistos].sort()).toEqual(expect.arrayContaining(["fusible", "invertido", "abierto", "led", "luces"]));
     expect(ana.estado.fin?.titulo).toBe("¡Ganaste!");
   });
 
@@ -251,6 +252,46 @@ describe("cliente conectado al árbitro", () => {
     expect(ana.estado).toMatchObject({ despachados: 1, despachando: false });
   });
 
+  it("entrar distingue sala inexistente, App ID inválido y fallo de conexión", async () => {
+    const falla = async (msg: string) => {
+      const m = new Mem("pe");
+      m.join = async () => { throw new Error(msg); };
+      const n = new Net(m, () => t);
+      await n.entrar(CODE, "eva");
+      return n.estado.aviso;
+    };
+    expect(await falla("Photon op 226 error 32758: Game does not exist")).toBe("No hay una sala abierta con ese código");
+    expect(await falla("Photon op 226 error 32765: Game full")).toBe("No hay una sala abierta con ese código");
+    expect(await falla("Photon op 230 error 32767: Invalid AppId")).toMatch(/configurado.*docente/);
+    expect(await falla("desconectado de Photon")).toBe("No se pudo conectar con el servidor de juego. Revisa tu conexión.");
+    expect(await falla("conexión cerrada")).toMatch(/No se pudo conectar/);
+  });
+
+  it("SCRUM-43: al perder el transporte avisa, reintenta cada 2 s (15 veces) y al reconectar quita el aviso", async () => {
+    vi.useFakeTimers();
+    try {
+      const m = new Mem("pr");
+      const n = new Net(m, () => t); // pausa real de 2 s, con timers falsos
+      await n.entrar(CODE, "eva");
+      let fallos = 0;
+      m.join = async () => { if (fallos++ < 3) throw new Error("sin red"); };
+      const p = n.reconectar();
+      expect(n.estado.aviso).toBe("Conexión perdida: reconectando…");
+      await vi.advanceTimersByTimeAsync(2000 * 3);
+      await p;
+      expect(fallos).toBe(4);
+      expect(n.estado.aviso).toBeNull();
+      // Nunca vuelve: 15 intentos separados por 2 s y se rinde.
+      let intentos = 0;
+      m.join = async () => { intentos++; throw new Error("sin red"); };
+      const q = n.reconectar();
+      await vi.advanceTimersByTimeAsync(2000 * 14);
+      await q;
+      expect(intentos).toBe(15);
+      expect(n.estado.aviso).toBe("No se pudo reconectar a la sala");
+    } finally { vi.useRealTimers(); }
+  });
+
   it("sin red durante toda la ventana: vuelve a Entrar con aviso; 'Volver a jugar' conserva el alias", async () => {
     const m = new Mem("p9");
     const caido = new Net(m, () => t, 0);
@@ -286,10 +327,57 @@ describe("cliente conectado al árbitro", () => {
     expect((solo as unknown as { transport: unknown }).transport).not.toBe(practica);
   });
 
+  it("Oleadas: pasa de 5 pods sin terminar, y el Escudo se gasta cuando el árbitro lo usa", async () => {
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const solo = new Net(new Mem("p6"), () => t);
+    await solo.practicar("lola", 1, false, true);
+    await flush();
+    expect(solo.estado).toMatchObject({ fase: "taller", oleadas: true, total: 0, quemadas: 0 });
+    const practica = (solo as unknown as { transport: PracticaTransport }).transport;
+    for (let i = 0; i < 6; i++) {
+      for (const z of practica.arbiter.pods[i]!.zonas) solo.probar(z.zona, z.solucion);
+      await flush();
+      solo.despachar();
+      await flush();
+    }
+    expect(solo.estado).toMatchObject({ fase: "taller", despachados: 6, pod: { numero: 7 } });
+    solo.elegirMejora("escudo");
+    solo.elegirMejora("enfriamiento");
+    expect(solo.mejoras).toMatchObject({ escudo: true, enfriamiento: true, doble: false });
+    expect(solo.usadas).toEqual(["escudo", "enfriamiento"]);
+    solo.onMessage({ t: "result", seq: 1, t0: 0, zona: 0, veredicto: "se quema", waitMs: 2000, despachados: 6, pod: solo.estado.pod, escudo: true });
+    expect(solo.mejoras.escudo).toBe(false);
+    expect(solo.mejoras.enfriamiento).toBe(true);
+    expect(solo.estado.quemadas).toBe(0);
+    await solo.practicar("lola", 1); // una práctica nueva empieza sin mejoras
+    expect(solo.mejoras).toMatchObject({ enfriamiento: false, escudo: false });
+    expect(solo.usadas).toEqual([]);
+  });
+
   it("elige el transporte por configuración", () => {
     expect(elegirTransporte({})).toBe("local");
     expect(elegirTransporte({ VITE_PHOTON_APP_ID: "x" })).toBe("photon");
     expect(elegirTransporte({ VITE_PHOTON_APP_ID: "x", VITE_TRANSPORT: "local" })).toBe("local");
     expect(() => crearTransporte({ VITE_TRANSPORT: "photon" }, { hostname: "", search: "" })).toThrow(/VITE_PHOTON_APP_ID/);
+  });
+});
+
+describe("falla encadenada: bono Diagnóstico", () => {
+  it("solo si midió después de salir la segunda y la acierta a la primera", () => {
+    const solo = new Net(new Mem("p8"), () => t);
+    const pod = { numero: 7, zonas: [{ zona: 0, nombre: "radar" as const, circuito: "led" as const, volts: 9, opciones: ["100", "470"], reparada: false }] };
+    const res = (veredicto: "correcto" | "poco", hayMas?: true) => solo.onMessage({ t: "result", seq: 1, t0: 0, zona: 0, veredicto, waitMs: 0, despachados: 6, pod, ...(hayMas && { hayMas }) });
+    const medir = () => solo.medir(0, "470", "tension", "pieza");
+
+    medir(); res("correcto", true); res("correcto"); // midió antes de salir la segunda: no cuenta
+    expect(solo.hayMas).toBe(1);
+    expect(solo.diagnosticos).toBe(0);
+    res("correcto", true); medir(); res("correcto"); // midió y acertó a la primera
+    expect(solo.diagnosticos).toBe(1);
+    expect(solo.extra).toBe(DIAGNOSTICO);
+    res("correcto", true); medir(); res("poco"); res("correcto"); // falló antes de acertar
+    res("correcto", true); res("correcto"); // no midió
+    expect(solo.diagnosticos).toBe(1);
+    expect(solo.segunda).toBeUndefined();
   });
 });

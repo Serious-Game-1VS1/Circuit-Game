@@ -24,6 +24,10 @@ export interface Pantalla {
   demo: boolean;
   /** Práctica en solitario: sin rival ni reloj; al terminar se vuelve a la entrada (SCRUM-151). */
   practica: boolean;
+  /** Modo Oleadas (práctica sin fin): sin tope de pods; termina a las 3 quemadas (QUEMADAS_OLEADAS). */
+  oleadas: boolean;
+  /** Piezas quemadas de la partida (se muestran en Oleadas). */
+  quemadas: number;
   pod?: PodView;
   /** "Despachar" enviado, esperando la confirmación o el rechazo del árbitro. */
   despachando: boolean;
@@ -58,6 +62,8 @@ export function inicial(): Pantalla {
     nivel: 1,
     demo: false,
     practica: false,
+    oleadas: false,
+    quemadas: 0,
     despachando: false,
     rival: null,
     tarjeta: null,
@@ -136,18 +142,24 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     case "lobby": return { ...p, jugadores: m.players, fase: p.fase === "cuenta" ? "sala" : p.fase };
     case "countdown": return { ...p, fase: "cuenta", cuenta: m.n };
     case "start": return {
-      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, nivel: m.nivel ?? 1, demo: m.demo ?? false, practica: m.practica ?? false, pod: m.pod, rival: m.rival,
-      despachando: false, vistas: {}, tarjeta: null, terminaEn: ahora + m.restanteMs,
+      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, nivel: m.nivel ?? 1, demo: m.demo ?? false, practica: m.practica ?? false, oleadas: m.oleadas ?? false, quemadas: m.despachados === 0 ? 0 : p.quemadas, pod: m.pod, rival: m.rival,
+      despachando: false, vistas: {}, tarjeta: null, terminaEn: ahora + m.restanteMs, end: undefined,
     };
     case "result": {
       const circuito = p.pod?.zonas.find((z) => z.zona === m.zona)?.circuito;
-      const vista = vistaDeVeredicto(m.veredicto, circuito);
+      // Escudo (práctica): el veredicto sigue siendo "se quema"/"corto", pero la pieza se salva (sin tarjeta, bloqueo ni quemada).
+      const base = vistaDeVeredicto(m.veredicto, circuito);
+      const vista = m.escudo ? { ...base, quemado: false, cortocircuito: false, mensaje: "¡Escudo! Salvó tu pieza de quemarse. Prueba otra." } : base;
       const listo = m.pod.zonas.every((z) => z.reparada), falta = faltan(m.pod);
+      // Falla encadenada: la zona sigue dañada, así que la aguja vuelve a cero y el aviso lo dice.
+      const otras = { ...p.vistas };
+      delete otras[m.zona];
       return {
         ...p, despachados: m.despachados, pod: m.pod, esperaHasta: ahora + m.waitMs,
-        vistas: { ...p.vistas, [m.zona]: vista },
+        quemadas: p.quemadas + Number(!m.escudo && (m.veredicto === "se quema" || m.veredicto === "corto")),
+        vistas: m.hayMas ? otras : { ...p.vistas, [m.zona]: vista },
         tarjeta: vista.quemado || vista.cortocircuito ? { zona: m.zona, hasta: ahora + Math.max(BURN_CARD_MS, m.waitMs) } : p.tarjeta,
-        aviso: listo ? "¡Pod reparado! Pulsa Despachar" : m.veredicto === "correcto" && falta ? `${vista.mensaje} Falta reparar: ${falta}` : m.waitMs ? `${vista.mensaje} · espera ${segundos(m.waitMs)} s` : vista.mensaje,
+        aviso: m.hayMas ? `¡Hay más! ${NOMBRE_ZONA[m.pod.zonas.find((z) => z.zona === m.zona)!.nombre]} tiene otra falla: mide y elige de nuevo` : listo ? "¡Pod reparado! Pulsa Despachar" : m.veredicto === "correcto" && falta ? `${vista.mensaje} Falta reparar: ${falta}` : m.waitMs ? `${vista.mensaje} · espera ${segundos(m.waitMs)} s` : vista.mensaje,
       };
     }
     // El contador sube solo aquí: cuando el árbitro confirma el despacho.
@@ -159,7 +171,7 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     case "medida": return { ...p, medida: m };
     case "rival": return { ...p, rival: { alias: m.alias, despachados: m.despachados, estado: m.estado } };
     case "end":
-      if (p.practica) return { ...inicial(), alias: p.alias, aviso: "Práctica terminada: ¡buen trabajo!" };
+      if (p.practica) return { ...inicial(), alias: p.alias, aviso: "Práctica terminada: ¡buen trabajo!", end: m };
       return { ...p, fase: m.phase === "fin" && m.carrera ? (p.fase === "podio" ? "podio" : "carrera") : "fin", fin: textoFin(m, p.station), end: m };
     default: return p;
   }

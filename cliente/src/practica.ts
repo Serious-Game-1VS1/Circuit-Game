@@ -12,9 +12,9 @@ export class PracticaTransport implements Transport {
   readonly arbiter: Arbiter;
   private timer?: ReturnType<typeof setInterval>;
 
-  constructor(nivel: Nivel, semilla?: number) {
+  constructor(nivel: Nivel, semilla?: number, oleadas = false) {
     // queueMicrotask: la respuesta llega después de enviar, como por la red.
-    this.arbiter = new Arbiter((_peer, msg) => queueMicrotask(() => this.onMessage(msg, "arbitro")), { nivel, semilla, practica: true });
+    this.arbiter = new Arbiter((_peer, msg) => queueMicrotask(() => this.onMessage(msg, "arbitro")), { nivel, semilla, practica: true, oleadas });
   }
 
   async create(): Promise<void> {}

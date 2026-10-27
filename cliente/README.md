@@ -39,7 +39,7 @@ npm install
 npm run dev            # http://localhost:5173
 ```
 
-Cada jugador abre la página, escribe el código de 6 caracteres y su alias. «Practicar» (con su nivel) juega solo, sin código ni rival: el árbitro corre en el navegador, no hay carrera ni CSV, y se sale tocando la línea «Práctica» del HUD o al despachar los 5 pods. Al terminar, "Volver a jugar" regresa a Entrar con el alias puesto; se usa el código de la sala libre que muestra la consola. El botón «Tutorial» abre una práctica guiada de 8 pasos (con «Saltar»), de semilla fija y opcional; vive en `cliente/src/tutorial.ts`.
+Cada jugador abre la página, escribe el código de 6 caracteres y su alias. «Practicar» (con su nivel) juega solo, sin código ni rival: el árbitro corre en el navegador, no hay carrera ni CSV, y se sale tocando la línea «Práctica» del HUD o al despachar los 5 pods. El selector de nivel de Entrar (nivel 2 con candado hasta completar el 1) solo afecta a la práctica; en duelo el nivel lo fija el servidor (`--nivel`/`NIVEL`). Al terminar, "Volver a jugar" regresa a Entrar con el alias puesto; se usa el código de la sala libre que muestra la consola. El botón «Tutorial» abre una práctica guiada e interactiva de 10 pasos sobre un pod fijo (Cabina a 9 V): cada paso pide una acción (elegir 1000 Ω, Probar, elegir 100 Ω y quemarla, medir con Tensión durante el bloqueo, elegir 220 Ω, Probar, Despachar) y solo avanza cuando el juego la confirma. «Saltar» siempre visible deja la práctica libre; el último paso, «Jugar práctica», abre una práctica normal de 5 pods. Vive en `cliente/src/tutorial.ts` (`avanzar`, `permite`; pruebas en `test/tutorial.test.ts`).
 
 Si se pierde la conexión durante la partida, el cliente vuelve solo a la misma sala con el mismo alias cada 2 s; el árbitro guarda el asiento 30 s.
 
@@ -97,6 +97,13 @@ npm run dev -- --host     # muestra la URL Network, p. ej. http://192.168.1.20:5
 ```
 
 Abre esa URL en el celular (misma Wi-Fi que el computador). Para jugar desde otra red, publica el build (`npm run build`, carpeta `dist/`) en cualquier hosting estático. El modo `local` no sirve fuera de la LAN porque el relé está en el puerto 8787 del computador.
+
+## Audio
+
+Suena con clic de botón, elegir/soltar pieza, cable, veredictos (correcto, poco, demasiado, rechazo), quemada, zona reparada, despacho, cuenta 3-2-1 y «¡Ya!», ganaste/perdiste y práctica terminada (`src/audio.ts`).
+El botón ♪/× (Entrar y Taller) silencia y se recuerda en el navegador; el volumen es bajo (0,15) y el audio se activa con el primer toque (móviles).
+Los sonidos son PROVISIONALES: se sintetizan con la Web Audio API (sin archivos) hasta tener sonidos propios; la tabla `SONIDOS` los define.
+Sin soporte de Web Audio el juego funciona igual, en silencio.
 
 ## Comandos
 

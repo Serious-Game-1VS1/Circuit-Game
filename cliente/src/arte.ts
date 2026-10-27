@@ -7,14 +7,29 @@ import { ANIMACIONES, sprite, SPRITES } from "./sprites";
 
 export const FUENTE = "pixel";
 
-/** Carga el kit en el preload de la escena que lo usa (las texturas quedan para todo el juego). */
-export function cargarArte(s: Phaser.Scene) {
+/**
+ * Carga el kit en el preload de la escena que lo usa (las texturas quedan para todo el juego). La Sala lo precarga
+ * en segundo plano (luego `s.load.start()`) para que el Taller no quede en negro tras la cuenta. Mientras carga
+ * muestra «Cargando taller… n %» en `y` (la escena se pinta durante su preload).
+ */
+export function cargarArte(s: Phaser.Scene, y = 320) {
   // shortcut: ~180 PNG sueltos (pocos KB en total); si la carga en móvil se nota lenta, empaquetarlos en un atlas.
   s.load.setPath("arte/");
   for (const x of SPRITES) if (!s.textures.exists(x.nombre)) s.load.image(x.nombre, x.archivo);
+  // Si una escena se paró cargando, sus ~32 descargas en vuelo igual terminan y pueblan la textura: no re-añadirla (daba «Texture key already in use»).
+  s.load.on("addfile", (_k: string, _t: string, _l: unknown, file: Phaser.Loader.File) => {
+    const añadir = file.addToCache.bind(file);
+    file.addToCache = () => { if (file.type !== "image" || !s.textures.exists(file.key)) añadir(); };
+  });
   if (!s.cache.bitmapFont.exists(FUENTE)) s.load.bitmapFont(FUENTE, "ui/fuente_pixel.png", "ui/fuente_pixel.xml");
   s.load.setPath("");
+  // Sin nada que cargar el preload no emite "complete": el aviso solo se crea si hay archivos en cola.
+  const aviso = s.load.list.size ? s.add.text(180, y, "Cargando taller… 0 %", { fontSize: "16px", color: "#9ab" }).setOrigin(0.5) : null;
+  const progreso = (f: number) => aviso?.setText(`Cargando taller… ${Math.round(f * 100)} %`);
+  s.load.on("progress", progreso);
   s.load.once("complete", () => {
+    s.load.off("progress", progreso);
+    aviso?.destroy();
     for (const k of [...SPRITES.map((x) => x.nombre), FUENTE]) s.textures.get(k).setFilter(Phaser.Textures.FilterMode.NEAREST);
     for (const x of ANIMACIONES) {
       if (!s.anims.exists(x.clave)) s.anims.create({ key: x.clave, frames: x.frames.map((key) => ({ key })), frameRate: x.frameRate, repeat: x.repeat });

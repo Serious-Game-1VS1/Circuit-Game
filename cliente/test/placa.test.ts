@@ -54,6 +54,9 @@ describe("placa 4×4: del cableado al montaje que juzga el árbitro", () => {
     const medio = curva(cs[0]!, 0)[10]!;
     expect(cableEn(cs, medio.x, medio.y)).toBe(0);
     expect(cableEn(cs, coord("1,3").x, coord("1,3").y)).toBe(-1); // en el extremo manda la casilla
+    // Objetivo táctil: acierta a 20 px de la curva (en vertical, la curva es oblicua: ≤ 20) y falla a 30 px.
+    expect(cableEn(cs, medio.x, medio.y + 20)).toBe(0);
+    expect(cableEn(cs, medio.x, medio.y + 40)).toBe(-1);
     // Un cable que pasa por encima de otra casilla no le roba el toque en su centro.
     const fila = cables(["2,1", "-"]), c22 = coord("2,2");
     expect(cableTocado(fila, c22.x, c22.y)).toBe(-1);
