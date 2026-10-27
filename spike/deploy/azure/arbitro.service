@@ -1,0 +1,21 @@
+[Unit]
+Description=CircuitSync - arbitro (Photon)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=arbitro
+Group=arbitro
+WorkingDirectory=/opt/circuitsync/spike
+EnvironmentFile=/etc/circuitsync/arbitro.env
+ExecStart=/usr/bin/npm run serve:photon
+Restart=always
+RestartSec=5
+# Endurecimiento basico; los CSV (bench-out/) y data/ se escriben dentro de WorkingDirectory
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/opt/circuitsync/spike
+
+[Install]
+WantedBy=multi-user.target

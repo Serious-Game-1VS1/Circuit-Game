@@ -39,7 +39,7 @@ Copia `.env.example` a `spike/.env` (ignorado por git; no lo subas):
 | `npm run bench:photon4` | 4 duelos simultáneos (12 CCU) en Photon; `-- --region sa` o `-- --local`. |
 | `npm run poc:photon` | Prueba de concepto: árbitro y dos clientes en una sala Photon; mide RTT. |
 
-`serve` y `serve:photon` aceptan `--nivel 1|2` (por defecto 1) y `--semilla N` (entero de 0 a 2^32-1; por defecto aleatoria):
+`serve` y `serve:photon` aceptan `--nivel 1|2|mixto` (por defecto `mixto`: pods 1-3 de nivel 1 en rampa LED, LED, Cabina y pods 4-5 de nivel 2 con al menos 3 familias distintas: cables/placa, interruptor, fusible, LED invertido, circuito abierto) y `--semilla N` (entero de 0 a 2^32-1; por defecto aleatoria):
 
 ```bash
 npm run serve -- --nivel 2 --semilla 42
