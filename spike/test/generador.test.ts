@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generar, mulberry32, presupuesto, validarPartida, validarZona, type Pod } from "../src/engine/generador.js";
+import { encadena, generar, generarOleada, mulberry32, oleadaDe, presupuesto, validarPartida, validarPodOleada, validarZona, type Pod } from "../src/engine/generador.js";
 import { evaluar } from "../src/engine/pods.js";
 import type { Nivel } from "../src/protocol.js";
 
@@ -55,6 +55,14 @@ describe("generador de pods (RF-06)", () => {
     for (const nivel of NIVELES) {
       const pods = generar(99, nivel);
       expect(pods.slice(0, 3).every((p) => presupuesto(p) <= 2)).toBe(true);
+    }
+  });
+
+  it.each([1, 2, "mixto"] as const)("justicia, perfil %s: 1000 semillas, presupuesto por pod acotado (≤2 en pods 1-3, ≤7 en 4-5) y regenerado igual para el otro jugador", (perfil) => {
+    for (let s = 0; s < 1000; s++) {
+      const a = generar(s, perfil), b = generar(s, perfil);
+      expect(a.map(presupuesto)).toEqual(b.map(presupuesto));
+      a.forEach((p, i) => expect(presupuesto(p)).toBeLessThanOrEqual(i < 3 ? 2 : 7));
     }
   });
 
@@ -140,4 +148,47 @@ describe("generador en modo demo de cableado (Cabina y Turbina)", () => {
   it("10 000 sorteos válidos y deterministas: pods 1-3 con una zona, 4-5 con una o dos, ambas mecánicas en la partida", () => {
      // ...
   }, 15000); 
+});
+
+describe("falla encadenada (solo Oleadas)", () => {
+  const h = (x: string) => { let a = 5381; for (const c of x) a = (Math.imul(a, 33) ^ c.charCodeAt(0)) >>> 0; return a; };
+  // Huellas (nivel 2 actualizado al añadir LED invertido y circuito abierto); tomadas antes de añadir la encadenada: el duelo, la práctica normal y las zonas de Oleadas no deben cambiar.
+  const HUELLAS: [Nivel, number, number, number][] = [
+    [1, 1, 3303168567, 644005380], [1, 7, 350318067, 1267894063], [1, 42, 210100651, 2322169135], [1, 20261019, 1966667399, 4137727553],
+    [2, 1, 3355728347, 2966361371], [2, 7, 3147094937, 3772403275], [2, 42, 2982547121, 2629610711], [2, 20261019, 4235179758, 4285239548],
+  ];
+  it.each(HUELLAS)("nivel %i, semilla %i: mismos pods que antes (partida y zonas de las 18 primeras oleadas)", (nivel, s, partida, oleada) => {
+    expect(h(JSON.stringify(generar(s, nivel)))).toBe(partida);
+    const zonas = Array.from({ length: 18 }, (_, i) => { const p = generarOleada(s, nivel, i + 1); return { numero: p.numero, zonas: p.zonas }; });
+    expect(h(JSON.stringify(zonas))).toBe(oleada);
+  });
+
+  it("rampa: ninguna en las oleadas 1 y 2; un pod de cada 3 desde la 3 y uno de cada 2 desde la 5", () => {
+    for (let s = 0; s < 200; s++) {
+      for (let n = 1; n <= 6; n++) expect(encadena(s, n)).toBe(false);
+      for (const g of [7, 10]) expect([0, 1, 2].filter((i) => encadena(s, g + i))).toHaveLength(1);
+      for (let g = 13; g < 31; g += 2) expect([0, 1].filter((i) => encadena(s, g + i))).toHaveLength(1);
+    }
+    expect(oleadaDe(7)).toBe(3);
+    expect(oleadaDe(13)).toBe(5);
+  });
+
+  it.each(NIVELES)("nivel %i: 300 sorteos de 18 pods válidos; la segunda falla se resuelve con otra pieza y es determinista", (nivel) => {
+    let vistas = 0;
+    for (let s = 0; s < 300; s++) {
+      for (let n = 1; n <= 18; n++) {
+        const p = generarOleada(s, nivel, n);
+        expect(validarPodOleada(p, nivel)).toBeNull();
+        expect(JSON.stringify(generarOleada(s, nivel, n))).toBe(JSON.stringify(p));
+        if (!encadena(s, n)) expect(p.encadenada).toBeUndefined();
+        if (p.encadenada) {
+          vistas++;
+          const b = p.zonas.find((z) => z.zona === p.encadenada!.zona)!;
+          expect(p.encadenada.opciones.map((o) => evaluar(p.encadenada!, o)).filter((v) => v === "correcto")).toHaveLength(1);
+          expect(evaluar(p.encadenada, b.solucion)).not.toBe("correcto"); // repetir la pieza de la primera no sirve
+        }
+      }
+    }
+    expect(vistas).toBeGreaterThan(300);
+  });
 });

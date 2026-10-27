@@ -1,6 +1,46 @@
 import { describe, expect, it } from "vitest";
 import { avisoVivo, despachable, faltan, inicial, textoRechazo, pistaDemo, tarjetaVisible, reducir, reloj, textoFin, textoRival, validarEntrada } from "../src/pantalla";
+import type { PodView, ServerMsg } from "../../spike/src/protocol";
 import { vistaDeVeredicto } from "../src/vista";
+import { eventosDe } from "../src/audio";
+
+describe("start tras una práctica", () => {
+  it("borra el end anterior para que suenen ganaste/perdiste en el duelo siguiente", () => {
+    const end = { t: "end", phase: "fin", winner: "A", reason: "", score: {} } as const;
+    const tras = reducir({ ...inicial(), practica: true }, end, 0);
+    expect(tras.end).toBeDefined();
+    const p = reducir(tras, { t: "start", despachados: 0, total: 5, pod: { numero: 1, zonas: [] }, rival: null, restanteMs: 1000 } as never, 0);
+    expect(p.end).toBeUndefined();
+  });
+});
+
+describe("Oleadas y escudo (práctica)", () => {
+  const pod: PodView = { numero: 1, zonas: [{ zona: 0, nombre: "radar", circuito: "led", volts: 9, opciones: ["a", "b"], reparada: false }] };
+  const start = (p = inicial()) => reducir(p, { t: "start", despachados: 0, total: 0, oleadas: true, practica: true, pod, rival: null, restanteMs: 0, nivel: 1, demo: false }, 0);
+  const result = (veredicto: "se quema" | "corto" | "poco", escudo?: true): ServerMsg => ({ t: "result", seq: 1, t0: 0, zona: 0, veredicto, waitMs: 0, despachados: 0, pod, ...(escudo && { escudo }) });
+
+  it("el start de Oleadas marca la partida, sin total, y empieza sin quemadas", () => {
+    expect(start()).toMatchObject({ oleadas: true, total: 0, quemadas: 0, practica: true });
+    expect(start({ ...inicial(), quemadas: 2 }).quemadas).toBe(0);
+  });
+
+  it("cuenta las quemadas (se quema y corto), no los fallos normales", () => {
+    let p = start();
+    p = reducir(p, result("poco"), 0);
+    expect(p.quemadas).toBe(0);
+    p = reducir(p, result("se quema"), 0);
+    p = reducir(p, result("corto"), 0);
+    expect(p.quemadas).toBe(2);
+  });
+
+  it("con Escudo la quemada no cuenta ni muestra tarjeta, y el mensaje lo dice", () => {
+    const p = reducir(start(), result("se quema", true), 1000);
+    expect(p.quemadas).toBe(0);
+    expect(p.tarjeta).toBeNull();
+    expect(p.vistas[0]).toMatchObject({ quemado: false });
+    expect(p.aviso).toMatch(/Escudo/);
+  });
+});
 
 describe("lógica de pantalla", () => {
   it("valida código (6) y alias (1–12)", () => {
@@ -122,5 +162,31 @@ describe("lógica de pantalla", () => {
     expect(pistaDemo(p, false, "cablear")).toBe("cablear");
     expect(pistaDemo(p, false, null)).toBe("probar");
     expect(pistaDemo(p, true, "cablear")).toBeNull();
+  });
+});
+
+describe("falla encadenada (Oleadas)", () => {
+  const zona = (reparada: boolean, volts: number) => ({ zona: 0, nombre: "radar" as const, circuito: "led" as const, volts, opciones: ["100", "470"], reparada });
+  const p0: PodView = { numero: 7, zonas: [zona(false, 4.5)] };
+  const segunda: PodView = { numero: 7, zonas: [zona(false, 9)] };
+  const result = (pod: PodView, hayMas?: true): ServerMsg => ({ t: "result", seq: 1, t0: 0, zona: 0, veredicto: "correcto", waitMs: 0, despachados: 6, pod, ...(hayMas && { hayMas }) });
+  const antes = { ...inicial(), fase: "taller" as const, oleadas: true, pod: p0, vistas: { 0: vistaDeVeredicto("poco", "led") } };
+
+  it("hayMas: la zona sigue dañada con su segunda falla, la aguja vuelve a cero y el aviso lo anuncia", () => {
+    const p = reducir(antes, result(segunda, true), 0);
+    expect(p.vistas).toEqual({});
+    expect(p.pod?.zonas[0]).toMatchObject({ volts: 9, reparada: false });
+    expect(p.aviso).toMatch(/^¡Hay más! Radar tiene otra falla/);
+    expect(despachable(p)).toBe(false);
+  });
+
+  it("sin hayMas un acierto sigue siendo un acierto normal", () => {
+    const p = reducir(antes, result({ numero: 7, zonas: [zona(true, 4.5)] }), 0);
+    expect(p.vistas[0]).toBeDefined();
+    expect(p.aviso).toMatch(/Despachar/);
+  });
+
+  it("suena como «correcto» y no como rechazo", () => {
+    expect(eventosDe(antes, reducir(antes, result(segunda, true), 5))).toEqual(["correcto"]);
   });
 });

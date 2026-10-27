@@ -3,11 +3,13 @@
  * viene decidido en el End del árbitro; el pod que corre, las llamas y «qué repasar» también.
  * Sprites del kit (arte/carrera, arte/pods/*_carrera_*, arte/ui/cartel_*). Escala 2 en la carrera.
  */
+import { cargarPerfil, mejorNave } from "./perfil";
+import { panelRecompensas, tomarFantasma, tomarPendiente } from "./recompensas";
 import * as Phaser from "phaser";
 import type { Station } from "../../spike/src/protocol";
 import type { Net } from "./net";
 import { cargarArte, letras, marco, toque } from "./arte";
-import { chasis, CHASIS, decision, f, podio, TXT } from "./podio";
+import { chasisCarril, CHASIS, contraRecord, decision, f, mmss, podio, TXT } from "./podio";
 
 const W = 360, H = 640;
 /** x de la línea de meta en la carrera. */
@@ -42,9 +44,14 @@ function fondo(s: Phaser.Scene) {
   return ["capa_lejana_movil", "capa_cercana_movil"].map((k) => s.add.tileSprite(0, 0, 90, 200, k).setOrigin(0).setScale(4));
 }
 
+/** Un carril de la carrera: chasis, llamas, etiqueta y si cruza la meta. */
+interface Lane { id: string; ch: string; llamas: number; etq: string; gana: boolean; alpha?: number }
+
 export class Carrera extends Phaser.Scene {
   private capas: Phaser.GameObjects.TileSprite[] = [];
   private corriendo = false;
+  /** Adónde va al terminar o saltar: el podio (duelo) o la entrada con Recompensas (práctica). */
+  private salir: () => void = () => {};
   constructor(private readonly net: Net) { super("Carrera"); }
 
   preload() { cargar(this); }
@@ -53,33 +60,51 @@ export class Carrera extends Phaser.Scene {
 
   create() {
     animaciones(this);
+    const g = tomarFantasma(); // práctica terminada: carrera contra tu récord (sin End de carrera ni rival)
     const e = this.net.estado.end!, yo = this.net.estado.station ?? "A";
     this.capas = fondo(this);
     this.corriendo = false;
-    texto(this, W / 2, 16, TXT.carreraTitulo, 3);
-    texto(this, W / 2, 56, decision(e), 2);
-    texto(this, W / 2, 132, TXT.carreraAyuda, 2, 0xccddee);
 
-    // Dos carriles: el mío arriba. Meta a la derecha.
-    const carriles: Station[] = [yo, yo === "A" ? "B" : "A"];
+    // Carriles: el mío arriba. En duelo, mi nave es la mejor que desbloqueé; el árbitro manda las llamas (siempre ≥ mi racha: cuenta todos los despachos limpios).
+    let lanes: Lane[], sub: string, ayuda: string, gane: boolean;
+    if (g) {
+      const res = contraRecord(g.ms, g.previo), nave = chasisCarril(1, g.nave);
+      lanes = [{ id: "yo", ch: nave, llamas: g.llamas, etq: f(TXT.fantasmaTu, { t: mmss(g.ms) }), gana: res !== "pierde" }];
+      if (g.previo !== undefined) lanes.push({ id: "rec", ch: nave, llamas: 0, etq: f(TXT.fantasmaRec, { t: mmss(g.previo) }), gana: res === "pierde", alpha: 0.55 });
+      sub = { primero: TXT.fantasmaPrimero, gana: TXT.fantasmaGana, pierde: TXT.fantasmaPierde }[res];
+      ayuda = TXT.fantasmaAyuda; gane = res !== "pierde";
+      this.salir = () => this.scene.start("Entrar"); // luego Recompensas (siguen pendientes)
+    } else {
+      const carriles: Station[] = [yo, yo === "A" ? "B" : "A"];
+      lanes = carriles.map((s) => {
+        const c = e.carrera?.[s], sc = e.score[s], mia = s === yo && sc ? mejorNave(cargarPerfil(sc.alias)) : 0;
+        return { id: s, ch: chasisCarril(c?.pod ?? 1, mia), llamas: c?.llamas ?? 0, etq: `${sc?.alias ?? "-"}${s === yo ? " (tú)" : ""} · ${f(TXT.podLuce, { n: c?.pod ?? 1 })}`, gana: e.winner === null || s === e.winner };
+      });
+      sub = decision(e); ayuda = TXT.carreraAyuda; gane = e.winner === yo;
+      this.salir = () => this.net.verPodio();
+    }
+    texto(this, W / 2, 16, g ? TXT.fantasmaTitulo : TXT.carreraTitulo, 3);
+    texto(this, W / 2, 56, sub, 2);
+    texto(this, W / 2, 132, ayuda, 2, 0xccddee);
+
     const Y = [420, 540];
-    for (const y of Y) this.add.tileSprite(0, y - 12, 180, 24, "pista_recta").setOrigin(0).setScale(2);
+    for (const y of Y.slice(0, lanes.length)) this.add.tileSprite(0, y - 12, 180, 24, "pista_recta").setOrigin(0).setScale(2);
     this.add.tileSprite(META, Y[0]! - 70, 4, 100, "meta").setOrigin(0).setScale(2);
     this.add.image(META + 4, Y[0]! - 70, "cartel_meta").setScale(2);
+    // Mejoras que elegiste en la partida (solo práctica), bajo el último carril (entre carriles pisaría la etiqueta del segundo).
+    if (g?.mejoras) texto(this, W / 2, Y[lanes.length - 1]! + 22, f(TXT.mejoras, { m: g.mejoras }), 2, 0xccddee);
 
-    const pods = carriles.map((s, i) => {
-      const c = e.carrera?.[s], sc = e.score[s];
+    const pods = lanes.map((l, i) => {
       const y = Y[i]!;
-      const ch = chasis(c?.pod ?? 1);
-      const llamas = Array.from({ length: c?.llamas ?? 0 }, () =>
+      const llamas = Array.from({ length: l.llamas }, () =>
         this.add.sprite(0, 0, "llama_turbo_cian_0").setOrigin(1, 0.5).setScale(2).play("llama_turbo_cian"));
-      const pod = this.add.sprite(0, 0, `${ch}_carrera_0`).setOrigin(0.5, 1).setScale(2).play(`${ch}_carrera`);
-      const etq = texto(this, 0, 0, `${sc?.alias ?? "-"}${s === yo ? " (tú)" : ""} · ${f(TXT.podLuce, { n: c?.pod ?? 1 })}`, 2);
-      const grupo = this.add.container(-110, y, [...llamas, pod, etq]).setDepth(CAPA.texto);
+      const pod = this.add.sprite(0, 0, `${l.ch}_carrera_0`).setOrigin(0.5, 1).setScale(2).play(`${l.ch}_carrera`);
+      const etq = texto(this, 0, 0, l.etq, 2).setMaxWidth(190); // a dos líneas: centrada sobre la nave cerca de la meta, una línea se salía de la pantalla
+      const grupo = this.add.container(-110, y, [...llamas, pod, etq]).setDepth(CAPA.texto).setAlpha(l.alpha ?? 1);
       // Llamas detrás del pod, apiladas; la etiqueta encima.
-      llamas.forEach((l, k) => l.setPosition(-90, -18 - (k - (llamas.length - 1) / 2) * 9));
-      etq.setPosition(0, -110);
-      return { s, grupo };
+      llamas.forEach((x, k) => x.setPosition(-90, -18 - (k - (llamas.length - 1) / 2) * 9));
+      etq.setPosition(0, -126);
+      return { l, grupo };
     });
 
     // Semáforo 3-2-1-¡YA! (0,5 s cada luz) y luego la carrera (~3 s).
@@ -88,17 +113,17 @@ export class Carrera extends Phaser.Scene {
     this.time.delayedCall(2000, () => {
       sem.setVisible(false);
       this.corriendo = true;
-      for (const { s, grupo } of pods) {
-        const gana = e.winner === null || s === e.winner;
+      for (const { l, grupo } of pods) {
         // supuesto: el ganador cruza la meta; el otro queda atrás (en empate, cruzan juntos).
-        this.tweens.add({ targets: grupo, x: gana ? META - 70 : META - 170, duration: gana ? 2600 : 3000, ease: "Sine.easeInOut" });
+        this.tweens.add({ targets: grupo, x: l.gana ? META - 90 : META - 190, duration: l.gana ? 2600 : 3000, ease: "Sine.easeInOut" });
       }
-      this.time.delayedCall(3000, () => this.llegada(pods.find((p) => p.s === e.winner)?.grupo, e.winner === yo));
+      // En empate de duelo nadie se resalta; contra tu récord, quien gane.
+      this.time.delayedCall(3000, () => this.llegada(pods.find((p) => (g ? p.l.gana : p.l.id === e.winner))?.grupo, gane));
     });
     // Toca para saltar (tras 1 s, para que no se salte por el toque del despacho).
     this.time.delayedCall(1000, () => {
       texto(this, W / 2, H - 40, TXT.saltar, 2, 0xccddee);
-      this.input.once("pointerdown", () => this.net.verPodio());
+      this.input.once("pointerdown", () => this.salir());
     });
   }
 
@@ -116,7 +141,7 @@ export class Carrera extends Phaser.Scene {
       let i = 0;
       this.time.addEvent({ delay: 100, loop: true, callback: () => confeti.setTexture(`confeti_${++i % 4}`) });
     }
-    this.time.delayedCall(1800, () => this.net.verPodio());
+    this.time.delayedCall(1800, () => this.salir());
   }
 
   update(_t: number, dt: number) {
@@ -142,11 +167,13 @@ export class Podio extends Phaser.Scene {
     // Podio con el pod que corrió el ganador (o el mío en empate).
     const quien = e.winner ?? yo ?? "A";
     this.add.image(W / 2, 290, "podio").setOrigin(0.5, 1).setScale(3);
-    const ch = chasis(e.carrera?.[quien]?.pod ?? 1);
+    // El jugador ve su mejor nave desbloqueada; la del rival sigue el pod que corrió (sprites del kit).
+    const mia = yo && e.score[yo] ? mejorNave(cargarPerfil(e.score[yo]!.alias)) : 0;
+    const ch = chasisCarril(e.carrera?.[quien]?.pod ?? 1, quien === yo ? mia : 0);
     this.add.sprite(W / 2, 290 - 3 * 26, `${ch}_carrera_0`).setOrigin(0.5, 1).setScale(1.5).play(`${ch}_carrera`);
 
     const { filas, repasar, podLento } = podio(e, yo);
-    const tabla = filas.map((x) => `${x.puesto} ${x.alias}${x.yo ? " (tú)" : ""}\nTiempo ${x.tiempo} · Pods ${x.pods}/5\nLimpios ${x.limpios} · Quemados ${x.quemados}`);
+    const tabla = filas.map((x) => `${x.puesto} ${x.alias}${x.yo ? " (tú)" : ""} · ${x.puntos} puntos\nTiempo ${x.tiempo} · Pods ${x.pods}/5\nLimpios ${x.limpios} · Quemados ${x.quemados}`);
     texto(this, W / 2, 298, tabla.join("\n"), 2);
 
     const caja = this.add.rectangle(W / 2, 498, W - 24, 124, 0x140f1f, 0.85).setStrokeStyle(2, 0xe0a43c);
@@ -156,5 +183,7 @@ export class Podio extends Phaser.Scene {
     marco(this, W / 2, 600, "boton_primario", W - 32, 52);
     texto(this, W / 2, 592, "Volver a jugar", 2, 0x140f1f).setDropShadow(0, 0, 0, 0);
     toque(this, W / 2, 600, W - 32, 52, () => void this.net.salir());
+    const g = tomarPendiente();
+    if (g) panelRecompensas(this, g.eventos, g.perfil);
   }
 }

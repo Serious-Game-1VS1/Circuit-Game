@@ -9,6 +9,7 @@ describe("multímetro del Taller", () => {
     const m = { seq: 3, desde: 1000, punto: "carga1" };
     expect(lecturaLista(m, tension(0.5, "parte"), 1000 + MEDIR_MS - 1)).toBeNull();
     expect(lecturaLista(m, undefined, 5000)).toBeNull();
+    expect(lecturaLista(m, tension(0.5, "parte"), 1000 + MEDIR_MS / 2, MEDIR_MS / 2)).not.toBeNull(); // Multímetro rápido
     expect(lecturaLista(m, { ...tension(0.5, "parte"), seq: 2 }, 5000)).toBeNull();
     expect(lecturaLista(m, tension(0.5, "parte"), 1000 + MEDIR_MS)).toMatchObject({ fraccion: 0.5 });
   });
@@ -17,6 +18,8 @@ describe("multímetro del Taller", () => {
     expect([0, 0.5, 1, 2].map(anguloTension)).toEqual([-60, 0, 60, 60]);
     expect(textoMedida(tension(1, "toda"))).toMatch(/camino está cortado/);
     expect(textoMedida({ ...tension(0, "nada"), modo: "continuidad", pasa: false })).toMatch(/^No pasa/);
+    expect(textoMedida(tension(1, "toda"), "invertido")).toMatch(/mira su sentido/); // LED invertido: pista de polaridad, no «cortado»
+    expect(textoMedida(tension(1, "toda"), "abierto")).toMatch(/camino está cortado/);
     expect(textoModo("continuidad")).toMatch(/^Batería desconectada/);
   });
 });

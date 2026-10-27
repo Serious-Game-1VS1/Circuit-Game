@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { End } from "../../spike/src/protocol";
-import { chasis, decision, mmss, podio } from "../src/podio";
+import { chasis, chasisCarril, contraRecord, decision, mmss, podio } from "../src/podio";
 import { inicial, reducir } from "../src/pantalla";
 
 const END: End = {
@@ -54,4 +54,18 @@ describe("carrera final y podio", () => {
     expect(chasis(1)).toBe("pod1_cometa");
     expect(chasis(5)).toBe("pod5_raya");
   });
+
+  it("mi carril usa mi mejor nave; sin ella, el pod que corre", () => {
+    expect(chasisCarril(2, 4)).toBe("pod4_yunque");
+    expect(chasisCarril(2, 0)).toBe("pod2_burbuja");
+    expect(chasisCarril(3)).toBe("pod3_aguijon");
+  });
+
+  it("carrera contra tu récord: igualarlo gana; sin marca previa es el primero", () => {
+    expect(contraRecord(180_000, 200_000)).toBe("gana");
+    expect(contraRecord(200_000, 200_000)).toBe("gana");
+    expect(contraRecord(200_001, 200_000)).toBe("pierde");
+    expect(contraRecord(180_000)).toBe("primero");
+  });
 });
+

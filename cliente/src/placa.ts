@@ -64,10 +64,10 @@ export function curva(c: Cable, i: number, n = 20) {
   });
 }
 
-// shortcut: un cable se toca a ≤ 12 px de su curva y lejos de sus extremos (allí manda la casilla); si cuesta en móvil, añadir un asa al medio.
+// Un cable se toca a ≤ 22 px de su curva (objetivo de 44 px) y lejos de sus extremos (allí manda la casilla).
 /** Índice del cable bajo (x, y), o -1. */
 export function cableEn(cables: Cable[], x: number, y: number): number {
-  let mejor = -1, dMin = 12;
+  let mejor = -1, dMin = 22;
   cables.forEach((c, i) => {
     const pts = curva(c, i), ini = pts[0]!, fin = pts.at(-1)!;
     for (const p of pts) {

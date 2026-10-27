@@ -3,6 +3,7 @@ node_modules/
 !.env.example
 dist/
 bench-out/
+spike/data/
 *.antes-de-*.docx
 
 # Documentos y notas locales (fuera del repo)

@@ -4,12 +4,13 @@
  * Textos copiados de diseno-taller/prototipo-v3/textos.js (fin, podio, conceptos).
  */
 import type { Carril, Circuito, End, Station } from "../../spike/src/protocol";
+import { puntosDe } from "./progreso";
 
 export const TXT = {
   decidido: "El ganador ya está decidido: {alias}.",
   decididoEmpate: "Empate: mismos pods y mismos quemados.",
   porQue5: "{alias} despachó sus 5 pods primero.",
-  porQueMas: "{alias} despachó más pods antes de los 12 min.",
+  porQueMas: "{alias} despachó más pods cuando se acabó el tiempo.",
   porQueQuemados: "Mismos pods, pero {alias} quemó menos piezas.",
   carreraTitulo: "Carrera final",
   carreraAyuda: "Cada llama = un despacho limpio. La carrera solo celebra: no cambia el ganador.",
@@ -21,6 +22,14 @@ export const TXT = {
   repasarNada: "Nada: todo salió a la primera.",
   repasarCero: "No despachaste ningún pod. Practica en el modo Practicar.",
   podLento: "Tu pod más lento fue el {n} ({t}).",
+  fantasmaTitulo: "Contra tu récord",
+  fantasmaAyuda: "Tu tiempo corre contra tu mejor marca. La carrera solo celebra.",
+  fantasmaGana: "¡Superaste tu récord!",
+  fantasmaPierde: "Tu récord sigue en pie. ¡Otra vez!",
+  fantasmaPrimero: "Primer récord: ahora tienes una marca que batir.",
+  fantasmaTu: "Tú · {t}",
+  fantasmaRec: "Récord · {t}",
+  mejoras: "Mejoras: {m}",
 };
 
 // supuesto: concepto (C1..C12 de textos.js) por circuito, según el mapa zona → concepto del handoff.
@@ -30,11 +39,20 @@ export const CONCEPTO: Record<Circuito, string> = {
   luces: "Luces en paralelo (un camino cada una)",
   interruptor: "El interruptor va en el camino de lo que controla",
   fusible: "Elegir el fusible",
+  invertido: "El LED conduce en un solo sentido (polaridad)",
+  abierto: "Un circuito abierto no deja pasar corriente",
 };
 
 /** Sprite de carrera del pod N (1-5). supuesto: el pod N de la partida usa el chasis N del kit. */
 export const CHASIS = ["pod1_cometa", "pod2_burbuja", "pod3_aguijon", "pod4_yunque", "pod5_raya"] as const;
 export const chasis = (pod: number) => CHASIS[(Math.max(1, pod) - 1) % CHASIS.length]!;
+
+/** Chasis de mi carril: mi mejor nave desbloqueada (`mia`, 1-5) o, sin ella, el pod que corre. */
+export const chasisCarril = (pod: number, mia?: number) => chasis(mia || pod);
+
+/** Práctica terminada: tu tiempo total contra tu mejor marca de ese nivel (`previo`). Igualarla cuenta como ganar. */
+export interface Fantasma { ms: number; previo?: number; nave: number; llamas: number; mejoras: string }
+export const contraRecord = (ms: number, previo?: number): "primero" | "gana" | "pierde" => (previo === undefined ? "primero" : ms <= previo ? "gana" : "pierde");
 
 export const f = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => String(v[k] ?? m));
 
@@ -54,7 +72,7 @@ export function decision(e: End): string {
   return `${f(TXT.decidido, { alias: g.alias })}\n${f(porQue, { alias: g.alias })}`;
 }
 
-export interface Fila { puesto: string; alias: string; gana: boolean; tiempo: string; pods: number; limpios: number; quemados: number; yo: boolean }
+export interface Fila { puntos: number; puesto: string; alias: string; gana: boolean; tiempo: string; pods: number; limpios: number; quemados: number; yo: boolean }
 
 /** Filas del podio (ganador primero) y «qué repasar» del jugador `yo`. */
 export function podio(e: End, yo?: Station) {
@@ -64,6 +82,7 @@ export function podio(e: End, yo?: Station) {
     const sc = e.score[s]!, c = e.carrera?.[s];
     const ms = c?.podMs.reduce((a, b) => a + b, 0) ?? 0;
     return {
+      puntos: puntosDe(sc, c),
       puesto: e.winner === null ? TXT.primero : i === 0 ? TXT.primero : TXT.segundo, alias: sc.alias, gana: s === e.winner,
       tiempo: mmss(ms), pods: sc.despachados, limpios: c?.llamas ?? 0, quemados: sc.quemadas, yo: s === yo,
     };

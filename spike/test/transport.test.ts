@@ -3,7 +3,7 @@ import { runSession } from "../src/bench/session.js";
 import { LocalTransport, startLocalRelay } from "../src/transport/local.js";
 import { Bot } from "../src/sim/bot.js";
 import { simulateDuel } from "../src/sim/duel.js";
-import { createRoom, hostRoom, joinAsPlayer, newCode, validAlias } from "../src/transport/room.js";
+import { createRoom, hostRoom, joinAsPlayer, newCode, pausaReapertura, validAlias } from "../src/transport/room.js";
 import type { Transport } from "../src/transport/transport.js";
 
 let relay: Awaited<ReturnType<typeof startLocalRelay>>;
@@ -78,7 +78,7 @@ describe("transporte local", () => {
   it("duelo completo de extremo a extremo con reconexión y CSV (SCRUM-21/22/23/89/92)", async () => {
     const { outcome, csv } = await simulateDuel(local);
     expect(outcome).toMatchObject({ winner: "A", reason: "5 pods despachados" });
-    expect(csv.split("\r\n")[0]).toBe("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms");
+    expect(csv.split("\r\n")[0]).toBe("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms;nivel;zona_nombre;pieza_correcta");
   }, 20_000);
 
   it("dos clientes terminan con el mismo estado y se mide RTT", async () => {
@@ -99,4 +99,32 @@ describe("transporte Photon", () => {
     expect(r.sameState).toEqual([true]);
     expect(r.own.length).toBeGreaterThan(0);
   }, 60_000);
+});
+
+describe("caída del árbitro (Photon cortado)", () => {
+  it("al perder el transporte detiene la sala y avisa para abrir otra con código nuevo", async () => {
+    // Mismo ciclo que serve.ts: mapa de salas + alCaer quita la muerta y se vuelve a abrir.
+    const salas = new Map<string, Transport>();
+    const abrir = async () => {
+      const t = local();
+      const code = await createRoom(t);
+      const quitar = () => { salas.delete(code); };
+      const room = hostRoom(t, undefined, quitar);
+      salas.set(code, t);
+      return { code, t, room };
+    };
+    const a = await abrir();
+    const stop = vi.spyOn(a.room.arbiter, "tick");
+    a.t.onClose?.(); // lo que dispara PhotonTransport cuando el servidor cierra el socket
+    expect(salas.has(a.code)).toBe(false);
+    await new Promise((r) => setTimeout(r, 250));
+    expect(stop).not.toHaveBeenCalled(); // el temporizador de la sala quedó detenido
+    const b = await abrir();
+    expect(b.code).not.toBe(a.code);
+    expect(salas.size).toBe(1);
+  });
+
+  it("la espera para reabrir crece 2 s, 4 s, 8 s… con tope de 30 s", () => {
+    expect([1, 2, 3, 4, 5, 9].map(pausaReapertura)).toEqual([2000, 4000, 8000, 16000, 30000, 30000]);
+  });
 });

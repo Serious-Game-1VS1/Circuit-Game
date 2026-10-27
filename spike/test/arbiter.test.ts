@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { Arbiter, MATCH_LIMIT_MS } from "../src/arbiter/arbiter.js";
-import { generar } from "../src/engine/generador.js";
+import { encadena, generar, generarOleada } from "../src/engine/generador.js";
 import { evaluar } from "../src/engine/pods.js";
 import type { PodView, ServerMsg } from "../src/protocol.js";
 
@@ -90,6 +90,26 @@ describe("sala: alias, Listo y cuenta 3-2-1 (SCRUM-21, SCRUM-22)", () => {
     expect(arb.phase).toBe("esperando");
     expect(last("p1", "lobby")).toMatchObject({ players: [{ alias: "ana", ready: false }] });
   });
+
+  it("Listo antes de que llegue el rival se recuerda: A entra, A Listo, B entra, B Listo → cuenta", () => {
+    arb.handle("p1", { t: "hello", alias: "ana" });
+    arb.handle("p1", { t: "ready" });
+    expect(last("p1", "lobby")).toMatchObject({ phase: "esperando", players: [{ alias: "ana", ready: true }] });
+    arb.handle("p2", { t: "hello", alias: "beto" });
+    expect(last("p2", "lobby")).toMatchObject({ players: [{ alias: "ana", ready: true }, { alias: "beto", ready: false }] });
+    arb.handle("p2", { t: "ready" });
+    expect(arb.phase).toBe("cuenta");
+  });
+
+  it("tras reconectar en la sala (se fue y volvió) se puede pulsar Listo de nuevo y arranca", () => {
+    lobby();
+    arb.handle("p1", { t: "ready" });
+    arb.leave("p2");
+    arb.handle("p3", { t: "hello", alias: "beto" });
+    arb.handle("p3", { t: "ready" });
+    arb.handle("p1", { t: "ready" });
+    expect(arb.phase).toBe("cuenta");
+  });
 });
 
 describe("reparar pods con penalizaciones (SCRUM-129, SCRUM-90)", () => {
@@ -162,6 +182,18 @@ describe("reparar pods con penalizaciones (SCRUM-129, SCRUM-90)", () => {
     expect(last("p1", "despachado")).toMatchObject({ seq: 9, despachados: 1, pod: { numero: 2, zonas: [{ reparada: false }] } });
     expect(last("p2", "rival")).toEqual({ t: "rival", alias: "ana", despachados: 1, estado: "reparando", t0: 0 });
     expect(sent("p2").some((m) => m.t === "result" || m.t === "despachado")).toBe(false);
+  });
+
+  it("perfil mixto: el start trae nivel 1 y cada pod su nivel; los pods 4 y 5 son de nivel 2", () => {
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA, nivel: "mixto" });
+    play();
+    expect(last("p1", "start")).toMatchObject({ nivel: 1, pod: { numero: 1, nivel: 1 } });
+    for (let i = 0; i < 3; i++) solvePod("p1");
+    expect(podOf("p1")).toMatchObject({ numero: 4, nivel: 2 });
+    solvePod("p1");
+    expect(podOf("p1")).toMatchObject({ numero: 5, nivel: 2 });
+    solvePod("p1");
+    expect(arb.outcome).toMatchObject({ winner: "A" });
   });
 
   it("despachar con zonas sin reparar se rechaza con motivo y no cuenta", () => {
@@ -258,6 +290,19 @@ describe("fin, desempate y reconexión (SCRUM-89)", () => {
     expect(last("p9", "despachado")).toMatchObject({ despachados: 2 });
   });
 
+  it("al volver conserva quemadas, tiempos de pod y enfriamiento", () => {
+    test("p2", Z, QUEMA);
+    t += 60_000; // pasa el enfriamiento de la quemada
+    solvePod("p2");
+    arb.leave("p2");
+    t += 5_000;
+    arb.handle("p9", { t: "hello", alias: "beto" });
+    t += 12 * 60_000;
+    arb.tick();
+    expect(arb.outcome).toMatchObject({ score: { B: { despachados: 1, quemadas: 1 } } });
+    expect(arb.toCsv()).toContain("despacho");
+  });
+
   it("después de 30 s ya no se recupera el asiento", () => {
     arb.leave("p2");
     t += 30_000;
@@ -287,9 +332,9 @@ describe("registro por intento (SCRUM-92)", () => {
     test("p1", Z, POCO);
     test("p2", Z, OK);
     expect(arb.toCsv()).toBe(
-      "﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms\r\n" +
-        `A;1;${Z};R=${POCO};fallo;1500;no;1;\r\n` +
-        `B;1;${Z};R=${OK};ok;1500;no;1;\r\n`,
+      "﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms;nivel;zona_nombre;pieza_correcta\r\n" +
+        `A;1;${Z};R=${POCO};fallo;1500;no;1;;1;${Z1.nombre};${Z1.solucion}\r\n` +
+        `B;1;${Z};R=${OK};ok;1500;no;1;;1;${Z1.nombre};${Z1.solucion}\r\n`,
     );
   });
 
@@ -303,13 +348,23 @@ describe("registro por intento (SCRUM-92)", () => {
     repairPod("p1");
     despachar("p1"); // pod 2: 3000 ms
     const filas = arb.toCsv().trimEnd().split("\r\n").slice(1);
-    expect(filas[1]).toBe("A;;;;despacho;2000;no;1;2000");
-    expect(filas.at(-1)).toBe("A;;;;despacho;5000;no;2;3000");
+    expect(filas[1]).toBe("A;;;;despacho;2000;no;1;2000;1;;");
+    expect(filas.at(-1)).toBe("A;;;;despacho;5000;no;2;3000;1;;");
     expect(filas.filter((f) => f.includes(";despacho;"))).toHaveLength(2);
   });
 
+  it("la pieza correcta solo va al CSV: ningún mensaje al cliente la lleva", () => {
+    play();
+    t += 1500;
+    test("p1", Z, POCO);
+    test("p2", Z, OK);
+    expect(Z1.solucion).toBe(OK);
+    expect(JSON.stringify(out)).not.toMatch(/solucion|pieza_correcta/);
+    expect(arb.toCsv()).toContain(Z1.solucion);
+  });
+
   it("sin intentos solo trae la cabecera", () => {
-    expect(arb.toCsv()).toBe("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms\r\n");
+    expect(arb.toCsv()).toBe("﻿jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms;nivel;zona_nombre;pieza_correcta\r\n");
   });
 });
 
@@ -409,7 +464,141 @@ describe("modo práctica (SCRUM-151)", () => {
       expect(arb.phase).toBe("fin");
       expect(last("p1", "end")).toMatchObject({ phase: "fin", reason: "5 pods despachados" });
       expect(last("p1", "end")).not.toHaveProperty("carrera");
-      expect(arb.toCsv()).toBe("﻿" + "jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms" + "\r\n");
+      expect(arb.toCsv()).toBe("﻿" + "jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms;nivel;zona_nombre;pieza_correcta" + "\r\n");
     });
   }
+});
+
+describe("práctica: mejoras y modo Oleadas", () => {
+  /** Semilla cuyos pods 1 a 3 de Oleadas (nivel 1, una zona) ofrecen una pieza que quema y otra correcta. */
+  const SEM_OLEADAS = (() => {
+    for (let s = 0; ; s++) {
+      if ([1, 2, 3].every((n) => { const z = generarOleada(s, 1, n).zonas[0]!; const v = z.opciones.map((p) => evaluar(z, p)); return v.includes("se quema") && v.includes("poco"); })) return s;
+    }
+  })();
+  const nuevo = (oleadas: boolean, semilla = SEM_OLEADAS) => {
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla, practica: true, oleadas });
+    arb.handle("p1", { t: "hello", alias: "ana" });
+  };
+  const con = (z: { opciones: string[] } & Parameters<typeof evaluar>[0], v: string) => z.opciones.find((p) => evaluar(z, p) === v)!;
+
+  it("Oleadas: start sin tope de pods, el pod 4 trae 2 zonas y pasar de 5 no termina la partida", () => {
+    nuevo(true);
+    expect(last("p1", "start")).toMatchObject({ practica: true, oleadas: true, total: 0, pod: { numero: 1 } });
+    for (let i = 0; i < 6; i++) {
+      expect(podOf("p1").zonas.length).toBe(Math.min(4, 1 + Math.floor(i / 3)));
+      solvePod("p1");
+    }
+    expect(arb.phase).toBe("jugando");
+    expect(podOf("p1").numero).toBe(7);
+    expect(podOf("p1").zonas.length).toBe(3);
+  });
+
+  it("Oleadas: termina a la tercera pieza quemada", () => {
+    nuevo(true);
+    for (let i = 0; i < 3; i++) {
+      const z = podOf("p1").zonas[0]!;
+      test("p1", z.zona, con(z, "se quema"), i + 1);
+      expect(arb.phase).toBe(i < 2 ? "jugando" : "fin");
+      t += 5000; // pasa el bloqueo de 4 s
+      if (arb.phase === "jugando") solvePod("p1");
+    }
+    expect(last("p1", "end")).toMatchObject({ phase: "fin", reason: "3 piezas quemadas", score: { A: { despachados: 2, quemadas: 3 } } });
+  });
+
+  it("Escudo: la quemada no bloquea 4 s ni cuenta, y se gasta", () => {
+    nuevo(true);
+    arb.ajustar({ enfriamiento: 1, escudo: true });
+    const z = podOf("p1").zonas[0]!;
+    test("p1", z.zona, con(z, "se quema"), 1);
+    expect(last("p1", "result")).toMatchObject({ veredicto: "se quema", waitMs: 2000, escudo: true });
+    t += 2000;
+    test("p1", z.zona, con(z, "poco"), 2);
+    t += 4000;
+    test("p1", z.zona, con(z, "se quema"), 3);
+    expect(last("p1", "result")).toMatchObject({ waitMs: 4000 });
+    expect(last("p1", "result")).not.toHaveProperty("escudo");
+  });
+
+  it("Enfriamiento corto: los 2/4/8 s se reducen a la mitad", () => {
+    nuevo(false, SEMILLA);
+    arb.ajustar({ enfriamiento: 0.5, escudo: false });
+    test("p1", Z, POCO, 1);
+    expect(last("p1", "result")).toMatchObject({ veredicto: "poco", waitMs: 1000 });
+  });
+
+  it("fuera de práctica las mejoras no hacen nada", () => {
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA });
+    arb.ajustar({ enfriamiento: 0.5, escudo: true });
+    play();
+    test("p1", Z, POCO, 1);
+    expect(last("p1", "result")).toMatchObject({ waitMs: 2000 });
+  });
+});
+
+describe("Oleadas: falla encadenada", () => {
+  /** Primera semilla cuyo pod 7 (oleada 3, nivel 1) trae segunda falla. */
+  const SEM = (() => { for (let s = 0; ; s++) if (encadena(s, 7) && generarOleada(s, 1, 7).encadenada) return s; })();
+  const POD = generarOleada(SEM, 1, 7);
+  const C = POD.encadenada!, B = POD.zonas.find((z) => z.zona === C.zona)!;
+  const abrir = () => {
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEM, practica: true, oleadas: true });
+    arb.handle("p1", { t: "hello", alias: "ana" });
+    for (let i = 0; i < 6; i++) solvePod("p1"); // las oleadas 1 y 2 no traen segunda falla
+  };
+  const reparar = (z: typeof C) => test("p1", z.zona, z.opciones.find((p) => evaluar(z, p) === "correcto")!, 9);
+  const reparadas = () => podOf("p1").zonas.filter((z) => z.reparada).length;
+
+  it("acertar la primera no repara la zona: sale la segunda (otra batería y opciones) y el pod no se despacha", () => {
+    abrir();
+    expect(podOf("p1").numero).toBe(7);
+    for (const z of POD.zonas) if (z.zona !== C.zona) reparar(z);
+    test("p1", C.zona, B.solucion, 10);
+    expect(last("p1", "result")).toMatchObject({ veredicto: "correcto", hayMas: true });
+    const v = podOf("p1").zonas.find((z) => z.zona === C.zona)!;
+    expect(v).toMatchObject({ reparada: false, volts: C.volts, opciones: C.opciones });
+    expect(JSON.stringify(podOf("p1"))).not.toContain("solucion"); // la solución nunca sale del árbitro
+    despachar("p1");
+    expect(last("p1", "reject")).toMatchObject({ reason: "faltan zonas por reparar" });
+    expect(reparadas()).toBe(POD.zonas.length - 1);
+  });
+
+  it("la segunda se resuelve con otra pieza, sin castigo extra, y entonces se despacha", () => {
+    abrir();
+    for (const z of POD.zonas) if (z.zona !== C.zona) reparar(z);
+    test("p1", C.zona, B.solucion, 10);
+    const mala = C.opciones.find((p) => evaluar(C, p) === "poco" || evaluar(C, p) === "demasiado");
+    if (mala) {
+      test("p1", C.zona, mala, 11);
+      expect(last("p1", "result")).toMatchObject({ waitMs: 2000 }); // mismo primer enfriamiento de siempre
+      t += 2000;
+    }
+    arb.handle("p1", { t: "medir", seq: 12, t0: 0, zone: C.zona, pieza: C.solucion, modo: "tension", punto: "pieza" });
+    expect(last("p1", "medida")).toMatchObject({ zona: C.zona });
+    reparar(C);
+    expect(last("p1", "result")).toMatchObject({ veredicto: "correcto" });
+    expect(last("p1", "result")).not.toHaveProperty("hayMas");
+    expect(reparadas()).toBe(POD.zonas.length);
+    despachar("p1");
+    expect(last("p1", "despachado")).toMatchObject({ despachados: 7 });
+  });
+
+  it("el Escudo y el enfriamiento corto siguen valiendo en la segunda falla", () => {
+    abrir();
+    for (const z of POD.zonas) if (z.zona !== C.zona) reparar(z);
+    test("p1", C.zona, B.solucion, 10);
+    arb.ajustar({ enfriamiento: 0.5, escudo: true });
+    const quema = C.opciones.find((p) => evaluar(C, p) === "se quema");
+    if (quema) {
+      test("p1", C.zona, quema, 11);
+      expect(last("p1", "result")).toMatchObject({ escudo: true, waitMs: 1000 });
+    }
+  });
+
+  it("duelo y práctica normal nunca traen segunda falla", () => {
+    expect(generar(SEM, 1).concat(generar(SEM, 2)).every((p) => !p.encadenada)).toBe(true);
+    play();
+    for (let i = 0; i < 5; i++) solvePod("p1");
+    expect(sent("p1").some((m) => m.t === "result" && "hayMas" in m)).toBe(false);
+  });
 });

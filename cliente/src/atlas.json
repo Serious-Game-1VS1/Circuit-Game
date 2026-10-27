@@ -3479,6 +3479,26 @@
    }
   },
   {
+   "nombre": "cartel_averia_0",
+   "archivo": "taller/cartel_averia_0.png",
+   "ancho": 48,
+   "alto": 15,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
+  },
+  {
+   "nombre": "cartel_averia_1",
+   "archivo": "taller/cartel_averia_1.png",
+   "ancho": 48,
+   "alto": 15,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
+  },
+  {
    "nombre": "globo_sintoma",
    "archivo": "taller/globo_sintoma.png",
    "ancho": 72,
@@ -3603,6 +3623,36 @@
    "archivo": "taller/tarjeta_quemado_calefactor.png",
    "ancho": 110,
    "alto": 56,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
+  },
+  {
+   "nombre": "medalla_oro",
+   "archivo": "taller/medalla_oro.png",
+   "ancho": 14,
+   "alto": 22,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
+  },
+  {
+   "nombre": "medalla_plata",
+   "archivo": "taller/medalla_plata.png",
+   "ancho": 14,
+   "alto": 22,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
+  },
+  {
+   "nombre": "medalla_bronce",
+   "archivo": "taller/medalla_bronce.png",
+   "ancho": 14,
+   "alto": 22,
    "origen": {
     "x": 0.5,
     "y": 0.5
@@ -4337,6 +4387,16 @@
     "x": 0.5,
     "y": 0.5
    }
+  },
+  {
+   "nombre": "cartel_reparado",
+   "archivo": "ui/cartel_reparado.png",
+   "ancho": 88,
+   "alto": 26,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
   }
  ],
  "animaciones": [
@@ -4474,6 +4534,15 @@
     "bahia_ocupada_1"
    ],
    "frameRate": 2,
+   "repeat": -1
+  },
+  {
+   "clave": "cartel_averia",
+   "frames": [
+    "cartel_averia_0",
+    "cartel_averia_1"
+   ],
+   "frameRate": 3,
    "repeat": -1
   },
   {

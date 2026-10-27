@@ -7,6 +7,8 @@
 export const COOLDOWNS_MS = [2000, 4000, 8000] as const;
 export const BURN_BLOCK_MS = 4000;
 export const BURN_CARD_MS = 3000;
+/** Modo Oleadas (práctica sin fin): la partida termina al acumular estas piezas quemadas. */
+export const QUEMADAS_OLEADAS = 3;
 
 export interface Attempt {
   zone: number;
@@ -27,6 +29,8 @@ export class PenaltyTracker {
   private readonly cooldownUntil = new Map<number, number>();
   private burnAt = -Infinity;
   private readonly log: Attempt[] = [];
+  /** Mejora «Enfriamiento corto» (solo práctica): multiplica los 2/4/8 s; 1 = sin cambio. */
+  cooldownFactor = 1;
 
   constructor(private readonly now: () => number) {
     this.t0 = now();
@@ -53,7 +57,7 @@ export class PenaltyTracker {
   registerFailure(zone: number, pieces: string[]): number {
     const n = (this.fails.get(zone) ?? 0) + 1;
     this.fails.set(zone, n);
-    const ms = COOLDOWNS_MS[Math.min(n, COOLDOWNS_MS.length) - 1] ?? 8000;
+    const ms = (COOLDOWNS_MS[Math.min(n, COOLDOWNS_MS.length) - 1] ?? 8000) * this.cooldownFactor;
     this.cooldownUntil.set(zone, this.now() + ms);
     this.record(zone, pieces, false, false);
     return ms;

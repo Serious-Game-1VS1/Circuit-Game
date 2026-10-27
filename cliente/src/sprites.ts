@@ -44,7 +44,7 @@ export const nivelCarga = (z: ZonaView, v: Vista | undefined) =>
 const BRILLO = ["apagado", "tenue", "encendido", "brillante"];
 export function spriteCarga(c: Circuito, nivel: number): string {
   const b = BRILLO[nivel];
-  if (c === "led" || c === "cabina") return `led_rojo_${b ?? "quemado"}`;
+  if (c === "led" || c === "cabina" || c === "invertido" || c === "abierto") return `led_rojo_${b ?? "quemado"}`;
   if (c === "luces") return `foco_${b ?? "fundido"}`;
   if (c === "fusible") return `calefactor_${b ?? "quemado"}`;
   return "icono_turbina"; // supuesto: el kit no trae motor; el ícono de turbina gira cuando la corriente es correcta

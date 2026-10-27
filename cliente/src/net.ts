@@ -1,9 +1,12 @@
-import type { ClientMsg, Nivel, ServerMsg } from "../../spike/src/protocol";
+import type { ClientMsg, Nivel, Result, ServerMsg } from "../../spike/src/protocol";
 import { PhotonTransport } from "../../spike/src/transport/photon";
 import type { Transport } from "../../spike/src/transport/transport";
 import { LocalTransport } from "../../spike/src/transport/ws-client";
 import { validAlias } from "../../spike/src/protocol";
+import { registrar, type Dominio } from "./dominio";
+import { COOLDOWN_CORTO, elegir, sinMejoras, type Mejora } from "./mejoras";
 import { PracticaTransport } from "./practica";
+import { DIAGNOSTICO } from "./progreso";
 import { SEMILLA_TUTORIAL } from "./tutorial";
 import { despachable, inicial, normalizarCodigo, reducir, terminada, validarEntrada, type Pantalla } from "./pantalla";
 
@@ -23,9 +26,24 @@ export class Net {
   public estado: Pantalla = inicial();
   /** La práctica en curso es el tutorial (semilla fija): el Taller dibuja la capa guiada. */
   public tutorial = false;
+  /** Aciertos y fallos por concepto de la partida en curso; main.ts los pasa al perfil al terminar. */
+  public dominio: Dominio = {};
+  /** Mecánicas de la práctica: mejoras activas, puntos extra del Doble puntos (suman al XP final) y mejor racha de llamas de la partida. */
+  public mejoras = sinMejoras();
+  public extra = 0;
+  public mejorRacha = 0;
+  /** Oleadas, falla encadenada: segundas fallas reveladas, la que está en curso (¿midió? ¿falló ya?) y diagnósticos premiados (suman DIAGNOSTICO al XP). */
+  public hayMas = 0;
+  public segunda?: { zona: number; medido: boolean; fallo: boolean };
+  public diagnosticos = 0;
+  /** Tiempo de cada pod despachado (ms) y mejoras elegidas en la partida: alimentan la carrera contra tu récord. */
+  public podMs: number[] = [];
+  public usadas: Mejora[] = [];
   public onCambio: (p: Pantalla) => void = () => {};
   private seq = 0;
   private sala?: { codigo: string; alias: string };
+  /** Código de la sala del duelo ("" en práctica). */
+  public get codigo() { return this.sala?.codigo ?? ""; }
 
   /** El transporte en uso: el del duelo, o el de la práctica mientras dura. */
   private transport: Transport;
@@ -47,14 +65,16 @@ export class Net {
   }
 
   /** Práctica en solitario (SCRUM-151): sin sala ni rival, empieza al instante. Termina con `salir()` o al despachar los 5 pods. */
-  public async practicar(alias: string, nivel: Nivel = 1, tutorial = false): Promise<void> {
+  public async practicar(alias: string, nivel: Nivel = 1, tutorial = false, oleadas = false): Promise<void> {
     if (!validAlias(alias)) {
       this.poner({ ...this.estado, aviso: "El alias debe tener de 1 a 12 caracteres" });
       return;
     }
     await this.salir();
     this.tutorial = tutorial;
-    this.transport = new PracticaTransport(nivel, tutorial ? SEMILLA_TUTORIAL : undefined);
+    this.mejoras = sinMejoras(); this.extra = 0; this.mejorRacha = 0; this.podMs = []; this.usadas = [];
+    this.hayMas = 0; this.segunda = undefined; this.diagnosticos = 0;
+    this.transport = new PracticaTransport(nivel, tutorial ? SEMILLA_TUTORIAL : undefined, oleadas);
     this.conectar(this.transport);
     this.poner({ ...this.estado, practica: true }); // evita la fase Sala en el welcome
     await this.transport.join("");
@@ -71,13 +91,8 @@ export class Net {
     const sala = { codigo: normalizarCodigo(codigo), alias: alias.trim() };
     try {
       await this.transport.join(sala.codigo);
-    } catch {
-      this.poner({
-        ...this.estado,
-        fase: "entrar",
-        alias: sala.alias,
-        aviso: "No hay una sala abierta con ese código",
-      });
+    } catch (e) {
+      this.poner({ ...this.estado, fase: "entrar", alias: sala.alias, aviso: avisoDeJoin(e) });
       return;
     }
 
@@ -130,6 +145,7 @@ export class Net {
 
   /** Multímetro: no es «Probar» ni penaliza. Devuelve el seq para reconocer su Medida. */
   public medir(zone: number, pieza: string, modo: "continuidad" | "tension", punto: string): number {
+    if (this.segunda?.zona === zone) this.segunda.medido = true;
     this.enviar({ t: "medir", seq: ++this.seq, t0: this.getTime(), zone, pieza, modo, punto });
     return this.seq;
   }
@@ -138,6 +154,13 @@ export class Net {
     if (!despachable(this.estado)) return;
     this.poner({ ...this.estado, despachando: true });
     this.enviar({ t: "despachar", seq: ++this.seq, t0: this.getTime() });
+  }
+
+  /** Elige una mejora; el enfriamiento y el escudo los aplica el árbitro local de la práctica. */
+  public elegirMejora(m: Mejora): void {
+    this.mejoras = elegir(this.mejoras, m);
+    this.usadas = [...this.usadas, m];
+    if (this.transport instanceof PracticaTransport) this.transport.arbiter.ajustar({ enfriamiento: this.mejoras.enfriamiento ? COOLDOWN_CORTO : 1, escudo: this.mejoras.escudo });
   }
 
   public limpiarAviso(): void {
@@ -149,8 +172,11 @@ export class Net {
     const msgObj = message as Record<string, unknown>;
     if (!("t" in msgObj) || typeof msgObj.t !== "string") return;
 
+    if (msgObj.t === "result" && msgObj.escudo) this.mejoras = { ...this.mejoras, escudo: false }; // el árbitro gastó el escudo
+    if (msgObj.t === "result") this.encadenada(message as Result);
     const estadoActual = this.estado ?? inicial();
     const tiempoActual = typeof this.getTime === "function" ? this.getTime() : Date.now();
+    this.dominio = registrar(this.dominio, message as ServerMsg, estadoActual.pod);
     const nuevoEstado = reducir(estadoActual, message as ServerMsg, tiempoActual);
     
     this.poner(nuevoEstado);
@@ -159,6 +185,20 @@ export class Net {
       void this.transport.close();
       this.transport = this.duelo;
       this.tutorial = false;
+    }
+  }
+
+  /** Falla encadenada: al salir la segunda se empieza a vigilar; acertarla a la primera tras medir da el bono «Diagnóstico». */
+  private encadenada(m: Result): void {
+    if (m.hayMas) {
+      this.hayMas++;
+      this.segunda = { zona: m.zona, medido: false, fallo: false };
+    } else if (this.segunda?.zona === m.zona) {
+      if (m.veredicto !== "correcto") this.segunda.fallo = true;
+      else {
+        if (this.segunda.medido && !this.segunda.fallo) { this.extra += DIAGNOSTICO; this.diagnosticos++; }
+        this.segunda = undefined;
+      }
     }
   }
 
@@ -176,6 +216,14 @@ export class Net {
       this.onCambio(this.estado);
     }
   }
+}
+
+/** Qué falló al entrar: sala inexistente o llena (relé: "no existe"; Photon: 32758/32765), App ID o región inválidos (32767/32756) o la conexión. Sin valores de configuración. */
+export function avisoDeJoin(e: unknown): string {
+  const m = e instanceof Error ? e.message : "";
+  if (/no existe|error 32758|error 32765/i.test(m)) return "No hay una sala abierta con ese código";
+  if (/error 32767|error 32756/i.test(m)) return "El servidor de juego no está bien configurado. Avisa al docente.";
+  return "No se pudo conectar con el servidor de juego. Revisa tu conexión.";
 }
 
 /** VITE_TRANSPORT=photon|local; por defecto Photon se usa solo cuando hay App ID. */

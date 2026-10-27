@@ -15,6 +15,8 @@ const USADOS = [
   /^(fondo_taller|fondo_taller_ancho|globo_sintoma)$/,
   /^(bahia|bahia_ocupada|humo|humo_negro)_\d$/,
   /^(puesto_cola|contador_pods)_\d$/,
+  /^medalla_(oro|plata|bronce)$/, // récord por pod
+  /^cartel_(averia_\d|reparado)$/, // «¡AVERÍA!» al entrar el pod a la bahía y «Reparado» al salir
   /^tarjeta_quemado_(led|calefactor|cortocircuito)$/,
   /^(hud_barra|hud_barra_ancho|icono_(reloj|rival|bateria|turbina)|panel_oscuro|panel_alerta|medidor_fondo|medidor_aguja)$/,
   /^pestana_(radar|cabina|turbina|reactor)_(activa|inactiva|alerta|reparada)$/,
