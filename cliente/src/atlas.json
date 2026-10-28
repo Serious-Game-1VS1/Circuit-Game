@@ -4013,6 +4013,26 @@
    }
   },
   {
+   "nombre": "icono_candado",
+   "archivo": "ui/icono_candado.png",
+   "ancho": 11,
+   "alto": 11,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
+  },
+  {
+   "nombre": "icono_estrella",
+   "archivo": "ui/icono_estrella.png",
+   "ancho": 11,
+   "alto": 11,
+   "origen": {
+    "x": 0.5,
+    "y": 0.5
+   }
+  },
+  {
    "nombre": "pestana_radar_activa",
    "archivo": "ui/pestana_radar_activa.png",
    "ancho": 22,

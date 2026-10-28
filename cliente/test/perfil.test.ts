@@ -57,6 +57,8 @@ describe("aplicarPartida", () => {
     expect(cambiarNivel(abierto, 2)).toBe(1);
     expect(nivelElegido(abierto, 2)).toBe(2);
     expect(textoNivel(abierto, 2)).not.toContain("🔒");
+    expect(textoNivel(p, 1)).toContain("bloqueado");
+    expect(textoNivel(p, 1)).not.toContain("🔒");
   });
 });
 
@@ -189,3 +191,13 @@ describe("récord de Oleadas", () => {
   });
 });
 
+
+describe("bienvenida del menú", () => {
+  it("primer uso, con partidas y con nivel 2", async () => {
+    const { bienvenida, perfilNuevo } = await import("../src/perfil");
+    expect(bienvenida(perfilNuevo("ana"))).toBe("Bienvenido al taller. Tu primer pod te espera.");
+    const p = { ...perfilNuevo("ana"), partidas: 2, xp: 180 };
+    expect(bienvenida(p)).toBe("Hola, ana. Rango Aprendiz. Te faltan 120 XP para Técnico.");
+    expect(bienvenida({ ...p, nivelDesbloqueado: 2 })).toContain("Nivel 2 abierto.");
+  });
+});

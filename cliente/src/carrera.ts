@@ -9,6 +9,8 @@ import * as Phaser from "phaser";
 import type { Station } from "../../spike/src/protocol";
 import type { Net } from "./net";
 import { cargarArte, letras, marco, toque } from "./arte";
+import { medallaDe, sonar } from "./audio";
+import { ponerMusica, turbinaOff, turbinaOn } from "./musica";
 import { chasisCarril, CHASIS, contraRecord, decision, f, mmss, podio, TXT } from "./podio";
 
 const W = 360, H = 640;
@@ -64,6 +66,7 @@ export class Carrera extends Phaser.Scene {
     const e = this.net.estado.end!, yo = this.net.estado.station ?? "A";
     this.capas = fondo(this);
     this.corriendo = false;
+    ponerMusica(this.net.estado, "carrera"); // también contra tu récord (la fase sigue siendo «entrar»)
 
     // Carriles: el mío arriba. En duelo, mi nave es la mejor que desbloqueé; el árbitro manda las llamas (siempre ≥ mi racha: cuenta todos los despachos limpios).
     let lanes: Lane[], sub: string, ayuda: string, gane: boolean;
@@ -109,10 +112,12 @@ export class Carrera extends Phaser.Scene {
 
     // Semáforo 3-2-1-¡YA! (0,5 s cada luz) y luego la carrera (~3 s).
     const sem = this.add.image(W / 2, 300, "semaforo_3").setOrigin(0.5, 1).setScale(3);
-    ["semaforo_2", "semaforo_1", "semaforo_ya"].forEach((k, i) => this.time.delayedCall(300 * (i + 1), () => sem.setTexture(k)));
+    ["semaforo_2", "semaforo_1", "semaforo_ya"].forEach((k, i) => this.time.delayedCall(300 * (i + 1), () => { sem.setTexture(k); sonar((["tic2", "tic1", "ya"] as const)[i]!); }));
+    sonar("tic3");
     this.time.delayedCall(1200, () => {
       sem.setVisible(false);
       this.corriendo = true;
+      turbinaOn();
       for (const { l, grupo } of pods) {
         // supuesto: el ganador cruza la meta; el otro queda atrás (en empate, cruzan juntos).
         this.tweens.add({ targets: grupo, x: l.gana ? META - 90 : META - 190, duration: l.gana ? 2400 : 2800, ease: "Sine.easeInOut" });
@@ -130,11 +135,12 @@ export class Carrera extends Phaser.Scene {
     const reloj = window.setTimeout(ir, 12000);
     const limpiar = () => { window.clearTimeout(reloj); window.removeEventListener("pointerdown", toque); };
     window.addEventListener("pointerdown", toque);
-    this.events.once("shutdown", () => { salio = true; limpiar(); });
+    this.events.once("shutdown", () => { salio = true; limpiar(); turbinaOff(); ponerMusica(this.net.estado); });
   }
 
   private llegada(ganador: Phaser.GameObjects.Container | undefined, gane: boolean) {
     this.corriendo = false;
+    turbinaOff();
     if (ganador) {
       const r = this.add.sprite(ganador.x, ganador.y - 23, "resalte_ganador_0").setScale(2).play("resalte_ganador");
       this.children.moveBelow(r, ganador);
@@ -166,6 +172,7 @@ export class Podio extends Phaser.Scene {
     animaciones(this);
     const p = this.net.estado, e = p.end!, yo = p.station;
     fondo(this);
+    sonar(medallaDe(e, yo));
     const cartel = e.winner === null ? "cartel_empate" : e.winner === yo ? "cartel_ganaste" : "cartel_perdiste";
     this.add.image(W / 2, 40, cartel).setScale(e.winner === null ? 2 : 3);
     texto(this, W / 2, 76, decision(e), 2);

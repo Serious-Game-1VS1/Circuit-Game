@@ -4,7 +4,7 @@
  */
 import * as Phaser from "phaser";
 import { ANIMACIONES, sprite, SPRITES } from "./sprites";
-import { aPixel } from "./vista"; // glifos que la fuente no trae
+import { aPixel, CONSEJOS } from "./vista"; // glifos que la fuente no trae
 
 export const FUENTE = "pixel";
 
@@ -27,10 +27,16 @@ export function cargarArte(s: Phaser.Scene, y = 320) {
   // Sin nada que cargar el preload no emite "complete": el aviso solo se crea si hay archivos en cola.
   const aviso = s.load.list.size ? s.add.text(180, y, "Cargando taller… 0 %", { fontSize: "16px", color: "#9ab" }).setOrigin(0.5) : null;
   const progreso = (f: number) => aviso?.setText(`Cargando taller… ${Math.round(f * 100)} %`);
+  // Consejo de electrónica bajo el porcentaje, cambia cada ~3 s (setInterval: el reloj de la escena no corre durante el preload).
+  let n = Math.floor(Math.random() * CONSEJOS.length);
+  const consejo = aviso ? s.add.text(180, y + 30, CONSEJOS[n]!, { fontSize: "14px", color: "#e0a43c", align: "center", wordWrap: { width: 300 } }).setOrigin(0.5, 0) : null;
+  const rota = consejo && window.setInterval(() => consejo.setText(CONSEJOS[++n % CONSEJOS.length]!), 3000);
   s.load.on("progress", progreso);
   s.load.once("complete", () => {
     s.load.off("progress", progreso);
     aviso?.destroy();
+    consejo?.destroy();
+    if (rota) clearInterval(rota);
     for (const k of [...SPRITES.map((x) => x.nombre), FUENTE]) s.textures.get(k).setFilter(Phaser.Textures.FilterMode.NEAREST);
     for (const x of ANIMACIONES) {
       if (!s.anims.exists(x.clave)) s.anims.create({ key: x.clave, frames: x.frames.map((key) => ({ key })), frameRate: x.frameRate, repeat: x.repeat });

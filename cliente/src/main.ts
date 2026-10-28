@@ -6,12 +6,14 @@ import { Carrera, Podio } from "./carrera";
 import type { Fase, Pantalla } from "./pantalla";
 import { Taller } from "./taller";
 import { cargarArte } from "./arte";
-import { botonSilencio, desbloquear, desbloquearEnGestos, eventosDe, sonar } from "./audio";
+import { desbloquear, desbloquearEnGestos, eventosDe, sonar } from "./audio";
+import { ponerMusica } from "./musica";
 import { inicial } from "./pantalla";
 import type { Nivel } from "../../spike/src/protocol";
-import { aplicarPartida, cargarPerfil, firmaEnd, guardarPerfil, INSIGNIAS, cambiarNivel, nivelElegido, textoNivel, mejorNave, progresoRango, registrarOleada, registrarTotal, resultadoDe } from "./perfil";
-import { hayFantasma, guardarPendiente, panelLogros, panelRecompensas, tomarPendiente } from "./recompensas";
+import { aplicarPartida, cargarPerfil, firmaEnd, guardarPerfil, mejorNave, registrarOleada, registrarTotal, resultadoDe } from "./perfil";
+import { hayFantasma, guardarPendiente, panelRecompensas, tomarPendiente } from "./recompensas";
 import { MEJORAS } from "./mejoras";
+import { menu } from "./inicio";
 import { MAX_LLAMAS } from "./progreso";
 
 const W = 360, H = 640; // diseño vertical; Scale.FIT lo ajusta a cualquier pantalla
@@ -42,49 +44,16 @@ abstract class Base extends Phaser.Scene {
 }
 
 class Entrar extends Base {
-  private aviso!: Phaser.GameObjects.Text;
+  private ui?: ReturnType<typeof menu>;
   constructor() { super("Entrar"); }
+  preload() { cargarArte(this); } // el menú usa el kit; Sala lo reutiliza (cargarArte no repite texturas)
   create() {
-    texto(this, W / 2, 40, "CircuitSync", 30);
-    texto(this, W / 2, 84, "Duelo de reparación de pods", 16, "#9ab");
-    const form = this.add.dom(W / 2, 220).createFromHTML(`
-      <div style="display:flex;flex-direction:column;gap:12px;width:280px;font:18px sans-serif">
-        <label style="color:#ddd">Código de sala<input name="codigo" maxlength="6" autocomplete="off"
-          style="width:100%;box-sizing:border-box;font-size:22px;padding:10px;text-transform:uppercase"></label>
-        <label style="color:#ddd">Alias<input name="alias" maxlength="12" autocomplete="off"
-          style="width:100%;box-sizing:border-box;font-size:22px;padding:10px"></label>
-      </div>`);
-    const campo = (n: string) => form.getChildByName(n) as HTMLInputElement | null;
-    const valor = (n: string) => campo(n)?.value ?? "";
-    if (net.estado.alias) campo("alias")!.value = net.estado.alias; // "Volver a jugar" conserva el alias
-    boton(this, W / 2, 360, "Jugar duelo", W - 32, "#3bb273", () => void net.entrar(valor("codigo"), valor("alias")));
-    // Perfil del alias escrito: rango, XP e insignias.
-    const rango = texto(this, W / 2, 104, "", 15, "#9ab");
-    let sel: Nivel = 1, pfActual = cargarPerfil("Aprendiz");
-    const selector = texto(this, W / 2, 560, "", 13, "#9ab"); // solo la práctica usa el nivel: en duelo lo fija el servidor (--nivel/NIVEL)
-    selector.setInteractive({ useHandCursor: true }).on("pointerdown", () => { sel = cambiarNivel(pfActual, sel); selector.setText(textoNivel(pfActual, sel)); });
-    const refrescar = () => {
-      const pf = pfActual = cargarPerfil(valor("alias").trim() || "Aprendiz"), r = progresoRango(pf.xp);
-      sel = nivelElegido(pf, sel); selector.setText(textoNivel(pf, sel));
-      rango.setText(`${r.actual} · ${pf.xp} XP · ${pf.insignias.length}/${INSIGNIAS.length} insignias`);
-      return pf;
-    };
-    campo("alias")?.addEventListener("input", refrescar);
-    const ver = this.add.text(16, 590, "Ver logros", { fontSize: "16px", color: "#9ab", padding: { y: 14 } }).setInteractive({ useHandCursor: true });
-    ver.on("pointerdown", () => panelLogros(this, refrescar()));
-    // Práctica (SCRUM-151): sin código ni rival; el alias es opcional y por defecto "Aprendiz". Oleadas y el selector de nivel siguen en el código (net.practicar), fuera del menú.
-    boton(this, W / 2, 424, "Practicar", W - 32, "#3a4466", () => void net.practicar(valor("alias").trim() || "Aprendiz", nivelElegido(pfActual, sel)));
-    boton(this, W / 4 + 4, 488, "Tutorial", W / 2 - 24, "#3a4466", () => void net.practicar(valor("alias").trim() || "Aprendiz", 1, true));
-    // Parte opcional: fusible, LED girado, corte de cable y placa con cables (nivel 2, semilla fija).
-    boton(this, (3 * W) / 4 - 4, 488, "Tutorial 2", W / 2 - 24, "#3a4466", () => void net.practicar(valor("alias").trim() || "Aprendiz", 2, true, false, 2));
-    this.aviso = texto(this, W / 2, 536, "", 16, "#ff6b6b");
-    botonSilencio(this, W - 30, 30);
-    refrescar();
+    this.ui = menu(this, net);
     this.pintar(net.estado);
     const g = tomarPendiente(); // práctica recién terminada
-    if (g) { refrescar(); panelRecompensas(this, g.eventos, g.perfil, g.otra && (() => void net.practicar(g.otra!.alias, g.otra!.nivel, false, g.otra!.oleadas))); }
+    if (g) { this.ui.refrescar(); panelRecompensas(this, g.eventos, g.perfil, g.otra && (() => void net.practicar(g.otra!.alias, g.otra!.nivel, false, g.otra!.oleadas))); }
   }
-  pintar(p: Pantalla) { this.aviso.setText(p.aviso ?? "").setColor(p.aviso?.startsWith("Práctica terminada") ? "#8fe3a0" : "#ff6b6b"); }
+  pintar(p: Pantalla) { this.ui?.pintar(p); }
 }
 
 class Sala extends Base {
@@ -152,8 +121,10 @@ const game = new Phaser.Game({
 if (import.meta.env.DEV) Object.assign(window, { game }); // solo en desarrollo: capturas e inspección
 
 let anterior = inicial();
+ponerMusica(anterior); // arranca sola cuando el audio se desbloquea con el primer gesto
 net.onCambio = (p) => {
   for (const e of eventosDe(anterior, p)) sonar(e);
+  ponerMusica(p);
   const r = net.tutorial ? null : resultadoDe(anterior, p); // el tutorial no da XP
   if (r) {
     const previo = cargarPerfil((p.alias ?? anterior.alias ?? "").trim() || "Aprendiz");

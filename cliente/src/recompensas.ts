@@ -65,7 +65,7 @@ export function panelRecompensas(s: Phaser.Scene, ev: Eventos, perfil: Perfil, o
   ev.insignias.forEach((i, k) => {
     const x = t(y, `Insignia nueva: ${i.nombre}\n${i.descripcion}`, 14, "#fff") as Phaser.GameObjects.Text;
     s.tweens.add({ targets: x, alpha: { from: 0.2, to: 1 }, duration: 450, delay: 250 * k });
-    s.time.delayedCall(250 * k, () => sonar("reparada"));
+    s.time.delayedCall(250 * k, () => sonar("insignia"));
     y += 42;
   });
   if (!ev.insignias.length && !ev.naves.length && !ev.nivel2 && !ev.habilidades.length) t(y, "Sin insignias nuevas esta vez.", 16, "#9ab");

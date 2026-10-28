@@ -236,7 +236,7 @@ export class Taller extends Phaser.Scene {
       const elegir = (o: string) => {
         const no = permite(this.tut, { elegir: o }, this.estTut());
         if (no) { this.avisar(no); return false; }
-        sonar("pieza"); this.elegidas.set(this.clave(), o); this.pintar(net.estado); return true;
+        sonar("elegir"); this.elegidas.set(this.clave(), o); this.pintar(net.estado); return true;
       };
       const enRanura = (p: Phaser.Input.Pointer) => { const v = panel.getWorldTransformMatrix().applyInverse(p.worldX, p.worldY); return dentro(RANURA, v.x, v.y); };
       arrastrable(this, zona, {
@@ -323,7 +323,7 @@ export class Taller extends Phaser.Scene {
     this.ajustarGolpes();
     // Un aviso nuevo (resultado, despacho) manda sobre la lectura del multímetro; sin esto el panel seguía en «Pasa…».
     if (p.aviso !== this.avisoVisto) { this.avisoVisto = p.aviso; if (p.aviso) { this.limpiarMedida(); this.modo = null; this.pintar(p); } }
-    if ((p.esperaHasta > ahora) !== this.bloqueado) { this.bloqueado = !this.bloqueado; this.pintar(p); } // Probar se apaga mientras dura el bloqueo
+    if ((p.esperaHasta > ahora) !== this.bloqueado) { if (this.bloqueado) sonar("listo"); this.bloqueado = !this.bloqueado; this.pintar(p); } // Probar se apaga mientras dura el bloqueo
     const espera = textoProbarEspera(p.esperaHasta, ahora);
     this.esperaProbar.setVisible(!!espera && !!z && !z.reparada);
     if (espera) (this.esperaProbar.getAt(1) as Letras).setText(espera);

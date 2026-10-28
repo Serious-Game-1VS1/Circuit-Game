@@ -109,3 +109,12 @@ export const reparadas = (pod: PodView) => `Zonas reparadas: ${pod.zonas.filter(
 /** Botones de la gaveta en el orden que manda el árbitro (ya aleatorio); ninguno se distingue salvo el elegido. */
 export const botonesGaveta = (z: ZonaView, elegida: string | undefined) =>
   z.opciones.map((pieza) => ({ pieza, texto: textoOpcion(pieza, z.circuito), elegida: pieza === elegida }));
+
+/** Consejos de electrónica de la pantalla de carga (rotan cada pocos segundos). */
+export const CONSEJOS = [
+  "Una resistencia más grande frena más la corriente.",
+  "Mide con el multímetro antes de cambiar piezas.",
+  "Un LED sin resistencia se quema: protégelo.",
+  "Un fusible se funde para salvar el circuito.",
+  "Si el circuito está abierto, la corriente no pasa.",
+];

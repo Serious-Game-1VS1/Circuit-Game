@@ -55,9 +55,16 @@ export const INSIGNIAS: readonly Insignia[] = [
 export const completoNivel1 = (r: Resultado) => r.nivel === 1 && r.pods >= r.total;
 
 /** Selector de nivel de la práctica: el 2 sale con candado hasta desbloquearlo. El duelo no lo usa (el servidor fija el nivel con --nivel/NIVEL). */
-export const textoNivel = (p: Perfil, sel: Nivel) => p.nivelDesbloqueado === 2 ? `Nivel de práctica: ${sel} (toca para cambiar)` : "Nivel de práctica: 1\n🔒 Nivel 2: Completa el nivel 1 para abrirlo";
+export const textoNivel = (p: Perfil, sel: Nivel) => p.nivelDesbloqueado === 2 ? `Nivel de práctica: ${sel} (toca para cambiar)` : "Nivel de práctica: 1\nNivel 2: bloqueado. Completa el nivel 1 para abrirlo";
 export const nivelElegido = (p: Perfil, sel: Nivel): Nivel => (p.nivelDesbloqueado === 2 ? sel : 1);
 export const cambiarNivel = (p: Perfil, sel: Nivel): Nivel => (p.nivelDesbloqueado === 2 && sel === 1 ? 2 : 1);
+
+/** Saludo del menú (ajusta al ancho): primer uso, XP que falta para el siguiente rango y aviso del nivel 2. */
+export function bienvenida(p: Perfil): string {
+  if (!p.partidas && !p.xp) return "Bienvenido al taller. Tu primer pod te espera.";
+  const r = progresoRango(p.xp);
+  return `Hola, ${p.alias}. Rango ${r.actual}. ${r.siguiente ? `Te faltan ${r.m - r.n} XP para ${r.siguiente}.` : "Eres de lo mejor del taller."}${p.nivelDesbloqueado === 2 ? " Nivel 2 abierto." : ""}`;
+}
 
 /** PROVISIONAL: naves por número de pod (sprites del kit; se cambiarán por los propios). Rangos 1-4 abren las naves 1-4; la 5 pide todas las insignias. */
 export const NAVES = [
@@ -168,6 +175,15 @@ export function cargarPerfil(alias: string, almacen: Almacen | null = disco()): 
       ultimoEnd: typeof o.ultimoEnd === "string" ? o.ultimoEnd : undefined,
     };
   } catch { return perfilNuevo(alias.trim()); }
+}
+
+/** Último alias usado en este dispositivo: el menú lo rellena (sin cuentas; solo localStorage, o memoria si falla). */
+export function ultimoAlias(almacen: Almacen | null = disco()): string {
+  try { return memoria.get("circuitsync.alias") ?? almacen?.getItem("circuitsync.alias") ?? ""; } catch { return memoria.get("circuitsync.alias") ?? ""; }
+}
+export function recordarAlias(alias: string, almacen: Almacen | null = disco()): void {
+  memoria.set("circuitsync.alias", alias.trim());
+  try { almacen?.setItem("circuitsync.alias", alias.trim()); } catch { /* sin disco */ }
 }
 
 export function guardarPerfil(p: Perfil, almacen: Almacen | null = disco()): void {
