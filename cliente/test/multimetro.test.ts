@@ -27,7 +27,6 @@ describe("multímetro del Taller", () => {
     const cont = (pasa: boolean): Medida => ({ t: "medida", seq: 1, t0: 0, zona: 1, modo: "continuidad", punto: "pieza", pasa });
     expect(textoModo("tension", "fusible")).toMatch(/No mide amperios/);
     expect(textoMedida(cont(true), "fusible")).toMatch(/fusible está sano/);
-    expect(textoMedida(cont(false), "fusible")).toMatch(/fusible está cortado/);
     expect(textoMedida({ ...cont(true), punto: "carga1" }, "fusible")).toMatch(/^Pasa: la corriente/);
   });
 });

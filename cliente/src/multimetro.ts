@@ -21,7 +21,6 @@ export const T = {
   sinEleccion: "Primero elige una opción en la gaveta (abajo) y luego toca la pieza para medir.",
   // Reactor: el árbitro no manda amperios (solo continuidad y tramo de tensión), así que el multímetro no dice cuánto consume el calefactor.
   fusibleSano: "Pasa: el fusible está sano. No dice cuánto aguanta: prueba y mira al calefactor.",
-  fusibleCortado: "No pasa: este fusible está cortado y no deja pasar corriente. Prueba otro.",
   fusibleAyuda: "Toca el fusible o el calefactor. No mide amperios: prueba (fino corta solo, grueso no protege).",
   sinMontaje: "Primero coloca y cablea las piezas, y luego mide.",
   ledSentido: "Cae casi toda la batería en el LED: el LED no deja pasar, mira su sentido.",
@@ -41,7 +40,7 @@ export const anguloTension = (fraccion: number) => -60 + 120 * Math.max(0, Math.
 export const textoMedida = (m: Medida, circuito?: string) => {
   // LED invertido: mismo veredicto que el circuito abierto, pero la pista es la polaridad.
   const led = circuito === "invertido";
-  if (m.modo === "continuidad" && circuito === "fusible" && m.punto === "pieza") return m.pasa ? T.fusibleSano : T.fusibleCortado;
+  if (m.modo === "continuidad" && circuito === "fusible" && m.punto === "pieza" && m.pasa) return T.fusibleSano; // el probador (3 mA) nunca funde un fusible: «no pasa» no ocurre
   if (m.modo === "continuidad") return m.pasa ? T.pasaTexto : led ? T.ledNoPasa : T.noPasaTexto;
   return led && m.tension === "toda" ? T.ledSentido : TRAMO[m.tension ?? "nada"].texto;
 };

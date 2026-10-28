@@ -36,6 +36,12 @@ describe("multímetro: solo lo que mediría un multímetro real", () => {
     }
   });
 
+  it("continuidad del fusible: los 3 (0,5 / 1 / 3 A) pasan siempre; el motor nunca devuelve «cortado»", () => {
+    for (const volts of [3.7, 4.5, 9]) {
+      for (const f of PIEZAS.fusible) expect(medir({ circuito: "fusible", volts }, f, "continuidad", "pieza")).toEqual({ pasa: true });
+    }
+  });
+
   it("en las zonas de resistencia la tensión no distingue la correcta (no es un «Probar» gratis)", () => {
     for (const volts of [3.7, 4.5, 9]) {
       const tramos = PIEZAS.led.map((p) => (medir({ circuito: "led", volts }, p, "tension", "carga1") as { tension: string }).tension);
