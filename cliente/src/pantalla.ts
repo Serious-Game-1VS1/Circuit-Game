@@ -100,7 +100,7 @@ export function validarEntrada(codigo: string, alias: string): string | null {
   return null;
 }
 
-const ESTADO: Record<RivalView["estado"], string> = { reparando: "reparando", penalizado: "penalizado", "sin-conexion": "sin conexión" };
+const ESTADO: Record<RivalView["estado"], string> = { reparando: "reparando", penalizado: "enfriando", "sin-conexion": "sin conexión" };
 export const textoRival = (r: RivalView | null, total = 5) => (r ? `${r.alias}: ${r.despachados}/${total} pods · ${ESTADO[r.estado]}` : "Rival: —");
 
 const segundos = (ms: number) => Math.ceil(ms / 1000);
@@ -169,7 +169,8 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     case "reject": return { ...p, despachando: false, aviso: textoRechazo(m.reason, m.waitMs), esperaHasta: ahora + m.waitMs };
     // Medir no toca avisos ni bloqueos: solo guarda la lectura.
     case "medida": return { ...p, medida: m };
-    case "rival": return { ...p, rival: { alias: m.alias, despachados: m.despachados, estado: m.estado } };
+    case "rival": return { ...p, rival: { alias: m.alias, despachados: m.despachados, estado: m.estado },
+      aviso: !p.practica && m.despachados >= p.total && p.despachados < p.total ? `${m.alias} terminó sus ${p.total} pods primero: la partida terminó.` : p.aviso };
     case "end":
       if (p.practica) return { ...inicial(), alias: p.alias, aviso: "Práctica terminada: ¡buen trabajo!", end: m };
       return { ...p, fase: m.phase === "fin" && m.carrera ? (p.fase === "podio" ? "podio" : "carrera") : "fin", fin: textoFin(m, p.station), end: m };

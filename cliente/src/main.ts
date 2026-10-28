@@ -74,7 +74,9 @@ class Entrar extends Base {
     ver.on("pointerdown", () => panelLogros(this, refrescar()));
     // Práctica (SCRUM-151): sin código ni rival; el alias es opcional y por defecto "Aprendiz". Oleadas y el selector de nivel siguen en el código (net.practicar), fuera del menú.
     boton(this, W / 2, 424, "Practicar", W - 32, "#3a4466", () => void net.practicar(valor("alias").trim() || "Aprendiz", nivelElegido(pfActual, sel)));
-    boton(this, W / 2, 488, "Tutorial", W - 32, "#3a4466", () => void net.practicar(valor("alias").trim() || "Aprendiz", 1, true));
+    boton(this, W / 4 + 4, 488, "Tutorial", W / 2 - 24, "#3a4466", () => void net.practicar(valor("alias").trim() || "Aprendiz", 1, true));
+    // Parte opcional: fusible, LED girado, corte de cable y placa con cables (nivel 2, semilla fija).
+    boton(this, (3 * W) / 4 - 4, 488, "Tutorial 2", W / 2 - 24, "#3a4466", () => void net.practicar(valor("alias").trim() || "Aprendiz", 2, true, false, 2));
     this.aviso = texto(this, W / 2, 536, "", 16, "#ff6b6b");
     botonSilencio(this, W - 30, 30);
     refrescar();
@@ -93,7 +95,7 @@ class Sala extends Base {
     texto(this, W / 2, 60, "Sala", 28);
     texto(this, W / 2, 100, `Código: ${net.codigo}`, 18, "#9ab"); // para compartirlo con el rival
     this.lista = texto(this, W / 2, 140, "", 20);
-    this.listo = boton(this, W / 2, 520, "Listo", W - 32, "#3bb273", () => { net.listo(); this.listo.setText("Esperando al rival…").disableInteractive(); });
+    this.listo = boton(this, W / 2, 520, "Listo", W - 32, "#3bb273", () => { net.listo(); this.listo.setText("Esperando al rival…").disableInteractive().setBackgroundColor("#232a44"); });
     boton(this, W / 2, 594, "Salir", W - 32, "#3a4466", () => void net.salir());
     // Precarga el arte del Taller (~244 PNG): «Listo» espera a que termine, así la cuenta 3-2-1 (y el reloj) no
     // arranca con este equipo aún cargando ni deja la pantalla en negro tras la cuenta.
@@ -110,6 +112,7 @@ class Sala extends Base {
     if (yo?.ready) this.listo.setText("Esperando al rival…").disableInteractive();
     else if (this.load.isLoading()) this.listo.setText("Cargando…").disableInteractive();
     else if (yo) this.listo.setText("Listo").setInteractive({ useHandCursor: true });
+    this.listo.setBackgroundColor(this.listo.input?.enabled ? "#3bb273" : "#232a44"); // verde = botón; gris = estado (esperando/cargando)
   }
 }
 

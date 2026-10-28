@@ -48,7 +48,7 @@ Meta: jugar solo, de principio a fin, como lo hará el comité: primero el tutor
 
 ## Lista de comprobación de la partida
 Marca cada punto en ambos teléfonos.
-- [ ] Tutorial (botón «Tutorial»): los 10 pasos se entienden solos; «Saltar» funciona.
+- [ ] Tutorial (botón «Tutorial»): los 10 pasos se entienden solos (sin saltos de numeración); «Saltar» funciona; el botón «Tutorial 2» (fusible, placa, LED girado, empalme) también y «Salir» se ve y se toca.
 - [ ] Práctica: «Practicar» juega solo y se sale tocando la línea «Práctica».
 - [ ] Entrar con el código de sala y un alias distinto en cada teléfono.
 - [ ] Pulsar «Listo» en ambos: cuenta 3-2-1.

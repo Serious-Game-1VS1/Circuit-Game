@@ -7,14 +7,15 @@ import type { Carril, Circuito, End, Station } from "../../spike/src/protocol";
 import { puntosDe } from "./progreso";
 
 export const TXT = {
-  decidido: "El ganador ya está decidido: {alias}.",
+  decidido: "Ganó {alias}.",
+  regla: "Gana quien despacha 5 pods primero. Si se acaba el tiempo, gana quien despachó más; si empatan, quien quemó menos piezas.",
   decididoEmpate: "Empate: mismos pods y mismos quemados.",
   porQue5: "{alias} despachó sus 5 pods primero.",
   porQueMas: "{alias} despachó más pods cuando se acabó el tiempo.",
   porQueQuemados: "Mismos pods, pero {alias} quemó menos piezas.",
   carreraTitulo: "Carrera final",
-  carreraAyuda: "Cada llama = un despacho limpio. La carrera solo celebra: no cambia el ganador.",
-  saltar: "Toca para saltar",
+  carreraAyuda: "Así terminó la partida. Cada llama es un pod despachado sin quemar piezas.",
+  saltar: "Toca la pantalla para saltar",
   podLuce: "Corre: Pod {n}",
   podio: "Podio",
   primero: "1.º", segundo: "2.º",

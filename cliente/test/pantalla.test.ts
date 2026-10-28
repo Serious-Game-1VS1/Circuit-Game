@@ -57,7 +57,16 @@ describe("lógica de pantalla", () => {
 
   it("texto del rival sin piezas ni soluciones", () => {
     expect(textoRival({ alias: "beto", despachados: 2, estado: "sin-conexion" })).toBe("beto: 2/5 pods · sin conexión");
+    expect(textoRival({ alias: "beto", despachados: 2, estado: "penalizado" })).toBe("beto: 2/5 pods · enfriando");
     expect(textoRival(null)).toBe("Rival: —");
+  });
+  it("avisa en cuanto el rival termina primero (no en práctica ni si ya terminaste)", () => {
+    const rival = (n: number): ServerMsg => ({ t: "rival", alias: "beto", despachados: n, estado: "reparando" });
+    const p = { ...inicial(), fase: "taller" as const, despachados: 4, total: 5 };
+    expect(reducir(p, rival(5), 0).aviso).toBe("beto terminó sus 5 pods primero: la partida terminó.");
+    expect(reducir(p, rival(4), 0).aviso).toBeNull();
+    expect(reducir({ ...p, practica: true }, rival(5), 0).aviso).toBeNull();
+    expect(reducir({ ...p, despachados: 5 }, rival(5), 0).aviso).toBeNull();
   });
 
   it("reloj mm:ss que no baja de cero", () => {

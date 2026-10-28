@@ -23,7 +23,7 @@
 
 - Puntaje (`src/progreso.ts`): 100 por pod, +20 por pod limpio, −10 por quemada, mínimo 0.
 - Conteo de habilidades: el cliente cuenta lo que manda el árbitro, igual en práctica y en duelo: +1 acierto por cada zona de un pod despachado y +1 fallo por cada veredicto distinto de «correcto». Led y cabina comparten concepto.
-- Solo cuentan partidas terminadas: el tutorial, una práctica abandonada o una partida anulada no suman. Un End reenviado al reentrar no se cuenta dos veces (firma `ultimoEnd`).
+- Solo cuentan partidas terminadas: el tutorial (1 o 2), una práctica abandonada o una partida anulada no suman. Un End reenviado al reentrar no se cuenta dos veces (firma `ultimoEnd`).
 - Perfil en `localStorage` (clave `circuitsync.perfil.<alias>`), con try/catch; si falla, solo memoria. Lógica en `src/perfil.ts` y `src/dominio.ts`; paneles en `src/recompensas.ts`; pruebas en `test/perfil.test.ts` y `test/dominio.test.ts`.
 
 ## Demo de 1 minuto

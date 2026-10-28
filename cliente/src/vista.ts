@@ -30,8 +30,8 @@ export const RETO: Record<Circuito, string> = {
 
 /** Qué se elige en la gaveta: pieza o montaje. */
 export const GAVETA: Record<Circuito, string> = {
-  led: "Elige una resistencia", cabina: "Elige una resistencia", luces: "Elige el montaje",
-  interruptor: "Elige el montaje", fusible: "Elige un fusible: compara sus amperios con lo que consume el calefactor",
+  led: "Elige una resistencia (más Ω, más freno)", cabina: "Elige una resistencia (más Ω, más freno)", luces: "Elige el montaje",
+  interruptor: "Elige el montaje", fusible: "Elige un fusible (A = lo que aguanta)",
   invertido: "Elige la posición del LED", abierto: "Elige qué hacer con el corte",
 };
 
@@ -55,6 +55,22 @@ const MONTAJE: Record<string, string> = { serie: "Serie", paralelo: "Paralelo", 
 export function probarActivo(eleccion: string | undefined, ultima: string | undefined, reparada: boolean, espera: boolean): boolean {
   return !!eleccion && eleccion !== ultima && !reparada && !espera;
 }
+
+/** Leyenda de los iconos de las pestañas de zona (rojo = alerta, verde = reparada, cian = la que ves). */
+export const LEYENDA_ZONAS = "Rojo: falla  Verde: lista  Cian: aquí";
+
+/**
+ * La fuente pixel no trae º, •, —, −, =, «», … ni ✔: se cambian por glifos que sí tiene.
+ * Si añades glifos a arte/ui/fuente_pixel.*, quita su línea de aquí.
+ */
+export const aPixel = (t: string) => t.replace(/º/g, "").replace(/[•—−]/g, "-").replace(/ ?= ?/g, ": ").replace(/[«»]/g, '"').replace(/…/g, "...").replace(/ ?✔/g, "");
+
+/** Tiempos (ms) de los carteles al despachar: el «¡REPARADO!» termina antes de que llegue el pod nuevo (sale en 450 ms, entra a los 250). */
+export const CARTEL = { reparadoMs: 350, averiaRetraso: 700, avisoDespachoMs: 450, puntosMs: 550 } as const;
+
+/** Texto sobre el botón Probar mientras dura el bloqueo ("" si no hay): el jugador ve que el clic no se perdió. */
+export const textoProbarEspera = (esperaHasta: number, ahora: number): string =>
+  esperaHasta > ahora ? `Probar · ${Math.ceil((esperaHasta - ahora) / 1000)} s` : "";
 
 /** Etiqueta de la pieza tal como viene impresa ("470 Ω", "0,5 A") o el nombre del montaje. */
 export function textoOpcion(pieza: string, circuito: Circuito): string {

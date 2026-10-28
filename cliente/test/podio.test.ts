@@ -25,7 +25,7 @@ describe("carrera final y podio", () => {
   });
 
   it("explica la decisión con los desempates del árbitro", () => {
-    expect(decision(END)).toBe("El ganador ya está decidido: beto.\nbeto despachó sus 5 pods primero.");
+    expect(decision(END)).toBe("Ganó beto.\nbeto despachó sus 5 pods primero.");
     const tiempo = { ...END, reason: "tiempo" };
     expect(decision(tiempo)).toMatch(/despachó más pods/);
     expect(decision({ ...tiempo, score: { A: { alias: "ana", despachados: 2, quemadas: 1 }, B: { alias: "beto", despachados: 2, quemadas: 0 } } })).toMatch(/quemó menos/);

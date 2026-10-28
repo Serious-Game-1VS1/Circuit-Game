@@ -9,8 +9,8 @@ import type { Circuito } from "../../spike/src/protocol";
 import { img, letras, marco } from "./arte";
 import { arrastrable } from "./arrastre";
 import {
-  cableTocado, CARGAS, cargaEn, cargasPuestas, CASILLAS, colorCable, control, coord, curva, esDestino, K, montaje, poner, ponerCable,
-  puntoEn, quitarCable, ranuraEn, ranuraValida, todasPuestas, type Cable, type Carga, type Puestas, type Punto,
+  cableDelCorto, cableTocado, CARGAS, cargaEn, cargasPuestas, CASILLAS, colorCable, control, coord, curva, esDestino, K, poner, ponerCable,
+  puntoEn, quitarCable, ranuraEn, ranuraValida, textoCorto, todasPuestas, type Cable, type Carga, type Puestas, type Punto,
 } from "./placa";
 import { spriteCarga } from "./sprites";
 import { textoVolts } from "./vista";
@@ -19,12 +19,10 @@ const OSCURO = 0x140f1f, CIAN = 0x5ef0ff;
 // Textos de diseno-taller/prototipo-v3/textos.js (T.circuito y T.gaveta), salvo los marcados.
 export const TC = {
   rielMas: "+ (rojo)", rielMenos: "− (azul)",
-  cablesAyuda: "Arrastra de un punto a otro, o tócalos uno y luego otro.",
-  cableElegido: "Ahora toca el otro punto.",
+  cablesAyuda: "Une los puntos amarillos: arrastra de uno a otro. Toca un cable para quitarlo.",
+  cableElegido: "Toca un punto de otra pieza (o un riel) para unirlos. Tócalo otra vez para cancelar.",
   destinoNoSirve: "Ese destino no sirve: elige un terminal resaltado.",
   cableNoValido: "Ese cable no sirve: elige otro punto.",
-  cortoAviso: "Ojo: ese cable une + con −. Hará corto.",
-  terminalSuelto: "Cada pieza necesita un cable en sus dos puntos.",
   noVaAhi: "Esa pieza no va ahí.",
   seleccionada: "Ahora toca dónde ponerla.",
   // No está en textos.js (el prototipo v3 no arrastraba piezas a la placa).
@@ -66,6 +64,8 @@ export class Tablero {
   private readonly previa: Phaser.GameObjects.Graphics;
   private readonly marcas: Map<Punto, Phaser.GameObjects.Image>;
   private readonly rieles: Phaser.GameObjects.Graphics;
+  /** Puntos de conexión de las piezas puestas: amarillo = sin cable, verde = con cable. */
+  private readonly pines: Phaser.GameObjects.Graphics;
   private readonly cargas: Phaser.GameObjects.Image[];
   private readonly zona: Phaser.GameObjects.Zone;
   private readonly volts: Phaser.GameObjects.BitmapText;
@@ -77,6 +77,7 @@ export class Tablero {
     this.trazo = s.add.graphics();
     this.previa = s.add.graphics();
     this.rieles = s.add.graphics();
+    this.pines = s.add.graphics();
     this.marcas = new Map(CASILLAS.map((p) => {
       const [f, col] = p.split(",").map(Number) as [number, number];
       return [p, img(s, (16 + 17 * col) * K, (6 + 17 * f) * K, "casilla_vacia", K).setOrigin(0).setVisible(false)];
@@ -108,7 +109,7 @@ export class Tablero {
       });
       return { fondo: marco(s, x, G.y, "boton_secundario", G.w, G.h), pieza: img(s, x, G.y, "foco_apagado", 2).setOrigin(0.5), zona };
     });
-    this.c.add([img(s, 0, 0, "placa_4x4", K).setOrigin(0), ...this.marcas.values(), this.rieles, ...this.cargas, this.trazo, this.previa,
+    this.c.add([img(s, 0, 0, "placa_4x4", K).setOrigin(0), ...this.marcas.values(), this.rieles, ...this.cargas, this.pines, this.trazo, this.previa,
       this.volts, letras(s, 100 * K, -26, TC.rielMenos, 2, OSCURO).setOrigin(1, 0), this.zona, ...this.gaveta.flatMap((g) => [g.fondo, g.pieza, g.zona])]);
     this.zona.on("pointerdown", (p: Phaser.Input.Pointer) => this.bajar(p));
     s.input.on("pointermove", (p: Phaser.Input.Pointer) => this.mover(p));
@@ -222,7 +223,8 @@ export class Tablero {
   private unir(a: Punto, b: Punto) {
     const nuevos = ponerCable(this.cables, a, b);
     if (!nuevos) { this.ev.aviso(TC.cableNoValido); return this.marcar(); }
-    if (montaje(nuevos) === "puente") this.ev.aviso(TC.cortoAviso);
+    const corto = cableDelCorto(nuevos);
+    if (corto) this.ev.aviso(textoCorto(corto, this.circuito, cargasPuestas(this.puestas)));
     this.ev.cambio(nuevos);
   }
 
@@ -239,6 +241,11 @@ export class Tablero {
         : (desde && esDestino(desde, p)) || libre(p) ? "casilla_valida" : bornes.has(p) ? "casilla_ocupada" : null;
       im.setVisible(!!t);
       if (t) im.setTexture(t);
+    }
+    this.pines.clear();
+    for (const p of bornes) {
+      const { x, y } = coord(p), con = this.cables.some((c) => c.a === p || c.b === p);
+      this.pines.fillStyle(OSCURO).fillCircle(x, y, 11).fillStyle(con ? 0x56d364 : 0xf6c63a).fillCircle(x, y, 8);
     }
     this.rieles.clear();
     for (const r of ["+", "-"] as const) {

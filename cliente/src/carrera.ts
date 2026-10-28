@@ -109,22 +109,28 @@ export class Carrera extends Phaser.Scene {
 
     // Semáforo 3-2-1-¡YA! (0,5 s cada luz) y luego la carrera (~3 s).
     const sem = this.add.image(W / 2, 300, "semaforo_3").setOrigin(0.5, 1).setScale(3);
-    ["semaforo_2", "semaforo_1", "semaforo_ya"].forEach((k, i) => this.time.delayedCall(500 * (i + 1), () => sem.setTexture(k)));
-    this.time.delayedCall(2000, () => {
+    ["semaforo_2", "semaforo_1", "semaforo_ya"].forEach((k, i) => this.time.delayedCall(300 * (i + 1), () => sem.setTexture(k)));
+    this.time.delayedCall(1200, () => {
       sem.setVisible(false);
       this.corriendo = true;
       for (const { l, grupo } of pods) {
         // supuesto: el ganador cruza la meta; el otro queda atrás (en empate, cruzan juntos).
-        this.tweens.add({ targets: grupo, x: l.gana ? META - 90 : META - 190, duration: l.gana ? 2600 : 3000, ease: "Sine.easeInOut" });
+        this.tweens.add({ targets: grupo, x: l.gana ? META - 90 : META - 190, duration: l.gana ? 2400 : 2800, ease: "Sine.easeInOut" });
       }
       // En empate de duelo nadie se resalta; contra tu récord, quien gane.
-      this.time.delayedCall(3000, () => this.llegada(pods.find((p) => (g ? p.l.gana : p.l.id === e.winner))?.grupo, gane));
+      this.time.delayedCall(2800, () => this.llegada(pods.find((p) => (g ? p.l.gana : p.l.id === e.winner))?.grupo, gane));
     });
-    // Toca para saltar (tras 1 s, para que no se salte por el toque del despacho).
-    this.time.delayedCall(1000, () => {
-      texto(this, W / 2, H - 40, TXT.saltar, 2, 0xccddee);
-      this.input.once("pointerdown", () => this.salir());
-    });
+    // «Toca para saltar» visible desde el primer segundo. Usa eventos del DOM y un timer real (no el reloj de Phaser):
+    // con la pestaña en segundo plano el lienzo no avanza y la escena no debe quedarse colgada.
+    texto(this, W / 2, H - 40, TXT.saltar, 2, 0xccddee);
+    const t0 = Date.now();
+    let salio = false;
+    const ir = () => { if (salio) return; salio = true; limpiar(); this.salir(); };
+    const toque = () => { if (Date.now() - t0 > 400) ir(); }; // 0,4 s de guarda: no saltar por el toque del despacho
+    const reloj = window.setTimeout(ir, 12000);
+    const limpiar = () => { window.clearTimeout(reloj); window.removeEventListener("pointerdown", toque); };
+    window.addEventListener("pointerdown", toque);
+    this.events.once("shutdown", () => { salio = true; limpiar(); });
   }
 
   private llegada(ganador: Phaser.GameObjects.Container | undefined, gane: boolean) {
@@ -141,7 +147,7 @@ export class Carrera extends Phaser.Scene {
       let i = 0;
       this.time.addEvent({ delay: 100, loop: true, callback: () => confeti.setTexture(`confeti_${++i % 4}`) });
     }
-    this.time.delayedCall(1800, () => this.salir());
+    this.time.delayedCall(1500, () => this.salir());
   }
 
   update(_t: number, dt: number) {
@@ -163,6 +169,7 @@ export class Podio extends Phaser.Scene {
     const cartel = e.winner === null ? "cartel_empate" : e.winner === yo ? "cartel_ganaste" : "cartel_perdiste";
     this.add.image(W / 2, 40, cartel).setScale(e.winner === null ? 2 : 3);
     texto(this, W / 2, 76, decision(e), 2);
+    texto(this, W / 2, 124, TXT.regla, 1, 0xccddee).setMaxWidth(W - 24);
 
     // Podio con el pod que corrió el ganador (o el mío en empate).
     const quien = e.winner ?? yo ?? "A";

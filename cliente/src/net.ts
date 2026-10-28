@@ -7,7 +7,7 @@ import { registrar, type Dominio } from "./dominio";
 import { COOLDOWN_CORTO, elegir, sinMejoras, type Mejora } from "./mejoras";
 import { PracticaTransport } from "./practica";
 import { DIAGNOSTICO } from "./progreso";
-import { SEMILLA_TUTORIAL } from "./tutorial";
+import { SEMILLA_TUTORIAL, SEMILLA_TUTORIAL_2 } from "./tutorial";
 import { despachable, inicial, normalizarCodigo, reducir, terminada, validarEntrada, type Pantalla } from "./pantalla";
 
 const REINTENTOS = 15;
@@ -26,6 +26,8 @@ export class Net {
   public estado: Pantalla = inicial();
   /** La práctica en curso es el tutorial (semilla fija): el Taller dibuja la capa guiada. */
   public tutorial = false;
+  /** Qué parte del tutorial corre: 1 (resistencias) o 2 (fallas avanzadas, nivel 2). */
+  public parteTutorial: 1 | 2 = 1;
   /** Aciertos y fallos por concepto de la partida en curso; main.ts los pasa al perfil al terminar. */
   public dominio: Dominio = {};
   /** Mecánicas de la práctica: mejoras activas, puntos extra del Doble puntos (suman al XP final) y mejor racha de llamas de la partida. */
@@ -65,16 +67,17 @@ export class Net {
   }
 
   /** Práctica en solitario (SCRUM-151): sin sala ni rival, empieza al instante. Termina con `salir()` o al despachar los 5 pods. */
-  public async practicar(alias: string, nivel: Nivel = 1, tutorial = false, oleadas = false): Promise<void> {
+  public async practicar(alias: string, nivel: Nivel = 1, tutorial = false, oleadas = false, parte: 1 | 2 = 1): Promise<void> {
     if (!validAlias(alias)) {
       this.poner({ ...this.estado, aviso: "El alias debe tener de 1 a 12 caracteres" });
       return;
     }
     await this.salir();
     this.tutorial = tutorial;
+    this.parteTutorial = parte;
     this.mejoras = sinMejoras(); this.extra = 0; this.mejorRacha = 0; this.podMs = []; this.usadas = [];
     this.hayMas = 0; this.segunda = undefined; this.diagnosticos = 0;
-    this.transport = new PracticaTransport(nivel, tutorial ? SEMILLA_TUTORIAL : undefined, oleadas);
+    this.transport = new PracticaTransport(nivel, tutorial ? (parte === 2 ? SEMILLA_TUTORIAL_2 : SEMILLA_TUTORIAL) : undefined, oleadas);
     this.conectar(this.transport);
     this.poner({ ...this.estado, practica: true }); // evita la fase Sala en el welcome
     await this.transport.join("");

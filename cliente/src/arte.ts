@@ -4,6 +4,7 @@
  */
 import * as Phaser from "phaser";
 import { ANIMACIONES, sprite, SPRITES } from "./sprites";
+import { aPixel } from "./vista"; // glifos que la fuente no trae
 
 export const FUENTE = "pixel";
 
@@ -58,15 +59,12 @@ export const marco = (s: Phaser.Scene, x: number, y: number, nombre: string, w: 
   return s.add.nineslice(x, y, nombre, undefined, w / k, h / k, n?.izq ?? 0, n?.der ?? 0, n?.arr ?? 0, n?.aba ?? 0).setScale(k);
 };
 
-/**
- * La fuente pixel no trae º, •, —, −, =, «», … ni ✔: se cambian por glifos que sí tiene.
- * Si añades glifos a arte/ui/fuente_pixel.*, quita su línea de aquí.
- */
-export const aPixel = (t: string) => t.replace(/º/g, "").replace(/[•—−]/g, "-").replace(/ ?= ?/g, ": ").replace(/[«»]/g, '"').replace(/…/g, "...").replace(/ ?✔/g, "");
-
 /** Texto con la fuente pixel del kit (glifos de 8 px de alto × k). Ancho ≈ 4·k px por letra. */
-export const letras = (s: Phaser.Scene, x: number, y: number, t: string, k = 2, color = 0xffffff) =>
-  s.add.bitmapText(x, y, FUENTE, aPixel(t), 8 * k).setTint(color);
+export const letras = (s: Phaser.Scene, x: number, y: number, t: string, k = 2, color = 0xffffff) => {
+  const b = s.add.bitmapText(x, y, FUENTE, aPixel(t), 8 * k).setTint(color), poner = b.setText.bind(b);
+  b.setText = (v) => poner(aPixel(String(v))); // los setText posteriores (avisos, globo) también pasan por aPixel
+  return b;
+};
 
 /** Área táctil invisible (para que el objetivo mida ≥ 44 px aunque el dibujo sea menor). */
 export const toque = (s: Phaser.Scene, x: number, y: number, w: number, h: number, fn: () => void) =>

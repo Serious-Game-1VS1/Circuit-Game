@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluar, PIEZAS } from "../../spike/src/engine/pods";
 import type { Circuito, Verdict } from "../../spike/src/protocol";
-import { botonesGaveta, GAVETA, pestanas, probarActivo, reparadas, RETO, textoOpcion, textoVolts, vistaDeVeredicto } from "../src/vista";
+import { aPixel, botonesGaveta, GAVETA, pestanas, CARTEL, LEYENDA_ZONAS, probarActivo, reparadas, textoProbarEspera, RETO, textoOpcion, textoVolts, vistaDeVeredicto } from "../src/vista";
 
 const CIRCUITOS: Circuito[] = ["led", "cabina", "luces", "interruptor", "fusible"];
 const VEREDICTOS: Verdict[] = ["poco", "correcto", "demasiado", "se quema", "corto"];
@@ -55,5 +55,27 @@ describe("botón Probar", () => {
     expect(probarActivo(undefined, undefined, false, false)).toBe(false);
     expect(probarActivo("220", "470", true, false)).toBe(false);
     expect(probarActivo("220", "470", false, true)).toBe(false);
+  });
+});
+
+describe("claridad del Taller", () => {
+  it("Probar muestra la cuenta atrás mientras dura el bloqueo", () => {
+    expect(textoProbarEspera(5000, 3500)).toBe("Probar · 2 s");
+    expect(textoProbarEspera(5000, 5000)).toBe("");
+  });
+  it("el «¡REPARADO!» termina antes de que el pod nuevo muestre su avería", () => {
+    expect(150 + CARTEL.reparadoMs + 150).toBeLessThanOrEqual(CARTEL.averiaRetraso);
+    expect(CARTEL.puntosMs).toBeLessThanOrEqual(CARTEL.averiaRetraso + 100);
+  });
+  it("hay leyenda de iconos y el texto del fusible no promete cifras", () => {
+    expect(LEYENDA_ZONAS).toMatch(/Rojo.*Verde.*Cian/);
+    expect(GAVETA.fusible).not.toMatch(/consume/);
+  });
+});
+
+describe("aPixel", () => {
+  it("cambia los glifos que la fuente pixel no dibuja", () => {
+    expect(aPixel("el riel + y el riel − hará corto")).toBe("el riel + y el riel - hará corto");
+    expect(aPixel("Elige un fusible (A = lo que aguanta)")).toBe("Elige un fusible (A: lo que aguanta)");
   });
 });

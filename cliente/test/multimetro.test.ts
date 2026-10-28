@@ -22,4 +22,12 @@ describe("multímetro del Taller", () => {
     expect(textoMedida(tension(1, "toda"), "abierto")).toMatch(/camino está cortado/);
     expect(textoModo("continuidad")).toMatch(/^Batería desconectada/);
   });
+
+  it("Reactor: el multímetro no promete amperios y la lectura del fusible se explica", () => {
+    const cont = (pasa: boolean): Medida => ({ t: "medida", seq: 1, t0: 0, zona: 1, modo: "continuidad", punto: "pieza", pasa });
+    expect(textoModo("tension", "fusible")).toMatch(/No mide amperios/);
+    expect(textoMedida(cont(true), "fusible")).toMatch(/fusible está sano/);
+    expect(textoMedida(cont(false), "fusible")).toMatch(/fusible está cortado/);
+    expect(textoMedida({ ...cont(true), punto: "carga1" }, "fusible")).toMatch(/^Pasa: la corriente/);
+  });
 });

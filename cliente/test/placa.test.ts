@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluar } from "../../spike/src/engine/pods";
-import { cableEn, cableTocado, cargaEn, cargasPuestas, conPlaca, coord, curva, montaje, poner, ponerCable, puntoEn, PUNTOS, quitarCable, ranuraEn, ranuraValida, todasPuestas, type Cable } from "../src/placa";
+import { cableDelCorto, faltaCablear, faltaColocar, cableEn, cableTocado, cargaEn, cargasPuestas, conPlaca, coord, curva, montaje, poner, ponerCable, puntoEn, PUNTOS, quitarCable, ranuraEn, ranuraValida, todasPuestas, type Cable } from "../src/placa";
 
 const cables = (...xs: [string, string][]): Cable[] => xs.map(([a, b]) => ({ a, b }));
 const SERIE = cables(["+", "1,1"], ["2,1", "1,2"], ["2,2", "-"]);
@@ -100,5 +100,29 @@ describe("piezas arrastradas a la placa", () => {
     expect(montaje(serie, cargasPuestas({ carga1: "0,0" }))).toBeNull();
     expect(montaje(serie.slice(0, 2), cargasPuestas(puestas))).toBeNull(); // un borne sin cable
     expect(cargaEn("3,3", cargasPuestas(puestas))?.punto).toBe("carga2");
+  });
+});
+
+describe("mensajes específicos del cableado", () => {
+  it("nombra la pieza y el punto que falta", () => {
+    expect(faltaColocar({}, "luces")).toBe("Falta colocar: la luz 1 y la luz 2.");
+    expect(faltaColocar({ carga1: "0,0" }, "luces")).toBe("Falta colocar: la luz 2.");
+    expect(faltaColocar({ carga2: "0,0" }, "interruptor")).toBe("Falta colocar: el motor.");
+    expect(faltaColocar({ carga1: "0,0", carga2: "0,1" }, "luces")).toBeNull();
+    expect(faltaCablear(cables(["+", "1,1"]), "interruptor")).toBe("El motor necesita un cable en su punto inferior.");
+    expect(faltaCablear(cables(["2,1", "1,2"]), "interruptor")).toBe("El motor necesita un cable en su punto superior.");
+    expect(faltaCablear(cables(["+", "1,1"], ["2,1", "-"]), "interruptor")).toBe("El interruptor necesita un cable en sus dos puntos.");
+    expect(faltaCablear(cables(["+", "1,1"], ["2,1", "-"]), "luces")).toContain("La luz 2 necesita");
+  });
+
+  it("el corto señala el cable que hay que quitar", () => {
+    const c = cables(["+", "1,1"], ["2,1", "1,2"], ["2,2", "-"], ["+", "-"]);
+    expect(cableDelCorto(c)).toEqual({ a: "+", b: "-" });
+    expect(cableDelCorto(SERIE)).toBeNull();
+    expect(faltaCablear(c, "luces")).toMatch(/cable entre el riel \+ y el riel −.*quitarlo/);
+  });
+
+  it("todo cableado pero sin montaje: explica sin culpar a una pieza", () => {
+    expect(faltaCablear(cables(["+", "1,1"], ["1,1", "2,1"], ["2,1", "1,2"], ["2,2", "-"]), "luces")).toContain("no están unidas bien");
   });
 });

@@ -156,3 +156,47 @@ export function montaje(cables: Cable[], cargas: Carga[] = CARGAS): "serie" | "p
   }
   return null;
 }
+
+// ---- Mensajes específicos del cableado (solo texto: no cambian qué circuitos valen) ----
+const NOMBRES: Record<"luces" | "interruptor", [string, string]> = { luces: ["la luz 1", "la luz 2"], interruptor: ["el motor", "el interruptor"] };
+const mayus = (t: string) => t[0]!.toUpperCase() + t.slice(1);
+/** Piezas sin colocar en la placa, con su nombre («Falta colocar: la luz 2.»); null si ya están todas. */
+export function faltaColocar(puestas: Puestas, circuito: Circuito): string | null {
+  const nombres = NOMBRES[circuito === "interruptor" ? "interruptor" : "luces"];
+  const faltan = CARGAS.flatMap((k, i) => (puestas[k.punto] ? [] : [nombres[i]!]));
+  return faltan.length ? `Falta colocar: ${faltan.join(" y ")}.` : null;
+}
+/** Cómo nombrar un punto: riel, punto superior/inferior de una pieza, o casilla libre. */
+export function etiquetaPunto(circuito: Circuito, p: Punto, cargas: Carga[] = CARGAS): string {
+  if (p === "+") return "el riel +";
+  if (p === "-") return "el riel −";
+  const nombres = NOMBRES[circuito === "interruptor" ? "interruptor" : "luces"];
+  for (const k of cargas) {
+    const n = nombres[CARGAS.findIndex((x) => x.punto === k.punto)]!;
+    if (p === k.a) return `el punto superior (${n.replace(/^(el|la) /, "")})`;
+    if (p === k.b) return `el punto inferior (${n.replace(/^(el|la) /, "")})`;
+  }
+  return "una casilla libre";
+}
+const unen = (cables: Cable[]) => montaje(cables) === "puente";
+/** Cable que provoca el corto (+ con −): el primero que, al quitarlo, ya no lo hay. null si no hay corto. */
+export function cableDelCorto(cables: Cable[]): Cable | null {
+  if (!unen(cables)) return null;
+  return cables.find((_, i) => !unen(quitarCable(cables, i))) ?? cables[0] ?? null;
+}
+export const textoCorto = (c: Cable, circuito: Circuito, cargas: Carga[] = CARGAS) =>
+  `Ojo: el cable entre ${etiquetaPunto(circuito, c.a, cargas)} y ${etiquetaPunto(circuito, c.b, cargas)} hará corto. Tócalo para quitarlo.`;
+
+/** Qué hay que corregir en el cableado para poder probar (texto para el botón Probar gris). */
+export function faltaCablear(cables: Cable[], circuito: Circuito, cargas: Carga[] = CARGAS): string {
+  const corto = cableDelCorto(cables);
+  if (corto) return textoCorto(corto, circuito, cargas);
+  if (cargas.length < 2) return faltaColocar(Object.fromEntries(cargas.map((k) => [k.punto, k.a])), circuito) ?? "Arrastra cada pieza a la placa.";
+  const nombres = NOMBRES[circuito === "interruptor" ? "interruptor" : "luces"];
+  for (const k of cargas) {
+    const n = nombres[CARGAS.findIndex((x) => x.punto === k.punto)]!;
+    const arriba = cables.some((c) => c.a === k.a || c.b === k.a), abajo = cables.some((c) => c.a === k.b || c.b === k.b);
+    if (!arriba || !abajo) return `${mayus(n)} necesita un cable en ${!arriba && !abajo ? "sus dos puntos" : arriba ? "su punto inferior" : "su punto superior"}.`;
+  }
+  return "Todas las piezas tienen cable, pero no están unidas bien: cada pieza debe quedar entre el riel + y el riel −. Toca un cable para quitarlo y prueba otra unión.";
+}
