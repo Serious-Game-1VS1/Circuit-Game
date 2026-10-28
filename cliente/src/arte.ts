@@ -3,7 +3,7 @@
  * Escala entera: 1 px de sprite = `k` px de pantalla (4 en taller y UI, según arte/README.md).
  */
 import * as Phaser from "phaser";
-import { ANIMACIONES, sprite, SPRITES } from "./sprites";
+import { ANIMACIONES, type Montaje, sprite, SPRITES } from "./sprites";
 import { aPixel, CONSEJOS } from "./vista"; // glifos que la fuente no trae
 
 export const FUENTE = "pixel";
@@ -75,3 +75,21 @@ export const letras = (s: Phaser.Scene, x: number, y: number, t: string, k = 2, 
 /** Área táctil invisible (para que el objetivo mida ≥ 44 px aunque el dibujo sea menor). */
 export const toque = (s: Phaser.Scene, x: number, y: number, w: number, h: number, fn: () => void) =>
   s.add.zone(x, y, w, h).setInteractive({ useHandCursor: true }).on("pointerdown", fn);
+
+/** Diodo en pixel art (triángulo + barra; la franja ámbar es el cátodo), 12×11 px de sprite a escala `k`. Centrado en (x, y). */
+export function diodo(s: Phaser.Scene, x: number, y: number, k = 3, giro = false) {
+  const g = s.add.graphics(), px = (c: number, f: number, w: number, h: number, color: number) => g.fillStyle(color).fillRect(x + ((giro ? 12 - c - w : c) - 6) * k, y + (f - 5) * k, w * k, h * k);
+  px(0, 5, 12, 1, 0x8a94a6); // patillas
+  for (let c = 1; c <= 7; c++) { const m = 4 - Math.floor(((c - 1) * 5) / 7); px(c, 5 - m, 1, 2 * m + 1, 0xd8dee9); } // triángulo hacia el cátodo
+  px(8, 0, 2, 11, 0xe0a43c); // franja del cátodo
+  return g;
+}
+
+/** Pinta un montaje (sprites, diodo y cables) centrado en (x, y); devuelve los objetos para meterlos en un contenedor. */
+export function pintarMontaje(s: Phaser.Scene, m: Montaje, x: number, y: number) {
+  const g = s.add.graphics().lineStyle(4, 0x8a94a6);
+  for (const [a, b, c, d] of m.cables) g.lineBetween(x + a, y + b, x + c, y + d);
+  for (const [a, b] of m.puntos ?? []) g.fillStyle(0xe0a43c).fillCircle(x + a, y + b, 5);
+  return [g, ...m.elementos.map((e) => (e.diodo ? diodo(s, x + e.x, y + e.y, e.k, e.giro) : img(s, x + e.x, y + e.y, e.sprite!, e.k))),
+    ...(m.textos ?? []).map((t) => letras(s, x + t.x, y + t.y, t.t, t.k ?? 2).setOrigin(0.5, 0))];
+}

@@ -26,6 +26,9 @@ export const RETO: Record<Circuito, string> = {
   fusible: "Elige el fusible que protege al calefactor",
   invertido: "El LED no enciende: averigua por qué con el multímetro",
   abierto: "El LED no enciende: busca el corte con el multímetro",
+  combinar: "Monta las dos resistencias para que el LED reciba entre 10 y 20 mA",
+  divisor: "Tu salida va al Arduino: debe quedar entre 4 y 5 V. Mídela con Tensión",
+  protegido: "El diodo se come 0,7 V: la resistencia debe ajustarse",
 };
 
 /** Qué se elige en la gaveta: pieza o montaje. */
@@ -33,6 +36,7 @@ export const GAVETA: Record<Circuito, string> = {
   led: "Elige una resistencia (más Ω, más freno)", cabina: "Elige una resistencia (más Ω, más freno)", luces: "Elige el montaje",
   interruptor: "Elige el montaje", fusible: "Elige un fusible (A = lo que aguanta)",
   invertido: "Elige la posición del LED", abierto: "Elige qué hacer con el corte",
+  combinar: "Elige cómo usar las dos resistencias", divisor: "Elige la resistencia de abajo (R2)", protegido: "Elige una resistencia (más Ω, más freno)",
 };
 
 /** Nombre estable de cada resistencia por valor (textos.js, gaveta.res): más Ω, más freno. */
@@ -49,6 +53,7 @@ export const PISTA_DEMO = {
   probar: "Prueba si funciona",
 } as const;
 
+const COMBINAR: Record<string, string> = { una: "Una sola", serie: "En serie", paralelo: "En paralelo" };
 const MONTAJE: Record<string, string> = { serie: "Serie", paralelo: "Paralelo", puente: "Puente", directa: "Girar el LED", inversa: "Dejar el LED", empalmar: "Empalmar", dejar: "Dejar igual" };
 
 /** ¿Probar está activo? Hay elección, la zona sigue sin reparar, no hay espera y cambió algo desde la última prueba (el árbitro rechaza «sin-cambios»). */
@@ -74,7 +79,8 @@ export const textoProbarEspera = (esperaHasta: number, ahora: number): string =>
 
 /** Etiqueta de la pieza tal como viene impresa ("470 Ω", "0,5 A") o el nombre del montaje. */
 export function textoOpcion(pieza: string, circuito: Circuito): string {
-  if (circuito === "led" || circuito === "cabina") return `${pieza} Ω`;
+  if (circuito === "combinar") return COMBINAR[pieza] ?? pieza;
+  if (circuito === "led" || circuito === "cabina" || circuito === "divisor" || circuito === "protegido") return `${pieza} Ω`;
   if (circuito === "fusible") return `${pieza.replace(".", ",")} A`;
   return MONTAJE[pieza] ?? pieza;
 }
@@ -88,6 +94,9 @@ const CARGA: Record<Circuito, { poco: string; demasiado: string; quema: string }
   interruptor: { poco: "El motor no arranca: le llega poca corriente. Revisa los cables.", demasiado: "El motor sufre: recibe demasiado. Revisa los cables.", quema: "¡El motor se quemó! Recibió demasiado. Espera y revisa los cables." },
   invertido: { poco: "El LED no enciende: está al revés y no deja pasar la corriente. Prueba girarlo.", demasiado: "El LED sufre. Revisa su posición.", quema: "¡El LED se quemó! Espera y revisa su posición." },
   abierto: { poco: "El LED no enciende: el circuito está cortado y no pasa corriente. Prueba cerrar el corte.", demasiado: "El LED sufre. Revisa el circuito.", quema: "¡El LED se quemó! Espera y revisa el circuito." },
+  combinar: { poco: "El LED casi no brilla: llega poca corriente. Prueba otro montaje que frene menos.", demasiado: "El LED sufre: llega demasiada corriente. Prueba otro montaje que frene más.", quema: "¡El LED se quemó! Frenaste muy poco. Espera y prueba un montaje que frene más." },
+  divisor: { poco: "Al Arduino le llega muy poca tensión. Mide R2 con Tensión y prueba otra.", demasiado: "Al Arduino le llega más tensión de la que le gusta. Prueba otra R2.", quema: "¡Se quemó el pin del Arduino! Le llegó demasiada tensión. Espera y prueba otra R2." },
+  protegido: { poco: "El LED casi no brilla: el diodo y la resistencia se comen mucha tensión. Prueba una que frene menos.", demasiado: "El LED sufre: llega demasiada corriente. Prueba una que frene más.", quema: "¡El LED se quemó! Frenaste muy poco. Espera y prueba una que frene más." },
   fusible: { poco: "El fusible corta aunque no hay falla: es demasiado fino. Prueba otro.", demasiado: "El calefactor sufre: el fusible deja pasar demasiado. Prueba uno que corte antes.", quema: "El fusible no cortó a tiempo y el calefactor se quemó. Prueba uno que corte antes." },
 };
 
@@ -118,3 +127,6 @@ export const CONSEJOS = [
   "Un fusible se funde para salvar el circuito.",
   "Si el circuito está abierto, la corriente no pasa.",
 ];
+
+/** Retraso (ms) con que entra la nave `i` de la cola: escalonado de 250 ms al iniciar la partida; después entra de inmediato. */
+export const retrasoCola = (i: number, inicio: boolean): number => (inicio ? i * 250 : 0);

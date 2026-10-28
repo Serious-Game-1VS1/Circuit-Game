@@ -22,6 +22,8 @@ export const UMBRALES_MEDALLA = { oro: 1, plata: 1.25, bronce: 1.5 } as const;
 export type Medalla = keyof typeof UMBRALES_MEDALLA;
 
 export interface Perfil { alias: string; xp: number; partidas: number; ganadas: number; pods: number; limpios: number; nivelDesbloqueado: 1 | 2; insignias: string[];
+  /** Ids de mini-tutoriales completados (ver marcarTutorial). */
+  tutoriales: string[];
   /** Aciertos y fallos por concepto (ver dominio.ts). */
   dominio: Dominio;
   /** Mejor tiempo (ms) por pod, con clave "nivel-pod" (ver registrarTiempo). */
@@ -86,7 +88,7 @@ export const mejorNave = (p: Perfil) => Math.max(...navesDesbloqueadas(p));
 export interface ResumenOleada { pods: number; racha: number; record: number; nuevo: boolean; diag?: number }
 export interface Eventos { oleada?: ResumenOleada; xp: number; insignias: Insignia[]; rango: string | null; habilidades: Cambio[]; naves: string[]; nivel2?: boolean }
 
-export const perfilNuevo = (alias: string): Perfil => ({ alias, xp: 0, partidas: 0, ganadas: 0, pods: 0, limpios: 0, nivelDesbloqueado: 1, insignias: [], dominio: {}, records: {}, oleadas: {}, totales: {} });
+export const perfilNuevo = (alias: string): Perfil => ({ alias, xp: 0, partidas: 0, ganadas: 0, pods: 0, limpios: 0, nivelDesbloqueado: 1, insignias: [], tutoriales: [], dominio: {}, records: {}, oleadas: {}, totales: {} });
 
 /** Medalla del tiempo de un pod frente a tu mejor marca; la primera vez (sin marca) no hay medalla. */
 export const medallaDe = (ms: number, mejor?: number): Medalla | null =>
@@ -109,6 +111,13 @@ export function registrarTotal(perfil: Perfil, nivel: Nivel, ms: number) {
   const k = String(nivel), previo = perfil.totales[k];
   return { perfil: previo === undefined || ms < previo ? { ...perfil, totales: { ...perfil.totales, [k]: ms } } : perfil, previo };
 }
+
+/** Marca un mini-tutorial como completado: sin duplicar, y un id vacío no cuenta. No guarda: quien llama usa guardarPerfil. */
+export function marcarTutorial(p: Perfil, id: string): Perfil {
+  if (typeof id !== "string" || !id.trim() || p.tutoriales.includes(id)) return p;
+  return { ...p, tutoriales: [...p.tutoriales, id] };
+}
+export const tutorialCompletado = (p: Perfil, id: string): boolean => p.tutoriales.includes(id);
 
 export const rangoDe =(xp: number) => RANGOS.reduce((r, x) => (xp >= x.xp ? x : r), RANGOS[0]);
 
@@ -168,6 +177,7 @@ export function cargarPerfil(alias: string, almacen: Almacen | null = disco()): 
     return {
       alias: alias.trim(), xp: num(o.xp), partidas: num(o.partidas), ganadas: num(o.ganadas), pods: num(o.pods), limpios: num(o.limpios),
       nivelDesbloqueado: o.nivelDesbloqueado === 2 ? 2 : 1, insignias: Array.isArray(o.insignias) ? o.insignias.filter((x) => typeof x === "string") : [],
+      tutoriales: Array.isArray(o.tutoriales) ? Array.from(new Set(o.tutoriales.filter((x): x is string => typeof x === "string" && x.trim() !== ""))) : [],
       dominio: limpiarDominio(o.dominio),
       records: Object.fromEntries(Object.entries(o.records && typeof o.records === "object" ? o.records : {}).filter(([, v]) => num(v) > 0) as [string, number][]),
       oleadas: Object.fromEntries(Object.entries(o.oleadas && typeof o.oleadas === "object" ? o.oleadas : {}).filter(([, v]) => num(v) > 0) as [string, number][]),

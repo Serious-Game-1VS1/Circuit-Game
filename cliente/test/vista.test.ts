@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluar, PIEZAS } from "../../spike/src/engine/pods";
 import type { Circuito, Verdict } from "../../spike/src/protocol";
-import { aPixel, botonesGaveta, GAVETA, pestanas, CARTEL, LEYENDA_ZONAS, probarActivo, reparadas, textoProbarEspera, RETO, textoOpcion, textoVolts, vistaDeVeredicto } from "../src/vista";
+import { aPixel, botonesGaveta, GAVETA, pestanas, CARTEL, LEYENDA_ZONAS, probarActivo, reparadas, retrasoCola, textoProbarEspera, RETO, textoOpcion, textoVolts, vistaDeVeredicto } from "../src/vista";
 
 const CIRCUITOS: Circuito[] = ["led", "cabina", "luces", "interruptor", "fusible"];
 const VEREDICTOS: Verdict[] = ["poco", "correcto", "demasiado", "se quema", "corto"];
@@ -26,6 +26,18 @@ describe("vista de una zona", () => {
       expect(RETO[c] + GAVETA[c]).not.toMatch(/\d/);
       for (const v of VEREDICTOS) expect(vistaDeVeredicto(v, c).mensaje).not.toMatch(/\d/);
     }
+  });
+
+  it("nivel 2: reto, gaveta, etiquetas y mensajes de combinar, divisor y protegido", () => {
+    for (const c of ["combinar", "divisor", "protegido"] as const) {
+      expect(RETO[c]).toBeTruthy(); expect(GAVETA[c]).toBeTruthy();
+      for (const v of VEREDICTOS) expect(vistaDeVeredicto(v, c).mensaje).toBeTruthy();
+      expect(vistaDeVeredicto("se quema", c).quemado).toBe(true);
+    }
+    expect(PIEZAS.combinar.map((p) => textoOpcion(p, "combinar"))).toEqual(["Una sola", "En serie", "En paralelo"]);
+    expect(textoOpcion("470", "divisor")).toBe("470 Ω");
+    expect(textoOpcion("100", "protegido")).toBe("100 Ω");
+    expect(textoVolts(6)).toBe("6 V");
   });
 
   it("etiquetas de pieza o montaje, y voltaje de la batería con coma", () => {
@@ -77,5 +89,12 @@ describe("aPixel", () => {
   it("cambia los glifos que la fuente pixel no dibuja", () => {
     expect(aPixel("el riel + y el riel − hará corto")).toBe("el riel + y el riel - hará corto");
     expect(aPixel("Elige un fusible (A = lo que aguanta)")).toBe("Elige un fusible (A: lo que aguanta)");
+  });
+});
+
+describe("retrasoCola", () => {
+  it("escalona 250 ms al iniciar y luego entra de inmediato", () => {
+    expect([0, 1, 3].map((i) => retrasoCola(i, true))).toEqual([0, 250, 750]);
+    expect(retrasoCola(3, false)).toBe(0);
   });
 });

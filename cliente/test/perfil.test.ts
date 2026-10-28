@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { inicial, type Pantalla } from "../src/pantalla";
-import { firmaEnd, aplicarPartida, cargarPerfil, guardarPerfil, INSIGNIAS, cambiarNivel, nivelElegido, textoNivel, perfilNuevo, progresoRango, rangoDe, registrarOleada, registrarTiempo, registrarTotal, resultadoDe, UMBRALES_MEDALLA, type Resultado } from "../src/perfil";
+import { firmaEnd, aplicarPartida, cargarPerfil, guardarPerfil, INSIGNIAS, marcarTutorial, tutorialCompletado, cambiarNivel, nivelElegido, textoNivel, perfilNuevo, progresoRango, rangoDe, registrarOleada, registrarTiempo, registrarTotal, resultadoDe, UMBRALES_MEDALLA, type Resultado } from "../src/perfil";
 
 const res = (o: Partial<Resultado> = {}): Resultado => ({ puntos: 0, pods: 0, total: 5, quemadas: 0, limpios: 0, gano: false, nivel: 1, ...o });
 const ids = (r: ReturnType<typeof aplicarPartida>) => r.eventos.insignias.map((i) => i.id);
@@ -191,6 +191,40 @@ describe("récord de Oleadas", () => {
   });
 });
 
+
+describe("mini-tutoriales completados", () => {
+  it("perfil nuevo sin tutoriales; perfil viejo sin el campo carga con []", () => {
+    expect(perfilNuevo("ana").tutoriales).toEqual([]);
+    const viejo = cargarPerfil("viejo", { getItem: () => JSON.stringify({ xp: 40, insignias: ["primer-pod"] }), setItem: () => {} });
+    expect(viejo.tutoriales).toEqual([]);
+    expect(tutorialCompletado(viejo, "t1")).toBe(false);
+  });
+  it("marcar dos veces no duplica y no altera el perfil original", () => {
+    const p = perfilNuevo("ana");
+    const a = marcarTutorial(p, "t1");
+    const b = marcarTutorial(a, "t1");
+    expect(b.tutoriales).toEqual(["t1"]);
+    expect(p.tutoriales).toEqual([]);
+    expect(a.tutoriales).toEqual(["t1"]);
+    expect(marcarTutorial(a, "t2").tutoriales).toEqual(["t1", "t2"]);
+    expect(tutorialCompletado(b, "t1")).toBe(true);
+    expect(tutorialCompletado(b, "t2")).toBe(false);
+  });
+  it("id inválido (vacío, solo espacios o no string) no se marca", () => {
+    const p = perfilNuevo("ana");
+    expect(marcarTutorial(p, "").tutoriales).toEqual([]);
+    expect(marcarTutorial(p, "   ").tutoriales).toEqual([]);
+    expect(marcarTutorial(p, 7 as unknown as string).tutoriales).toEqual([]);
+  });
+  it("al cargar descarta valores no string, vacíos y duplicados; se guarda y se lee", () => {
+    const almacen = new Map<string, string>();
+    const disco = { getItem: (k: string) => almacen.get(k) ?? null, setItem: (k: string, v: string) => void almacen.set(k, v) };
+    almacen.set("circuitsync.perfil.sucio", JSON.stringify({ tutoriales: ["a", 3, "a", null, "", "b"] }));
+    expect(cargarPerfil("sucio", disco).tutoriales).toEqual(["a", "b"]);
+    guardarPerfil(marcarTutorial(perfilNuevo("gio"), "t1"), disco);
+    expect(cargarPerfil("gio", disco).tutoriales).toEqual(["t1"]);
+  });
+});
 
 describe("bienvenida del menú", () => {
   it("primer uso, con partidas y con nivel 2", async () => {

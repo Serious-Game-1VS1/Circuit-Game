@@ -1,13 +1,15 @@
 import type { ClientMsg, Nivel, Result, ServerMsg } from "../../spike/src/protocol";
 import { PhotonTransport } from "../../spike/src/transport/photon";
-import type { Transport } from "../../spike/src/transport/transport";
+import type { SalaInfo, Transport } from "../../spike/src/transport/transport";
+export type { SalaInfo };
 import { LocalTransport } from "../../spike/src/transport/ws-client";
 import { validAlias } from "../../spike/src/protocol";
 import { registrar, type Dominio } from "./dominio";
 import { COOLDOWN_CORTO, elegir, sinMejoras, type Mejora } from "./mejoras";
 import { PracticaTransport } from "./practica";
+import { ContraBotTransport, type DificultadBot } from "./contraBot";
 import { DIAGNOSTICO } from "./progreso";
-import { SEMILLA_TUTORIAL, SEMILLA_TUTORIAL_2 } from "./tutorial";
+import { mecanica } from "./tutorial";
 import { despachable, inicial, normalizarCodigo, reducir, terminada, validarEntrada, type Pantalla } from "./pantalla";
 
 const REINTENTOS = 15;
@@ -26,8 +28,8 @@ export class Net {
   public estado: Pantalla = inicial();
   /** La práctica en curso es el tutorial (semilla fija): el Taller dibuja la capa guiada. */
   public tutorial = false;
-  /** Qué parte del tutorial corre: 1 (resistencias) o 2 (fallas avanzadas, nivel 2). */
-  public parteTutorial: 1 | 2 = 1;
+  /** Id de la mecánica del tutorial en curso (null si no es tutorial). */
+  public idTutorial: string | null = null;
   /** Aciertos y fallos por concepto de la partida en curso; main.ts los pasa al perfil al terminar. */
   public dominio: Dominio = {};
   /** Mecánicas de la práctica: mejoras activas, puntos extra del Doble puntos (suman al XP final) y mejor racha de llamas de la partida. */
@@ -67,19 +69,36 @@ export class Net {
   }
 
   /** Práctica en solitario (SCRUM-151): sin sala ni rival, empieza al instante. Termina con `salir()` o al despachar los 5 pods. */
-  public async practicar(alias: string, nivel: Nivel = 1, tutorial = false, oleadas = false, parte: 1 | 2 = 1): Promise<void> {
+  public async practicar(alias: string, nivel: Nivel = 1, tutorial = false, oleadas = false, id: string | null = null): Promise<void> {
     if (!validAlias(alias)) {
       this.poner({ ...this.estado, aviso: "El alias debe tener de 1 a 12 caracteres" });
       return;
     }
     await this.salir();
     this.tutorial = tutorial;
-    this.parteTutorial = parte;
+    const mec = tutorial && id ? mecanica(id) : undefined;
+    this.idTutorial = mec ? id : null;
     this.mejoras = sinMejoras(); this.extra = 0; this.mejorRacha = 0; this.podMs = []; this.usadas = [];
     this.hayMas = 0; this.segunda = undefined; this.diagnosticos = 0;
-    this.transport = new PracticaTransport(nivel, tutorial ? (parte === 2 ? SEMILLA_TUTORIAL_2 : SEMILLA_TUTORIAL) : undefined, oleadas);
+    this.transport = mec ? new PracticaTransport(mec.nivel, mec.semilla, false, mec.pod) : new PracticaTransport(nivel, undefined, oleadas);
     this.conectar(this.transport);
     this.poner({ ...this.estado, practica: true }); // evita la fase Sala en el welcome
+    await this.transport.join("");
+    this.enviar({ t: "hello", alias: alias.trim() });
+  }
+
+  /** Duelo contra un bot: como `practicar` pero la partida es un duelo (rival, start, 5 pods, sin `practica`). */
+  public async jugarSolo(alias: string, nivel: Nivel = 1, dificultad: DificultadBot = "normal"): Promise<void> {
+    if (!validAlias(alias)) {
+      this.poner({ ...this.estado, aviso: "El alias debe tener de 1 a 12 caracteres" });
+      return;
+    }
+    await this.salir();
+    this.tutorial = false; this.idTutorial = null;
+    this.mejoras = sinMejoras(); this.extra = 0; this.mejorRacha = 0; this.podMs = []; this.usadas = [];
+    this.hayMas = 0; this.segunda = undefined; this.diagnosticos = 0;
+    this.transport = new ContraBotTransport(nivel, undefined, dificultad);
+    this.conectar(this.transport);
     await this.transport.join("");
     this.enviar({ t: "hello", alias: alias.trim() });
   }
@@ -101,6 +120,24 @@ export class Net {
 
     this.sala = sala;
     this.enviar({ t: "hello", alias: sala.alias });
+  }
+
+  /**
+   * Salas abiertas ahora (nunca rechaza). Sin conexión, sin soporte o pasado `esperaMs`: `salas` vacío y `motivo` con el texto para la pantalla.
+   * La pantalla repite la consulta cada pocos segundos; entrar sigue siendo `entrar(codigo, alias)`.
+   */
+  public async listarSalas(esperaMs = 5000): Promise<{ salas: SalaInfo[]; motivo?: string }> {
+    const sinConexion = { salas: [], motivo: "No se pudo consultar las salas. Revisa tu conexión." };
+    if (!this.duelo.listar) return sinConexion;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const limite = new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error("tiempo agotado")), esperaMs); });
+      return { salas: await Promise.race([this.duelo.listar(), limite]) };
+    } catch {
+      return sinConexion;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   public async reconectar(): Promise<void> {
@@ -132,7 +169,7 @@ export class Net {
   public async salir(): Promise<void> {
     const alias = this.estado.alias;
     this.sala = undefined;
-    this.tutorial = false;
+    this.tutorial = false; this.idTutorial = null;
     await this.transport.close();
     this.transport = this.duelo;
     this.poner({ ...inicial(), alias });
@@ -175,6 +212,7 @@ export class Net {
     const msgObj = message as Record<string, unknown>;
     if (!("t" in msgObj) || typeof msgObj.t !== "string") return;
 
+    if (msgObj.t === "end" && this.idTutorial) return; // el tutorial de un pod termina en el Taller (paso «¡Listo!»), no en el menú
     if (msgObj.t === "result" && msgObj.escudo) this.mejoras = { ...this.mejoras, escudo: false }; // el árbitro gastó el escudo
     if (msgObj.t === "result") this.encadenada(message as Result);
     const estadoActual = this.estado ?? inicial();
@@ -187,7 +225,7 @@ export class Net {
     if (nuevoEstado.fase === "entrar" && !nuevoEstado.practica && this.transport !== this.duelo) {
       void this.transport.close();
       this.transport = this.duelo;
-      this.tutorial = false;
+      this.tutorial = false; this.idTutorial = null;
     }
   }
 
@@ -263,3 +301,8 @@ export const relayLocal = (location: LocationLike): LocalTransport =>
   );
 
 export { Net as NetManager };
+/** Solo las salas a las que se puede entrar, las más llenas primero (luego por código). */
+export function salasAbiertas(salas: SalaInfo[]): SalaInfo[] {
+  return salas.filter((s) => s.estado === "esperando").sort((a, b) => b.jugadores - a.jugadores || a.codigo.localeCompare(b.codigo));
+}
+export const textoSala = (s: SalaInfo) => `${s.codigo}  NIVEL ${s.nivel}  ${s.jugadores}/${s.max}`;

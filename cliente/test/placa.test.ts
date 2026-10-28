@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluar } from "../../spike/src/engine/pods";
-import { cableDelCorto, faltaCablear, faltaColocar, cableEn, cableTocado, cargaEn, cargasPuestas, conPlaca, coord, curva, montaje, poner, ponerCable, puntoEn, PUNTOS, quitarCable, ranuraEn, ranuraValida, todasPuestas, type Cable } from "../src/placa";
+import { conectable, destinoValido, pinesTocados, cableDelCorto, faltaCablear, faltaColocar, cableEn, cableTocado, cargaEn, cargasPuestas, conPlaca, coord, montaje, piezaEn, poner, ponerCable, motivoCableNoValido, puntoEn, puntoSoltar, PUNTOS, quitarCable, quitarPieza, ranuraEn, rutas, ranuraValida, todasPuestas, type Cable } from "../src/placa";
 
 const cables = (...xs: [string, string][]): Cable[] => xs.map(([a, b]) => ({ a, b }));
 const SERIE = cables(["+", "1,1"], ["2,1", "1,2"], ["2,2", "-"]);
@@ -49,12 +49,29 @@ describe("placa 4×4: del cableado al montaje que juzga el árbitro", () => {
     expect(puntoEn(coord("-").x + 10, 30)).toBe("-");
   });
 
-  it("tocar un cable lo encuentra por su curva; los bornes son de las cargas", () => {
+  /** Punto medio del tramo más largo de la ruta del cable i. */
+  const medioDe = (cs: Cable[], i = 0) => {
+    const r = rutas(cs)[i]!, [p, q] = r.slice(0, -1).map((u, k) => [u, r[k + 1]!] as const).sort((m, n) => Math.hypot(n[1].x - n[0].x, n[1].y - n[0].y) - Math.hypot(m[1].x - m[0].x, m[1].y - m[0].y))[0]!;
+    return { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+  };
+
+  it("los cables son rectos con ángulos de 90°, y evitan cruzarse cuando es fácil", () => {
+    const recto = (r: { x: number; y: number }[]) => r.slice(0, -1).every((p, k) => p.x === r[k + 1]!.x || p.y === r[k + 1]!.y);
+    for (const c of cables(["+", "2,1"], ["0,1", "3,1"], ["1,0", "2,3"], ["+", "-"], ["0,0", "3,3"])) expect(recto(rutas([c])[0]!)).toBe(true);
+    // Dos cables cuyo primer trazo en L se cruzaría: el segundo toma otra ruta y no cruza.
+    const [r1, r2] = rutas(cables(["0,0", "2,2"], ["0,2", "2,0"]));
+    const cruces = (a: { x: number; y: number }[], b: { x: number; y: number }[]) => a.slice(0, -1).flatMap((p, i) => b.slice(0, -1).map((q, j) => [p, a[i + 1]!, q, b[j + 1]!] as const))
+      .filter(([p, p2, q, q2]) => (p.y === p2.y && q.x === q2.x && q.x > Math.min(p.x, p2.x) && q.x < Math.max(p.x, p2.x) && p.y > Math.min(q.y, q2.y) && p.y < Math.max(q.y, q2.y))
+        || (q.y === q2.y && p.x === p2.x && p.x > Math.min(q.x, q2.x) && p.x < Math.max(q.x, q2.x) && q.y > Math.min(p.y, p2.y) && q.y < Math.max(p.y, p2.y))).length;
+    expect(cruces(r1!, r2!)).toBeLessThanOrEqual(1);
+  });
+
+  it("tocar un cable lo encuentra por su ruta; los bornes son de las cargas", () => {
     const cs = cables(["+", "1,3"]);
-    const medio = curva(cs[0]!, 0)[10]!;
+    const medio = medioDe(cs);
     expect(cableEn(cs, medio.x, medio.y)).toBe(0);
     expect(cableEn(cs, coord("1,3").x, coord("1,3").y)).toBe(-1); // en el extremo manda la casilla
-    // Objetivo táctil: acierta a 20 px de la curva (en vertical, la curva es oblicua: ≤ 20) y falla a 30 px.
+    // Objetivo táctil: acierta a 20 px de la ruta y falla a 40 px.
     expect(cableEn(cs, medio.x, medio.y + 20)).toBe(0);
     expect(cableEn(cs, medio.x, medio.y + 40)).toBe(-1);
     // Un cable que pasa por encima de otra casilla no le roba el toque en su centro.
@@ -62,8 +79,9 @@ describe("placa 4×4: del cableado al montaje que juzga el árbitro", () => {
     expect(cableTocado(fila, c22.x, c22.y)).toBe(-1);
     // Y el medio de cualquier cable se puede tocar para quitarlo.
     for (const c of cables(["+", "2,1"], ["0,1", "3,1"], ["1,0", "2,3"], ["+", "-"])) {
-      const m = curva(c, 0)[10]!;
-      expect(cableTocado([c], m.x, m.y)).toBe(0);
+      // En el centro de una casilla manda la casilla; en alguna parte del tramo largo siempre se puede tocar.
+      const r = rutas([c])[0]!, tramo = r.slice(0, -1).map((u, k) => [u, r[k + 1]!] as const).sort((m, n) => Math.hypot(n[1].x - n[0].x, n[1].y - n[0].y) - Math.hypot(m[1].x - m[0].x, m[1].y - m[0].y))[0]!;
+      expect([0.3, 0.4, 0.5, 0.6, 0.7].some((t) => cableTocado([c], tramo[0].x + (tramo[1].x - tramo[0].x) * t, tramo[0].y + (tramo[1].y - tramo[0].y) * t) === 0)).toBe(true);
     }
     expect(cargaEn("2,2")?.punto).toBe("carga2");
     expect(cargaEn("0,0")).toBeUndefined();
@@ -103,6 +121,29 @@ describe("piezas arrastradas a la placa", () => {
   });
 });
 
+describe("tocar una pieza puesta la devuelve a la gaveta", () => {
+  const puestas = { carga1: "1,1", carga2: "1,2" };
+  it("piezaEn: el cuerpo entre los dos bornes sí, los pines (donde se arrastra el cable) no", () => {
+    const A = coord("1,1"), B = coord("2,1");
+    expect(piezaEn(puestas, A.x, (A.y + B.y) / 2)).toBe("carga1");
+    expect(piezaEn(puestas, coord("1,2").x, (A.y + B.y) / 2)).toBe("carga2");
+    expect(piezaEn(puestas, A.x, A.y)).toBeNull();
+    expect(piezaEn(puestas, B.x, B.y)).toBeNull();
+    expect(piezaEn(puestas, coord("0,0").x, 100)).toBeNull();
+    expect(piezaEn({}, A.x, (A.y + B.y) / 2)).toBeNull();
+  });
+
+  it("quitarPieza: la pieza vuelve a la gaveta con sus cables; el resto queda igual", () => {
+    const antes = cables(["+", "1,1"], ["2,1", "1,2"], ["2,2", "-"], ["0,0", "3,3"]);
+    const { puestas: p, cables: c } = quitarPieza(puestas, antes, "carga1");
+    expect(p).toEqual({ carga2: "1,2" });
+    expect(c).toEqual(cables(["2,2", "-"], ["0,0", "3,3"]));
+    expect(todasPuestas(p)).toBe(false);
+    expect(montaje(c, cargasPuestas(p))).toBeNull(); // sin las dos piezas no hay montaje que mandar al árbitro
+    expect(quitarPieza({}, antes, "carga1")).toEqual({ puestas: {}, cables: antes });
+  });
+});
+
 describe("mensajes específicos del cableado", () => {
   it("nombra la pieza y el punto que falta", () => {
     expect(faltaColocar({}, "luces")).toBe("Falta colocar: la luz 1 y la luz 2.");
@@ -124,5 +165,41 @@ describe("mensajes específicos del cableado", () => {
 
   it("todo cableado pero sin montaje: explica sin culpar a una pieza", () => {
     expect(faltaCablear(cables(["+", "1,1"], ["1,1", "2,1"], ["2,1", "1,2"], ["2,2", "-"]), "luces")).toContain("no están unidas bien");
+  });
+});
+
+describe("cableado: soltar y mensajes", () => {
+  it("soltar sobre el carril manda sobre las casillas cercanas, y el aro de un pin sobre el carril", () => {
+    expect(puntoSoltar(coord("1,0").x - 14, coord("1,0").y + 24)).toBe("+"); // a la izquierda de la casilla 0, dentro de la banda ampliada
+    expect(puntoSoltar(coord("1,3").x + 14, coord("1,3").y + 24)).toBe("-");
+    expect(puntoSoltar(coord("1,0").x, coord("1,0").y)).toBe("1,0");
+    expect(puntoSoltar(coord("1,1").x + 5, coord("1,1").y - 5)).toBe("1,1");
+    expect(puntoSoltar(5, 2)).toBeNull();
+  });
+  it("el motivo del cable no válido depende de la causa", () => {
+    const uno = [{ a: "+", b: "1,1" }];
+    expect(motivoCableNoValido(uno, "1,1", "+")).toMatch(/ya tienen cable/);
+    expect(motivoCableNoValido(uno, "1,1", "1,1")).toMatch(/mismo punto/);
+  });
+});
+
+
+describe("cables que no engañan", () => {
+  const dos = { carga1: "1,1", carga2: "1,2" };
+  it("solo rieles y bornes de piezas puestas admiten cable (soltar en una casilla vacía no deja cable fantasma)", () => {
+    expect(conectable(dos, "-")).toBe(true);
+    expect(conectable(dos, "2,2")).toBe(true);
+    expect(conectable(dos, "0,3")).toBe(false);
+    expect(destinoValido(dos, "1,1", "0,3")).toBe(false);
+    expect(destinoValido(dos, "1,1", "-")).toBe(true);
+    expect(destinoValido(dos, "1,1", "1,1")).toBe(false);
+    expect(destinoValido({}, "1,1", "-")).toBe(false);
+  });
+  it("el cable de la luz 1 al riel − no pasa por los pines de la luz 2", () => {
+    const cs = cargasPuestas(dos), c = cables(["1,1", "-"]), c2 = cables(["2,1", "-"]);
+    expect(pinesTocados(rutas(c)[0]!, cs)).toBeGreaterThan(0); // sin saber de las piezas, va recto y las atraviesa
+    expect(pinesTocados(rutas(c, cs)[0]!, cs)).toBe(0);
+    expect(pinesTocados(rutas(c2, cs)[0]!, cs)).toBe(0);
+    expect(rutas(cables(["1,1", "+"]), cs)[0]).toHaveLength(2); // hacia el + no hay obstáculo: recto
   });
 });

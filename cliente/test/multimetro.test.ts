@@ -20,6 +20,11 @@ describe("multímetro del Taller", () => {
     expect(textoMedida({ ...tension(0, "nada"), modo: "continuidad", pasa: false })).toMatch(/^No pasa/);
     expect(textoMedida(tension(1, "toda"), "invertido")).toMatch(/mira su sentido/); // LED invertido: pista de polaridad, no «cortado»
     expect(textoMedida(tension(1, "toda"), "abierto")).toMatch(/camino está cortado/);
+    expect(textoMedida(tension(1, "toda"), "divisor")).toMatch(/nodo medio/);
+    expect(textoMedida(tension(1, "toda"), "divisor")).not.toMatch(/9 V|casi toda/); // en el medio con R2 = R1 queda la mitad: no se revela la solución
+    expect(textoMedida(tension(1, "toda"), "protegido")).toMatch(/diodo, el LED y la resistencia/);
+    expect(textoMedida(tension(1, "toda"), "divisor")).not.toMatch(/cortado/);
+    expect(textoMedida(tension(1, "toda"), "protegido")).not.toMatch(/cortado/);
     expect(textoModo("continuidad")).toMatch(/^Batería desconectada/);
   });
 

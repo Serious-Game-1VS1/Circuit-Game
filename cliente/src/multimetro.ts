@@ -25,6 +25,8 @@ export const T = {
   sinMontaje: "Primero coloca y cablea las piezas, y luego mide.",
   ledSentido: "Cae casi toda la batería en el LED: el LED no deja pasar, mira su sentido.",
   ledNoPasa: "No pasa: el LED solo deja pasar la corriente en un sentido, mira el suyo.",
+  divisorToda: "Mides el nodo medio: la lectura es la tensión que queda en R2; R1 se lleva el resto.",
+  protegidoToda: "Casi toda la batería cae en esta pieza: la tensión se reparte entre el diodo, el LED y la resistencia.",
 } as const;
 
 export const TRAMO: Record<Tramo, { etiqueta: string; texto: string }> = {
@@ -42,7 +44,12 @@ export const textoMedida = (m: Medida, circuito?: string) => {
   const led = circuito === "invertido";
   if (m.modo === "continuidad" && circuito === "fusible" && m.punto === "pieza" && m.pasa) return T.fusibleSano; // el probador (3 mA) nunca funde un fusible: «no pasa» no ocurre
   if (m.modo === "continuidad") return m.pasa ? T.pasaTexto : led ? T.ledNoPasa : T.noPasaTexto;
-  return led && m.tension === "toda" ? T.ledSentido : TRAMO[m.tension ?? "nada"].texto;
+  if (m.tension === "toda") { // «camino cortado» solo es cierto en los circuitos de corte; el divisor y el protegido no se cortan
+    if (led) return T.ledSentido;
+    if (circuito === "divisor") return T.divisorToda;
+    if (circuito === "protegido") return T.protegidoToda;
+  }
+  return TRAMO[m.tension ?? "nada"].texto;
 };
 
 /** Aviso mientras el modo está activo y no hay lectura. */

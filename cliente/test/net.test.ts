@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Arbiter } from "../../spike/src/arbiter/arbiter";
 import type { Transport } from "../../spike/src/transport/transport";
 import { PracticaTransport } from "../src/practica";
-import { crearTransporte, elegirTransporte, Net } from "../src/net";
+import { crearTransporte, elegirTransporte, Net, salasAbiertas, textoSala } from "../src/net";
 import { evaluar } from "../../spike/src/engine/pods";
 import { despachable, reloj } from "../src/pantalla";
 import { DIAGNOSTICO } from "../src/progreso";
@@ -327,6 +327,55 @@ describe("cliente conectado al árbitro", () => {
     expect((solo as unknown as { transport: unknown }).transport).not.toBe(practica);
   });
 
+  it("jugar solo: duelo contra el bot (rival, start, 5 pods, no es práctica)", async () => {
+    vi.useFakeTimers();
+    try {
+      const solo = new Net(new Mem("p6"));
+      await solo.jugarSolo("  ");
+      expect(solo.estado.aviso).toMatch(/alias/);
+      await solo.jugarSolo("pepa", 1, "facil");
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(solo.estado).toMatchObject({ fase: "taller", practica: false, alias: "pepa" });
+      expect(solo.estado.rival).toBeTruthy();
+      expect(solo.estado.total).toBe(5);
+      await solo.salir();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("salas abiertas: solo «esperando», las más llenas primero; texto de la tarjeta", () => {
+    const s = (codigo: string, jugadores: number, estado: "esperando" | "llena" | "jugando") => ({ codigo, nivel: 1 as const, jugadores, max: 2 as const, estado });
+    const r = salasAbiertas([s("ZZZ222", 0, "esperando"), s("AAA111", 2, "llena"), s("BBB333", 1, "esperando"), s("CCC444", 1, "jugando"), s("AAA999", 0, "esperando")]);
+    expect(r.map((x) => x.codigo)).toEqual(["BBB333", "AAA999", "ZZZ222"]);
+    expect(textoSala(r[0]!)).toBe("BBB333  NIVEL 1  1/2");
+  });
+
+  it("Tutorial por mecánica: práctica de un solo pod con su id", async () => {
+    const solo = new Net(new Mem("p7"), () => t);
+    await solo.practicar("lola", 1, true, false, "resistencia");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(solo.tutorial).toBe(true);
+    expect(solo.idTutorial).toBe("resistencia");
+    expect(solo.estado.total).toBe(1);
+    await solo.salir();
+    expect(solo.idTutorial).toBeNull();
+  });
+
+  it("Tutorial de un pod: al despachar se queda en el Taller (sin «Práctica terminada») y sigue siendo tutorial", async () => {
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const solo = new Net(new Mem("p8"), () => t);
+    await solo.practicar("lola", 1, true, false, "resistencia");
+    await flush();
+    const arb = (solo as unknown as { transport: PracticaTransport }).transport.arbiter;
+    for (const z of arb.pods[0]!.zonas) solo.probar(z.zona, z.solucion);
+    await flush();
+    solo.despachar();
+    await flush();
+    expect(solo.estado).toMatchObject({ fase: "taller", practica: true, despachados: 1, end: undefined });
+    expect(solo.idTutorial).toBe("resistencia");
+    await solo.salir();
+    expect(solo.estado.fase).toBe("entrar");
+  });
+
   it("Oleadas: pasa de 5 pods sin terminar, y el Escudo se gasta cuando el árbitro lo usa", async () => {
     const flush = () => new Promise((r) => setTimeout(r, 0));
     const solo = new Net(new Mem("p6"), () => t);
@@ -379,5 +428,21 @@ describe("falla encadenada: bono Diagnóstico", () => {
     res("correcto", true); res("correcto"); // no midió
     expect(solo.diagnosticos).toBe(1);
     expect(solo.segunda).toBeUndefined();
+  });
+});
+
+describe("listarSalas", () => {
+  const sala = { codigo: CODE, nivel: 1, jugadores: 1, max: 2, estado: "esperando" } as const;
+  const conLista = (listar?: () => Promise<typeof sala[]>) => new Net({ ...new Mem("x"), listar } as unknown as Transport, () => 0);
+
+  it("devuelve las salas del transporte", async () => {
+    expect(await conLista(async () => [sala]).listarSalas()).toEqual({ salas: [sala] });
+  });
+  it("sin conexión, sin soporte o con timeout: lista vacía y motivo", async () => {
+    for (const net of [conLista(async () => { throw new Error("caído"); }), conLista(), conLista(() => new Promise(() => {}))]) {
+      const r = await net.listarSalas(20);
+      expect(r.salas).toEqual([]);
+      expect(r.motivo).toMatch(/consultar/);
+    }
   });
 });

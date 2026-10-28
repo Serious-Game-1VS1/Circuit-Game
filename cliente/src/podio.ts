@@ -4,11 +4,12 @@
  * Textos copiados de diseno-taller/prototipo-v3/textos.js (fin, podio, conceptos).
  */
 import type { Carril, Circuito, End, Station } from "../../spike/src/protocol";
-import { puntosDe } from "./progreso";
+import { DIAGNOSTICO, puntosDe } from "./progreso";
+import type { Eventos } from "./perfil";
 
 export const TXT = {
   decidido: "Ganó {alias}.",
-  regla: "Gana quien despacha 5 pods primero. Si se acaba el tiempo, gana quien despachó más; si empatan, quien quemó menos piezas.",
+  regla: "Gana quien despacha 5 pods primero.\nSin tiempo: más pods; luego menos quemados", // 2 líneas de ≤ 42 letras a escala 2
   decididoEmpate: "Empate: mismos pods y mismos quemados.",
   porQue5: "{alias} despachó sus 5 pods primero.",
   porQueMas: "{alias} despachó más pods cuando se acabó el tiempo.",
@@ -42,6 +43,9 @@ export const CONCEPTO: Record<Circuito, string> = {
   fusible: "Elegir el fusible",
   invertido: "El LED conduce en un solo sentido (polaridad)",
   abierto: "Un circuito abierto no deja pasar corriente",
+  combinar: "La serie suma resistencias, el paralelo las reparte",
+  divisor: "El divisor reparte la tensión entre dos resistencias",
+  protegido: "Cada componente en serie se come tensión",
 };
 
 /** Sprite de carrera del pod N (1-5). supuesto: el pod N de la partida usa el chasis N del kit. */
@@ -97,4 +101,23 @@ export function podio(e: End, yo?: Station) {
     repasar: repasar.length ? repasar : [yo && e.score[yo]?.despachados === 0 ? TXT.repasarCero : TXT.repasarNada],
     podLento: lento && lento.n ? f(TXT.podLento, { n: lento.n, t: mmss(lento.ms) }) : null,
   };
+}
+
+/** Una tarjeta de la pantalla de Recompensas: título corto, detalle (≤ 2 líneas) y si destaca (insignia nueva). */
+export interface Tarjeta { titulo: string; detalle?: string; destacada?: boolean }
+const corto = (t: string, n = 72) => (t.length > n ? `${t.slice(0, n - 3)}...` : t);
+
+/** Lista de recompensas de la partida en tarjetas (la pantalla las revela de a una). Máximo `max`; las insignias van al final y mandan. */
+export function tarjetasRecompensa(ev: Eventos, max = 5): Tarjeta[] {
+  const t: Tarjeta[] = [];
+  if (ev.oleada) t.push({ titulo: `Oleadas: ${ev.oleada.pods} pods`, detalle: `Racha ${ev.oleada.racha} - ${ev.oleada.nuevo ? "¡nuevo récord!" : `tu récord: ${ev.oleada.record}`}` });
+  if (ev.oleada?.diag) t.push({ titulo: `Diagnósticos: ${ev.oleada.diag}`, detalle: `+${ev.oleada.diag * DIAGNOSTICO} XP` });
+  if (ev.naves.length) t.push({ titulo: "Nave nueva", detalle: corto(ev.naves.join(", ")) });
+  if (ev.nivel2) t.push({ titulo: "¡Nivel 2 abierto!", detalle: "Elígelo en Practicar" });
+  if (ev.habilidades.length) t.push({ titulo: "Habilidades", detalle: corto(ev.habilidades.map((c) => `${c.nombre} ${c.estrellas}/3${c.estrellas > c.antes ? " ↑" : c.estrellas < c.antes ? " ↓" : ""}`).join(", ")) });
+  const ins = ev.insignias.map((i): Tarjeta => ({ titulo: `Insignia: ${i.nombre}`, detalle: corto(i.descripcion), destacada: true }));
+  if (!t.length && !ins.length) return [{ titulo: "Sin novedades", detalle: "Sigue practicando" }];
+  const libres = Math.max(0, max - Math.min(ins.length, max));
+  const resto = ins.length > max ? ins.length - max + 1 : 0; // si no caben todas, la última resume las demás
+  return [...t.slice(0, libres), ...ins.slice(0, resto ? max - 1 : max), ...(resto ? [{ titulo: `Y ${resto} insignias más`, destacada: true }] : [])];
 }

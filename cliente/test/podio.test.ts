@@ -44,7 +44,26 @@ describe("carrera final y podio", () => {
     expect(podio(END, "B")).toMatchObject({ repasar: ["Nada: todo salió a la primera."] });
   });
 
-  it("podio: sin pods despachados, «qué repasar» manda a practicar", () => {
+  it("podio: un fallo de placa/cables nombra su concepto, nunca el del LED", () => {
+    const cables = { luces: "Luces en paralelo", interruptor: "interruptor", fusible: "fusible", invertido: "polaridad", abierto: "circuito abierto" } as const;
+    for (const [circuito, texto] of Object.entries(cables)) {
+      const end: End = { ...END, carrera: { A: { pod: 4, llamas: 3, podMs: [1, 1, 1, 1], repasar: [{ zona: "cabina", circuito: circuito as keyof typeof cables, fallos: 1, quemadas: 0 }] } } };
+      const r = podio(end, "A").repasar;
+      expect(r).toHaveLength(1);
+      expect(r[0]).toContain(texto);
+      expect(r[0]).not.toMatch(/LED$|resistenc/i);
+    }
+  });
+
+  it("podio: nivel 2 nombra su concepto", () => {
+    const textos = { combinar: "paralelo", divisor: "divisor", protegido: "en serie" } as const;
+    for (const [circuito, texto] of Object.entries(textos)) {
+      const end: End = { ...END, carrera: { A: { pod: 4, llamas: 3, podMs: [1, 1, 1, 1], repasar: [{ zona: "radar", circuito: circuito as keyof typeof textos, fallos: 1, quemadas: 0 }] } } };
+      expect(podio(end, "A").repasar).toEqual([expect.stringContaining(texto)]);
+    }
+  });
+
+  it("podio: sin pods despachados,«qué repasar» manda a practicar", () => {
     const sin = { ...END, carrera: undefined, score: { ...END.score, A: { ...END.score.A!, despachados: 0 } } };
     expect(podio(sin, "A").repasar).toEqual(["No despachaste ningún pod. Practica en el modo Practicar."]);
   });
@@ -69,3 +88,25 @@ describe("carrera final y podio", () => {
   });
 });
 
+
+import { TXT, tarjetasRecompensa } from "../src/podio";
+
+describe("tarjetas de recompensas y regla del podio", () => {
+  const base = { xp: 80, insignias: [], rango: null, habilidades: [], naves: [] };
+  it("la regla cabe en 2 líneas de 42 letras (escala 2 en 360 px)", () => {
+    const l = TXT.regla.split("\n");
+    expect(l).toHaveLength(2);
+    expect(Math.max(...l.map((x) => x.length))).toBeLessThanOrEqual(42);
+  });
+  it("sin novedades hay una tarjeta; las insignias van al final y destacadas", () => {
+    expect(tarjetasRecompensa(base)).toHaveLength(1);
+    const t = tarjetasRecompensa({ ...base, naves: ["Raya"], nivel2: true, insignias: [{ id: "a", nombre: "A", descripcion: "x", cumple: () => true }] });
+    expect(t.map((x) => !!x.destacada)).toEqual([false, false, true]);
+  });
+  it("nunca pasa de 5 tarjetas y resume las insignias de más", () => {
+    const ins = Array.from({ length: 7 }, (_, i) => ({ id: `i${i}`, nombre: `I${i}`, descripcion: "d", cumple: () => true }));
+    const t = tarjetasRecompensa({ ...base, naves: ["R"], nivel2: true, insignias: ins });
+    expect(t).toHaveLength(5);
+    expect(t[4]!.titulo).toBe("Y 3 insignias más");
+  });
+});

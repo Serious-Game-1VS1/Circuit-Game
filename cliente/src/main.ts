@@ -14,6 +14,7 @@ import { aplicarPartida, cargarPerfil, firmaEnd, guardarPerfil, mejorNave, regis
 import { hayFantasma, guardarPendiente, panelRecompensas, tomarPendiente } from "./recompensas";
 import { MEJORAS } from "./mejoras";
 import { menu } from "./inicio";
+import { Intro } from "./intro";
 import { MAX_LLAMAS } from "./progreso";
 
 const W = 360, H = 640; // diseño vertical; Scale.FIT lo ajusta a cualquier pantalla
@@ -116,7 +117,7 @@ const game = new Phaser.Game({
   parent: document.body,
   dom: { createContainer: true },
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: W, height: H },
-  scene: [Entrar, Sala, Cuenta, new Taller(net), new Carrera(net), new Podio(net), Fin],
+  scene: [Intro, Entrar, Sala, Cuenta, new Taller(net), new Carrera(net), new Podio(net), Fin],
 });
 if (import.meta.env.DEV) Object.assign(window, { game }); // solo en desarrollo: capturas e inspección
 

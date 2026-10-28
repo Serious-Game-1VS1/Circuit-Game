@@ -6,34 +6,40 @@
 import * as Phaser from "phaser";
 import type { Circuito, Medida, ModoMedir, ZonaNombre, ZonaView } from "../../spike/src/protocol";
 import type { Net } from "./net";
-import { anim, cargarArte, img, letras, marco, toque } from "./arte";
+import { anim, cargarArte, img, letras, marco, pintarMontaje, toque } from "./arte";
 import { anguloTension, lecturaLista, T as TM, textoMedida, textoModo, TRAMO, type Midiendo } from "./multimetro";
 import { avisoVivo, despachable, faltan, pistaDemo, reloj, tarjetaVisible, textoRival, type Falta, type Pantalla } from "./pantalla";
-import { botonSilencio, sonar } from "./audio";
+import { alternarSilencio, desbloquear, silenciado, sonar } from "./audio";
 import { arrastrable, dentro } from "./arrastre";
 import { casillas, DIAGNOSTICO, MAX_LLAMAS, puntosPod, rachaLlamas, textoGlobo, textoObjetivo, textoPod, tiempoPod } from "./progreso";
-import { cargarPerfil, guardarPerfil, registrarTiempo } from "./perfil";
+import { cargarPerfil, guardarPerfil, marcarTutorial, registrarTiempo, ultimoAlias } from "./perfil";
 import { cableDelCorto, cargasPuestas, conPlaca, faltaColocar, faltaCablear, montaje, textoCorto, todasPuestas, type Cable, type Puestas } from "./placa";
-import { Tablero, TC } from "./tablero";
+import { ayudaCables, Tablero } from "./tablero";
 import { QUEMADAS_OLEADAS } from "../../spike/src/arbiter/penalties";
 import { conDoble, etiquetas, MEJORAS, medirMs, ofrecer } from "./mejoras";
-import { actual, avanzar, esFin, iniciar, permite, saltar, textoPaso, type EstadoTut, type Objetivo, type Tutorial } from "./tutorial";
-import { cargas, cola, estadoZona, nivelCarga, pestanasArte, podDe, sprite, spriteBateria, spriteCarga, spritePieza, spriteTarjeta } from "./sprites";
-import { botonesGaveta, CARTEL, FRENA, GAVETA, LEYENDA_ZONAS, NOMBRE_ZONA, PISTA_DEMO, probarActivo, RETO, textoOpcion, textoProbarEspera, textoVolts, type Aguja } from "./vista";
+import { mecanica, actual, avanzar, esFin, iniciar, permite, siguiente, textoPaso, type EstadoTut, type Objetivo, type Tutorial } from "./tutorial";
+import { montajeCarga, montajePieza, cargas, cola, estadoZona, etiquetaCarga, nivelCarga, pestanasArte, podDe, sprite, spriteBateria, spriteCarga, spritePieza, spriteTarjeta } from "./sprites";
+import { botonesGaveta, CARTEL, FRENA, GAVETA, LEYENDA_ZONAS, NOMBRE_ZONA, PISTA_DEMO, probarActivo, RETO, retrasoCola, textoOpcion, textoProbarEspera, textoVolts, type Aguja } from "./vista";
 
 const K = 4;
 const ANGULO: Record<Aguja, number> = { poco: -60, correcto: 0, demasiado: 60 };
 const OSCURO = 0x140f1f, ALERTA = 0xff8a7a, GRIS = 0x9aa4c0, PISTA = 0xffd23f;
 /** Coordenadas locales de la escena (bloque de 360 px de ancho). */
 const POD_X = -12, POD_Y = 130, BAHIA_Y = 294;
+const REDUCIDO = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 type Bloque = Phaser.GameObjects.Container;
+type BotonGuia = { t: Phaser.GameObjects.BitmapText; partes: Phaser.GameObjects.GameObject[] };
 const puntos = (...p: [number, number][]) => p.map(([x, y]) => new Phaser.Math.Vector2(x, y));
 /** Ranura de la pieza en el dibujo del circuito (coordenadas del panel): ahí se suelta lo que se arrastra de la gaveta. */
 const RANURA = { x: 180, y: 34, w: 140, h: 96 };
+/** Centro del montaje de carga de varias piezas (protegido, divisor): a la derecha, cabe en los 360 px (ancho ≤ 110). */
+const MC = { x: 288, y: 62 };
 type Letras = Phaser.GameObjects.BitmapText;
 
 export class Taller extends Phaser.Scene {
   private zona = 0;
+  private ranura = RANURA;
+  private dibujarCables!: (hueco: boolean) => void;
   /** Pieza elegida por zona, con clave "pod-zona": la gaveta empieza sin elección. */
   private elegidas = new Map<string, string>();
   /** Última elección mandada a probar por zona (como lastPieza del árbitro): igual a la actual = «sin cambios». */
@@ -48,6 +54,7 @@ export class Taller extends Phaser.Scene {
   private lectura?: Medida;
   private avisoVisto: string | null = null; // para limpiar el multímetro cuando llega un aviso nuevo del árbitro
   private bloqueado = false;
+  private avisoClave = "";
   private avisoLocal?: { texto: string; hasta: number };
   private podC?: Bloque;
   private podNum = 0;
@@ -73,16 +80,30 @@ export class Taller extends Phaser.Scene {
   private tut: Tutorial | null = null;
   /** Estado del tutorial calculado AHORA (no una copia del último cuadro: un clic de elegir seguido de Probar llegaba antes del siguiente update). */
   private estTut(): EstadoTut | undefined {
-    const z = this.zonaActual(), v = z && this.net.estado.vistas[z.zona];
-    return z && { elegida: this.elegidas.get(this.clave()), modo: this.modo, medido: this.lectura?.modo === "tension",
-      aguja: v?.aguja, quemado: !!v?.quemado, reparada: z.reparada, despachados: this.net.estado.despachados, circuito: z.circuito, falta: this.falta(z) };
+    const z = this.zonaActual(), v = z && this.net.estado.vistas[z.zona], d = this.net.estado.despachados;
+    if (!z) return { modo: null, medido: false, quemado: false, reparada: d > 0, despachados: d, pruebas: this.pruebas, medidas: this.medidas }; // pod ya despachado: el tutorial sigue hasta el cierre
+    return { elegida: this.elegidas.get(this.clave()), modo: this.modo, medido: this.lectura?.modo === "tension",
+      aguja: v?.aguja, quemado: !!v?.quemado, reparada: z.reparada, despachados: d, circuito: z.circuito, falta: this.falta(z),
+      pruebas: this.pruebas, medidas: this.medidas };
   }
+  /** Veredictos de Probar y lecturas del multímetro recibidos (el tutorial exige uno NUEVO tras entrar en el paso). */
+  private pruebas = 0;
+  /** El ✓ del tutorial ya se guardó (al despachar). */
+  private marcado = false;
+  private leyenda!: Letras;
+  /** El mismo alias que muestra el menú (Aprender > Mecánicas): ahí se carga y guarda el ✓. */
+  private aliasPerfil() { return ultimoAlias().trim() || this.net.estado.alias?.trim() || "Aprendiz"; }
+  /** Probaste otra elección: el veredicto y el aviso de la anterior ya no valen (el estado del tutorial sí los conserva). */
+  private rancio(z: ZonaView) { const k = this.probadas.get(this.clave()); return k !== undefined && !z.reparada && this.eleccion(z) !== k; }
+  private vistasVivas(p: Pantalla) { const z = this.zonaActual(); return z && this.rancio(z) ? Object.fromEntries(Object.entries(p.vistas).filter(([k]) => Number(k) !== z.zona)) : p.vistas; }
+  private medidas = 0;
+  private vistasVistas = new Map<string, unknown>();
   private guiaClave = "";
   /** Botón «Salir» del HUD (práctica y Oleadas). */
   private salirB: Phaser.GameObjects.GameObject[] = [];
   /** Alto táctil mínimo en unidades del lienzo para que valga 44 px en pantalla; ver ajustarGolpes(). */
   private golpe = 48;
-  private guia!: { caja: Bloque; titulo: Letras; texto: Letras; saltar: Letras; sig: Letras; jugar: Phaser.GameObjects.GameObject[]; zonas: Phaser.GameObjects.Zone[]; resaltes: Phaser.GameObjects.NineSlice[] };
+  private guia!: { caja: Bloque; titulo: Letras; texto: Letras; esquema: Phaser.GameObjects.Container; saltar: BotonGuia; fin: BotonGuia[]; zonas: Phaser.GameObjects.Zone[]; resaltes: Phaser.GameObjects.NineSlice[] };
   private ui!: {
     escena: Bloque; panel: Bloque; estado: Letras; rival: Letras; salir: Phaser.GameObjects.Zone; reloj: Letras; contador: Phaser.GameObjects.Image;
     podT: Letras; llamas: Phaser.GameObjects.Sprite[]; mejorasT: Letras;
@@ -144,7 +165,7 @@ export class Taller extends Phaser.Scene {
   preload() { cargarArte(this); }
 
   create() {
-    const net = this.net, an = innerWidth > innerHeight;
+    const net = this.net, an = false; // shortcut: siempre vertical (360x640 FIT); el layout apaisado (innerWidth > innerHeight) queda sin uso
     // El Taller usa su propio lienzo (360×800 vertical o 1440×900 apaisado) y devuelve el de las demás escenas al salir.
     const { width, height } = this.scale.gameSize;
     this.scale.setGameSize(an ? 1440 : 360, an ? 900 : 800);
@@ -173,20 +194,27 @@ export class Taller extends Phaser.Scene {
       }));
     const globo = letras(this, 22, 72, "", 2, OSCURO).setMaxWidth(190);
     const colaC = this.add.container(0, 0);
+    this.colaNaves = new Map(); // la escena se reusa: las naves anteriores ya se destruyeron
     const bahia = anim(this, 180, BAHIA_Y, "bahia_ocupada");
     const podT = letras(this, 12, 274, "", 2, GRIS);
     const llamas = Array.from({ length: MAX_LLAMAS }, (_, i) => anim(this, 150 + i * 26, 282, "llama_turbo_cian", 2).setAlpha(0.35));
     const mejorasT = letras(this, 12, 252, "", 2, PISTA); // mejoras activas (práctica)
     const bocadillo = img(this, 8, 62, "globo_sintoma", 3).setOrigin(0);
-    const leyenda = letras(this, 180, 334, LEYENDA_ZONAS, 2, GRIS).setOrigin(0.5, 0); // bajo la bahía, fuera del pod; sin leyenda los iconos de las pestañas no se entendían
+    const leyenda = this.leyenda = letras(this, 180, 334, LEYENDA_ZONAS, 2, GRIS).setOrigin(0.5, 0); // bajo la bahía, fuera del pod; sin leyenda los iconos de las pestañas no se entendían
     escena.add([...pestanas, bocadillo, globo, colaC, bahia, podT, mejorasT, ...llamas, leyenda]);
     this.rivalCasillas = this.add.graphics(); // pods del rival (n/5) en casillas, junto a su línea del HUD
 
     // Panel del circuito: batería → pieza elegida → carga; medidor; gaveta; Probar y Despachar.
     const panel = this.add.container(an ? 840 : 0, an ? 290 : 430);
     const cables = this.add.graphics();
-    cables.lineStyle(4, 0xe8363c).strokePoints(puntos([50, 50], [50, 34], [310, 34], [310, 44]));
-    cables.lineStyle(4, 0x3e6af0).strokePoints(puntos([50, 102], [50, 118], [310, 118], [310, 108]));
+    this.dibujarCables = (hueco) => { // cable roto sin empalmar: el hilo rojo se interrumpe bajo la pieza del centro
+      cables.clear();
+      cables.lineStyle(4, 0xe8363c);
+      if (hueco) { cables.strokePoints(puntos([50, 50], [50, 34], [140, 34])); cables.strokePoints(puntos([220, 34], [310, 34], [310, 44])); }
+      else cables.strokePoints(puntos([50, 50], [50, 34], [310, 34], [310, 44]));
+      cables.lineStyle(4, 0x3e6af0).strokePoints(puntos([50, 102], [50, 118], [310, 118], [310, 108]));
+    };
+    this.dibujarCables(false);
     const circuito = this.add.container(0, 0);
     const carga = [0, 1].map(() => img(this, 310, 76, "led_rojo_apagado").setOrigin(0.5));
     // Fila del medidor de aguja (veredicto o multímetro) con los dos modos del multímetro a los lados.
@@ -211,15 +239,17 @@ export class Taller extends Phaser.Scene {
       this.add.zone(x, y, w, h).setInteractive().on("pointerdown", (_p: unknown, _lx: number, ly: number) => {
         const z = this.zonaActual();
         if (!z || conPlaca(z.circuito)) return;
-        if (this.modo) this.medir(punto(ly));
+        if (!this.modo) return;
+        if (z.circuito === "invertido" && punto(ly) === "pieza") return this.avisar("Eso es la resistencia. Toca el LED, a la derecha."); // el centro solo muestra cómo queda el LED
+        this.medir(punto(ly));
       });
     const zonasMedir = [
       medirToque(180, 44, 120, 84, () => "pieza"),
       medirToque(310, 76, 72, 110, (ly) => (this.zonaActual()?.circuito === "cabina" && ly > 55 ? "carga2" : "carga1")),
     ];
     const tablero = new Tablero(this, 30, -28, {
-      cambio: (c) => { sonar("cable"); this.cables.set(this.clave(), c); this.limpiarMedida(); this.pintar(net.estado); },
-      poner: (pz) => { sonar("pieza"); this.puestas.set(this.clave(), pz); this.limpiarMedida(); this.pintar(net.estado); },
+      cambio: (c) => { sonar("cable"); this.cables.set(this.clave(), c); this.limpiarMedida(); this.net.limpiarAviso(); this.pintar(net.estado); },
+      poner: (pz) => { sonar("pieza"); this.puestas.set(this.clave(), pz); this.limpiarMedida(); this.net.limpiarAviso(); this.pintar(net.estado); },
       aviso: (t) => this.avisar(t),
       medir: () => (this.modo ? (punto) => this.medir(punto) : null),
       bloqueado: () => !!this.zonaActual()?.reparada,
@@ -236,9 +266,11 @@ export class Taller extends Phaser.Scene {
       const elegir = (o: string) => {
         const no = permite(this.tut, { elegir: o }, this.estTut());
         if (no) { this.avisar(no); return false; }
-        sonar("elegir"); this.elegidas.set(this.clave(), o); this.pintar(net.estado); return true;
+        sonar("elegir");
+        if (this.elegidas.get(this.clave()) !== o) this.limpiarMedida();
+        this.elegidas.set(this.clave(), o); this.pintar(net.estado); return true;
       };
-      const enRanura = (p: Phaser.Input.Pointer) => { const v = panel.getWorldTransformMatrix().applyInverse(p.worldX, p.worldY); return dentro(RANURA, v.x, v.y); };
+      const enRanura = (p: Phaser.Input.Pointer) => { const v = panel.getWorldTransformMatrix().applyInverse(p.worldX, p.worldY); return dentro(this.ranura, v.x, v.y); };
       arrastrable(this, zona, {
         puede: () => !!pieza(),
         fantasma: () => this.add.container(0, 0, [marco(this, 0, 0, "boton_primario", 104, 48),
@@ -286,27 +318,35 @@ export class Taller extends Phaser.Scene {
       })),
       // Siempre visible; solo se activa con todas las zonas reparadas (Net.despachar lo comprueba).
       golpes[1] = toque(this, 268, 340, 150, 48, () => {
-        if (despachable(net.estado)) pulsar(despachar, "boton_despachar", () => net.despachar())();
+        if (despachable(net.estado)) {
+          const no = permite(this.tut, "despachar", this.estTut()); // el tutorial no deja despachar antes de ver sus botones de salida
+          if (no) this.avisar(no); else pulsar(despachar, "boton_despachar", () => net.despachar())();
+        }
         else if (faltan(net.estado.pod)) this.avisar(`Aún falta reparar: ${faltan(net.estado.pod)}`);
       }),
       tarjeta,
     ]);
 
-    botonSilencio(this, escena.x + 330, escena.y + 213); // el HUD va lleno: esquina libre de la bahía, a la derecha del cartel y bajo la cola de pods
+    // Esquina superior del HUD (entre «Pod n/5» y el contador): 36×36 visibles, zona táctil 44×44 sin tocar «Salir».
+    const mudo = this.add.text(212, 21, "", { fontSize: "22px", color: "#fff", fixedWidth: 36, fixedHeight: 36, align: "center", padding: { y: 4 } }).setOrigin(0.5).setDepth(1000);
+    const pintarMudo = () => mudo.setText(silenciado() ? "×" : "♪").setBackgroundColor(silenciado() ? "#8a2f3a" : "#3a4466");
+    this.add.zone(212, 21, 44, 44).setDepth(1001).setInteractive({ useHandCursor: true }).on("pointerdown", () => { desbloquear(); alternarSilencio(); pintarMudo(); });
+    pintarMudo();
     this.ui = {
       escena, panel, estado, rival, salir, reloj: relojT, contador, podT, llamas, mejorasT, pestanas, globo, bocadillo, cola: colaC, bahia, circuito, carga, aguja, aviso, gaveta, opciones, probar, despachar, tarjeta,
       cables, tablero, fila, etiquetas, modos, pasa, zonasMedir, flecha, resalteGaveta, resalteProbar, resalteDespachar, flechaPlaca, resalteRanura, golpes,
     };
     this.crearGuia();
-    this.tut = net.tutorial ? iniciar(net.parteTutorial) : null;
+    this.tut = net.tutorial ? iniciar(net.idTutorial!) : null;
     // Phaser reusa la escena: sin esto, la pieza del pod 1 del tutorial salía ya elegida en el pod 1 de la práctica.
     this.elegidas.clear(); this.probadas.clear(); this.cables.clear(); this.puestas.clear();
-    this.guiaClave = "";
+    this.guiaClave = ""; this.avisoClave = "";
     this.golpe = 0;
     this.podNum = 0;
     this.carteles = [];
     this.despachoHasta = 0;
     this.intento = false;
+    this.marcado = false;
     this.sucio = false;
     this.racha = 0;
     this.reparadasVistas = net.estado.pod?.zonas.filter((z) => z.reparada).length ?? 0;
@@ -332,7 +372,7 @@ export class Taller extends Phaser.Scene {
     // Multímetro: «Midiendo…» ~1 s con la aguja buscando; luego la lectura del árbitro.
     if (this.midiendo) {
       const l = lecturaLista(this.midiendo, p.medida, ahora, medirMs(this.net.mejoras));
-      if (l) { this.midiendo = undefined; this.lectura = l; this.pintarMedidor(); }
+      if (l) { this.midiendo = undefined; this.lectura = l; this.medidas++; this.pintarMedidor(); }
       else if (ahora - this.midiendo.desde > 5000) this.midiendo = undefined; // rechazo o red caída: se puede volver a medir
       else if (this.modo === "tension") this.ui.aguja.setVisible(true).setAngle(Math.sin(ahora / 90) * 50);
     }
@@ -352,23 +392,42 @@ export class Taller extends Phaser.Scene {
     const medidor = !this.modo ? null : this.midiendo ? TM.midiendo : this.lectura ? textoMedida(this.lectura, z?.circuito) : textoModo(this.modo, z?.circuito);
     const placa = !!z && conPlaca(z.circuito);
     const falta = z ? this.falta(z) : null, pista = z ? pistaDemo(p, this.intento, falta) : null;
-    this.ui.aviso.setText(local ?? (corto && textoCorto(corto, z!.circuito, cargasPuestas(this.puestasZona()))) ?? medidor ?? (pista && PISTA_DEMO[pista]) ?? avisoVivo(p, ahora) ?? (despachable(p) ? "Pod reparado: pulsa Despachar" : z?.reparada ? "Zona reparada"
-      : placa && falta === "colocar" ? faltaColocar(this.puestasZona(), z!.circuito)! : placa && falta ? TC.cablesAyuda : `${this.tut?.activo ? "" : `${textoObjetivo(p)}. `}Elige y pulsa Probar`));
+    const texto = this.acabo(p) ? "" : (local ?? (corto && textoCorto(corto, z!.circuito, cargasPuestas(this.puestasZona()))) ?? medidor ?? (pista && PISTA_DEMO[pista]) ?? (z && this.rancio(z) ? null : this.sinRespuesta(z, avisoVivo(p, ahora))) ?? (despachable(p) ? "Pod reparado: pulsa Despachar" : z?.reparada ? "Zona reparada"
+      : placa && falta === "colocar" ? faltaColocar(this.puestasZona(), z!.circuito)! : placa && falta ? ayudaCables(z!.circuito) : `${this.tut?.activo ? "" : `${textoObjetivo(p)}. `}${falta ? "Elige y pulsa Probar" : "Pulsa Probar"}`)) as string;
+    const clave = `${placa}|${texto}`;
+    if (clave !== this.avisoClave) { // en la placa el aviso cabe entre «Correcto» y Probar (44 px): 1-2 líneas a 16 px, 3 a 12 px
+      this.avisoClave = clave;
+      this.ui.aviso.setText(texto);
+      for (const k of placa ? [16, 12, 8] : [16]) { this.ui.aviso.setFontSize(k); if (!placa || this.ui.aviso.height <= 44) break; }
+    }
+    if (placa) this.ui.aviso.setY(283);
     this.ui.gaveta.setAlpha(this.ui.aviso.y + this.ui.aviso.height > this.ui.gaveta.y - 2 ? 0 : 1); // el aviso de 3 líneas no se pisa con «Elige…»
     // El motor (ícono de turbina) gira cuando la corriente es la correcta.
     if (z?.circuito === "interruptor" && nivelCarga(z, p.vistas[z.zona]) === 2) this.ui.tablero.girar(dt * 0.3);
     // Tutorial: la lectura del multímetro llega aquí y no en pintar(), así que el paso se comprueba cada cuadro.
-    if (this.tut?.activo && z) { // avanzar() exige que cada paso lleve ≥0,7 s visible
+    const vistas = new Map(Object.entries(p.vistas)); // cada Vista es un objeto nuevo por veredicto
+    for (const [k, v] of vistas) if (this.vistasVistas.get(k) !== v) this.pruebas++;
+    this.vistasVistas = vistas;
+    if (this.tut?.activo) { // avanzar() exige que cada paso lleve ≥1,4 s visible
       const antes = this.tut;
       this.tut = avanzar(this.tut, this.estTut()!, ahora);
-      if (this.tut !== antes) this.avisoLocal = undefined; // «Sigue el paso: …» del paso anterior ya no aplica
+      if (this.tut !== antes) { // «Sigue el paso: …» del paso anterior ya no aplica
+        this.avisoLocal = undefined;
+        if (this.tut.activo && !["tension", "pieza", "carga"].includes(actual(this.tut).objetivo) && z?.circuito !== "divisor") { this.modo = null; this.limpiarMedida(); this.pintar(p); } // «Batería desconectada…» no va con «Pulsa Probar»
+      }
     }
+    if (this.tut && !this.marcado && p.despachados > 0) { this.marcado = true; guardarPerfil(marcarTutorial(cargarPerfil(this.aliasPerfil()), this.tut.id)); }
     this.pintarGuia(placa);
     const ver = !!z && tarjetaVisible(p, z.zona, ahora);
     if (ver !== this.ui.tarjeta.visible && z) {
       if (ver) this.armarTarjeta(z.circuito, p);
       this.ui.tarjeta.setVisible(ver);
     }
+  }
+
+  /** En el tutorial del LED girado el aviso del árbitro regalaba la causa («está al revés»): se mide para descubrirla. */
+  private sinRespuesta(z: ZonaView | undefined, aviso: string | null) {
+    return aviso && this.tut?.activo && z?.circuito === "invertido" && !z.reparada && aviso.includes("al revés") ? "El LED no enciende. Averigua por qué con el multímetro." : aviso;
   }
 
   private armarTarjeta(c: Circuito, p: Pantalla) {
@@ -400,36 +459,54 @@ export class Taller extends Phaser.Scene {
     this.pintarPod(p);
 
     // Circuito: batería, pieza elegida (sprite o texto) y carga según el último veredicto.
-    const elegida = this.elegidas.get(this.clave()), v = p.vistas[this.zona];
+    const elegida = this.elegidas.get(this.clave()), vivas = this.vistasVivas(p), v = vivas[this.zona];
+    const nivel = nivelCarga(z, v), n = cargas(z.circuito);
+    const mp = montajePieza(z.circuito, elegida), mc = montajeCarga(z, nivel, elegida);
     const pieza = spritePieza(z.circuito, elegida), bat = spriteBateria(z.volts);
     u.circuito.removeAll(true).add([
       img(this, 50, 76, bat, bat === "icono_bateria" ? 4 : 2).setOrigin(0.5),
-      letras(this, 50, 126, textoVolts(z.volts), 2).setOrigin(0.5, 0),
-      pieza ? img(this, 180, 34, pieza).setOrigin(0.5) : marco(this, 180, 34, "boton_secundario", 104, 40),
-      letras(this, 180, pieza ? 66 : 34, elegida ? textoOpcion(elegida, z.circuito) : "?", 2).setOrigin(0.5, pieza ? 0 : 0.5),
+      letras(this, 50, 122, textoVolts(z.volts), 2).setOrigin(0.5, 0),
+      ...(mp ? pintarMontaje(this, mp, 180, 34) : pieza ? [img(this, 180, 34, pieza).setOrigin(0.5)] : z.circuito === "divisor" ? [] : [marco(this, 180, 34, "boton_secundario", 104, 40)]),
+      ...(z.circuito === "divisor" ? [] : [letras(this, 180, mp ? 34 + mp.alto + 4 : pieza ? 66 : 34, elegida ? textoOpcion(elegida, z.circuito) : "?", 2).setOrigin(0.5, mp || pieza ? 0 : 0.5)]),
+      ...(mc ? [...pintarMontaje(this, mc, MC.x, MC.y), ...(z.circuito === "divisor" ? [] : [letras(this, MC.x, MC.y + mc.alto + 4, etiquetaCarga(z), 2).setOrigin(0.5, 0)])] : [letras(this, 310, 122, etiquetaCarga(z), 2).setOrigin(0.5, 0)]),
     ]);
-    const nivel = nivelCarga(z, v), n = cargas(z.circuito);
-    u.carga.forEach((c, i) => c.setVisible(i < n).setTexture(spriteCarga(z.circuito, nivel)).setAngle(0)
+    this.dibujarCables(z.circuito === "abierto" && elegida === "dejar" && !z.reparada);
+    if (mc) { // lazo: + de la batería al borne izquierdo (por arriba) y borne derecho al − (por abajo); el montaje va a la derecha, dentro de los 360 px
+      const [bi, bd] = mc.bornes!, g = this.add.graphics();
+      g.lineStyle(4, 0xe8363c).strokePoints(puntos([50, 50], [50, 34], [MC.x + bi[0], 34], [MC.x + bi[0], MC.y + bi[1]]));
+      g.lineStyle(4, 0x3e6af0).strokePoints(puntos([MC.x + bd[0], MC.y + bd[1]], [MC.x + bd[0], 118], [50, 118], [50, 102]));
+      u.circuito.addAt(g, 0);
+    }
+    // Toques de medir y ranura de soltar: en el divisor la pieza elegida es R2 (a la derecha del montaje), no el centro.
+    const div = z.circuito === "divisor";
+    u.zonasMedir[0]!.setPosition(div ? MC.x + 28 : 180, div ? MC.y : 44).setSize(div ? 52 : 120, div ? 70 : 84);
+    u.zonasMedir[1]!.setPosition(mc ? (div ? MC.x - 28 : MC.x) : 310, mc ? MC.y : 76).setSize(mc ? (div ? 52 : 110) : 72, mc ? 70 : 110);
+    this.ranura = div ? { x: MC.x + 28, y: MC.y, w: 64, h: 70 } : RANURA;
+    u.resalteRanura.setPosition(this.ranura.x, this.ranura.y).setSize(this.ranura.w / 4, this.ranura.h / 4);
+    u.carga.forEach((c, i) => c.setVisible(i < n).setTexture(spriteCarga(z.circuito, nivel, z.fija)).setAngle(0)
       .setScale(n === 2 ? 3 : 4).setPosition(310, n === 2 ? 52 + i * 48 : 76));
+    const fin = this.acabo(p);
+    u.panel.setVisible(!fin); // tutorial terminado: solo queda la caja «¡Listo!» (el pod 2 no existe)
+    u.globo.setVisible(!fin); u.bocadillo.setVisible(!fin);
 
     // Cabina y Turbina: la placa con cables reemplaza el dibujo y la gaveta; el medidor baja debajo de la placa.
     const placa = conPlaca(z.circuito);
     u.tablero.mostrar(placa);
     if (placa) u.tablero.pintar(z.circuito, z.volts, this.cablesZona(), this.puestasZona(), nivel, z.reparada);
-    for (const o of [u.circuito, u.cables, ...u.carga, u.gaveta]) o.setVisible(!placa && (o !== u.carga[1] || n === 2));
+    for (const o of [u.circuito, u.cables, ...u.carga, u.gaveta]) o.setVisible(!placa && (o !== u.carga[1] || n === 2) && !(mc && (o === u.cables || u.carga.includes(o as Phaser.GameObjects.Image))));
     for (const o of u.zonasMedir) o.input!.enabled = !placa; // una Zone invisible sigue recibiendo toques
     // Mientras quedan piezas en la gaveta de la placa, esta ocupa el lugar del medidor.
     u.fila.setY(placa ? 60 : 0).setVisible(!placa || !u.tablero.faltanPiezas());
-    u.aviso.setY(placa ? 282 : 206);
+    u.aviso.setY(placa ? 283 : 206);
     u.etiquetas[1]!.setY(placa ? 210 : 146); // en la placa, la etiqueta del centro va debajo del medidor
 
-    u.gaveta.setText(z.reparada ? "" : GAVETA[z.circuito]);
+    u.gaveta.setText(z.reparada || fin ? "" : GAVETA[z.circuito]);
     const botones = botonesGaveta(z, elegida);
     // 3 botones de 104 px o 4 de 82 px, centrados en el panel de 360 px.
     const nb = botones.length, ancho = nb > 3 ? 82 : 104, paso = nb > 3 ? 88 : 116;
     u.opciones.forEach((b, i) => {
-      const o = botones[i], ver = !!o && !z.reparada && !placa, x = 180 + (i - (nb - 1) / 2) * paso;
-      const nombre = o ? (FRENA[o.pieza] ?? "").replace(/^Frena /, "") : "", color = o?.elegida ? OSCURO : 0xffffff;
+      const o = botones[i], ver = !!o && !z.reparada && !placa && !fin, x = 180 + (i - (nb - 1) / 2) * paso;
+      const nombre = o && z.circuito !== "divisor" ? (FRENA[o.pieza] ?? "").replace(/^Frena /, "") : "", color = o?.elegida ? OSCURO : 0xffffff;
       b.fondo.setVisible(ver).setTexture(o?.elegida ? "boton_primario" : "boton_secundario").setPosition(x, 290).setSize(ancho / 4, 12);
       b.zona.setPosition(x, 290).setSize(ancho, b.zona.height);
       b.zona.input!.enabled = ver;
@@ -438,7 +515,7 @@ export class Taller extends Phaser.Scene {
     });
     // Modo demo: sin multímetro (solo se usa en otras zonas).
     if (p.demo) this.modo = null;
-    for (const m of u.modos) { m.fondo.setVisible(!p.demo); m.icono.setVisible(!p.demo); m.rotulo.setVisible(!p.demo).setY(placa ? 210 : 146); }
+    for (const m of u.modos) { m.fondo.setVisible(!p.demo); m.icono.setVisible(!p.demo); m.rotulo.setVisible(!p.demo).setY(placa ? 210 : 150); }
     const pista = pistaDemo(p, this.intento, this.falta(z));
     u.flecha.setVisible(pista === "elegir");
     u.flechaPlaca.setVisible(pista === "colocar");
@@ -452,10 +529,15 @@ export class Taller extends Phaser.Scene {
     u.probar.setTexture(probarActivo(this.eleccion(z), this.probadas.get(this.clave()), z.reparada, p.esperaHasta > Date.now()) ? "boton_probar_normal" : "boton_probar_deshabilitado");
     u.despachar.setTexture(despachable(p) ? "boton_despachar_normal" : "boton_despachar_deshabilitado");
 
+    for (const o of [u.probar, u.despachar]) o.setVisible(!fin); // tras el último pod de un tutorial el árbitro manda un pod 2 que no existe
+    u.golpes.forEach((g) => (g.input!.enabled = !fin));
     this.pintarMedidor();
     u.aviso.setTint(v?.quemado || v?.cortocircuito ? ALERTA : pista ? PISTA : 0xffffff);
     if (v?.cortocircuito) this.cameras.main.shake(250, 0.01);
   }
+
+  /** Tutorial terminado: el árbitro ya despachó su único pod y el «siguiente» no existe. */
+  private acabo(p: Pantalla) { return !!this.net.tutorial && !!p.pod && !!p.total && p.pod.numero > p.total; }
 
   /** Progreso visible (zonas, objetivo, pods del rival) y recompensa inmediata al reparar una zona o despachar un pod. */
   private pintarProgreso(p: Pantalla) {
@@ -562,35 +644,46 @@ export class Taller extends Phaser.Scene {
 
   private crearGuia() {
     const caja = this.add.container(0, 0).setVisible(false).setDepth(900);
-    const boton = (x: number, fondo: string, color: number, fn: () => void) => {
-      const t = letras(this, x, 62, "", 2, color).setOrigin(0.5);
-      return { t, partes: [marco(this, x, 62, fondo, 152, 52), t, toque(this, x, 62, 152, 56, fn)] as Phaser.GameObjects.GameObject[] };
+    const boton = (x: number, fondo: string, color: number, fn: () => void, w = 152) => {
+      const t = letras(this, x, 40, "", 2, color).setOrigin(0.5);
+      return { t, partes: [marco(this, x, 40, fondo, w, 32), t, toque(this, x, 40, w, 56, fn)] as Phaser.GameObjects.GameObject[] };
     };
-    // En el último paso del Tutorial 1 este botón abre el Tutorial 2; en los demás pasos es «Saltar».
-    const saltarB = boton(-84, "boton_secundario", 0xffffff, () => {
-      if (this.tut?.activo && esFin(this.tut) && this.tut.parte === 1) void this.net.practicar(this.net.estado.alias || "Aprendiz", 2, true, false, 2);
-      else { this.tut = saltar(this.tut!); this.pintar(this.net.estado); }
-    });
-    // Solo en el último paso: los demás avanzan cuando el Taller confirma la acción (tutorial.ts, avanzar).
-    const sigB = boton(84, "boton_primario", OSCURO, () => {
-      if (this.tut?.activo && esFin(this.tut)) void this.net.practicar(this.net.estado.alias || "Aprendiz", 1); // práctica normal: cuenta XP
-    });
-    const titulo = letras(this, -150, -80, "", 2, PISTA), texto = letras(this, -150, -54, "", 2).setMaxWidth(300);
-    caja.add([marco(this, 0, 0, "panel_oscuro", 328, 190), titulo, texto, ...saltarB.partes, ...sigB.partes]);
+    const alias = () => this.aliasPerfil();
+    const saltarB = boton(-84, "boton_secundario", 0xffffff, () => void this.net.salir()); // «Saltar» vuelve al menú
+    // Solo en el paso final (`fin`): los demás avanzan cuando el Taller confirma la acción (tutorial.ts, avanzar).
+    // Siguiente mecánica (se oculta en la última), práctica normal del nivel de la mecánica y menú.
+    const finB = [-104, 0, 104].map((x, k) => boton(x, k ? "boton_secundario" : "boton_primario", k ? 0xffffff : OSCURO, () => {
+      const t = this.tut, id = t?.activo && esFin(t) ? t.id : null, m = id ? mecanica(id) : undefined;
+      if (!id || !m) return;
+      const sig = siguiente(id), ms = sig ? mecanica(sig) : undefined;
+      if (k === 0 && sig && ms) void this.net.practicar(alias(), ms.nivel, true, false, sig);
+      else if (k === 1) void this.net.practicar(alias(), m.nivel);
+      else if (k === 2) void this.net.salir();
+    }, 100));
+    const titulo = letras(this, -150, -52, "", 2, PISTA), texto = letras(this, -150, -32, "", 2).setMaxWidth(300);
+    // Esquema «paralelo» (solo en su paso): carril + rojo y − azul con dos luces entre ambos, cada una unida arriba al carril + y abajo al carril −.
+    const r = (x: number, y: number, w: number, h: number, c: number) => this.add.rectangle(x, y, w, h, c);
+    const esquema = this.add.container(98, -8, [
+      r(0, -22, 76, 4, 0xe8423b), r(0, 22, 76, 4, 0x3b82f6),
+      ...[-18, 18].flatMap((x) => [r(x, -11, 4, 18, 0xe8423b), r(x, 0, 14, 14, 0xffe27a).setStrokeStyle(2, 0xffffff), r(x, 11, 4, 18, 0x3b82f6)]),
+      letras(this, 52, -22, "+", 2, 0xe8423b).setOrigin(0.5), letras(this, 52, 22, "-", 2, 0x3b82f6).setOrigin(0.5),
+    ]).setVisible(false);
+    caja.add([marco(this, 0, 0, "panel_oscuro", 328, 120), titulo, texto, esquema, ...saltarB.partes, ...finB.flatMap((b) => b.partes)]);
     const resaltes = [0, 1].map(() => marco(this, 0, 0, "recuadro_resaltado", 100, 100).setVisible(false).setDepth(890));
     this.tweens.add({ targets: resaltes, alpha: 0.35, duration: 500, yoyo: true, repeat: -1 });
-    this.guia = { caja, titulo, texto, saltar: saltarB.t, sig: sigB.t, jugar: sigB.partes, resaltes, zonas: [saltarB.partes[2], sigB.partes[2]] as Phaser.GameObjects.Zone[] };
+    this.guia = { caja, titulo, texto, esquema, saltar: saltarB, fin: finB, resaltes, zonas: [saltarB, ...finB].map((b) => b.partes[2]) as Phaser.GameObjects.Zone[] };
   }
 
   /** Rectángulos (x, y, ancho, alto, en el lienzo) que resalta cada paso del tutorial. */
-  private rectas(o: Objetivo, placa: boolean): [number, number, number, number][] {
-    const P = this.ui.panel, E = this.ui.escena, fila = P.y + (placa ? 60 : 0) + 178, c = this.ui.contador.getBounds();
+  private rectas(o: Objetivo, placa: boolean, cont: boolean): [number, number, number, number][] {
+    const div = this.zonaActual()?.circuito === "divisor", P = this.ui.panel, E = this.ui.escena, fila = P.y + (placa ? 60 : 0) + 178, c = this.ui.contador.getBounds();
     const contador: [number, number, number, number] = [c.centerX, c.centerY, c.width + 16, c.height + 16];
     switch (o) {
       case "gaveta": return [placa ? [P.x + 180, P.y + 240, 220, 68] : [P.x + 180, P.y + 290, 358, 60]];
       case "probar": return [[P.x + 92, P.y + 340, 160, 52], [P.x + 180, fila, 110, 52]];
-      case "tension": return [[P.x + 34, fila - 8, 64, 72]];
-      case "pieza": return [[P.x + 180, P.y + 44, 130, 92], [P.x + 180, fila, 110, 52]];
+      case "tension": return [[P.x + (cont ? 326 : 36), fila - 4, 68, 64]]; // «Toca Continuidad» usa el mismo objetivo que Tensión
+      case "pieza": return [div ? [P.x + MC.x + 30, P.y + MC.y + 10, 56, 68] : [P.x + 180, P.y + 44, 130, 92], [P.x + 180, fila, 110, 52]];
+      case "carga": return [[P.x + 310, P.y + 76, 84, 118], [P.x + 180, fila, 110, 52]];
       case "despachar": return [[P.x + 268, P.y + 340, 160, 52]];
       case "contador": return [contador];
       case "pestanas": { const a = this.ui.pestanas[0]!.getBounds(), b = this.ui.pestanas[3]!.getBounds(); return [[(a.left + b.right) / 2, a.centerY, b.right - a.left, a.height]]; }
@@ -602,25 +695,33 @@ export class Taller extends Phaser.Scene {
     if (clave === this.guiaClave) return;
     this.guiaClave = clave;
     g.caja.setVisible(activo);
+    this.leyenda.setVisible(!activo); // bajo la caja del tutorial quedaba ilegible
     if (!t || !activo) return g.resaltes.forEach((r) => r.setVisible(false));
     const paso = actual(t), { width, height } = this.scale.gameSize;
     g.titulo.setText(textoPaso(t));
-    g.texto.setText(paso.texto);
-    g.saltar.setText(esFin(t) && t.parte === 1 ? "Tutorial 2" : "Saltar tutorial");
-    g.sig.setText("Jugar práctica");
-    g.jugar.forEach((o) => (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(esFin(t)));
-    (g.jugar[2] as Phaser.GameObjects.Zone).input!.enabled = esFin(t);
-    // Vertical: la caja (a 0,8) va en el hueco bajo las pestañas, sin tapar HUD, pestañas ni Salir, y deja libre la gaveta, Probar
-    // y Despachar; en el último paso baja sobre el circuito (su objetivo, el contador, queda arriba). Apaisado: bajo los paneles.
+    g.texto.setText(paso.texto).setMaxWidth(paso.esquema ? 200 : 300);
+    g.esquema.setVisible(!!paso.esquema);
+    const fin = esFin(t);
+    g.saltar.t.setText("Saltar tutorial");
+    g.saltar.partes.forEach((o) => (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(!fin));
+    (g.saltar.partes[2] as Phaser.GameObjects.Zone).input!.enabled = !fin;
+    g.fin.forEach((b, k) => {
+      const ver = fin && !!mecanica(t.id) && (k > 0 || !!siguiente(t.id));
+      b.t.setText(["Siguiente", "Práctica", "Menú"][k]!);
+      b.partes.forEach((o) => (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(ver));
+      (b.partes[2] as Phaser.GameObjects.Zone).input!.enabled = ver;
+    });
+    // Vertical: caja compacta (a 0,8) sobre la base de la bahía (y 294-396): deja libres pestañas, HUD, la placa (desde y 430), gaveta,
+    // Probar y Despachar. Apaisado: bajo los paneles.
     const vertical = width <= height;
-    g.caja.setScale(vertical ? 0.8 : 1).setPosition(width / 2, vertical ? (esFin(t) ? 520 : 207) : 780);
-    const rs = this.rectas(paso.objetivo, placa);
+    g.caja.setScale(vertical ? 0.8 : 1).setPosition(width / 2, vertical ? 340 : 780);
+    const rs = this.rectas(paso.objetivo, placa, paso.titulo === "Continuidad");
     g.resaltes.forEach((r, i) => { const x = rs[i]; r.setVisible(!!x); if (x) r.setPosition(x[0], x[1]).setSize(x[2] / 4, x[3] / 4); });
   }
 
   /** Medidor de aguja: veredicto del último «Probar» o, con el multímetro activo, la lectura (Nada/Parte/Toda o pasa/no pasa). */
   private pintarMedidor() {
-    const u = this.ui, v = this.net.estado.vistas[this.zona], l = this.lectura;
+    const u = this.ui, v = this.vistasVivas(this.net.estado)[this.zona], l = this.lectura;
     u.modos.forEach((m) => m.fondo.setTexture(m.modo === this.modo ? "boton_primario" : "boton_secundario"));
     const textos = this.modo === "tension" ? [TRAMO.nada.etiqueta, TRAMO.parte.etiqueta, TRAMO.toda.etiqueta] : this.modo ? ["", "", ""] : ["poco", "correcto", "demasiado"];
     u.etiquetas.forEach((e, i) => e.setText(textos[i]!));
@@ -630,11 +731,23 @@ export class Taller extends Phaser.Scene {
     u.aguja.setVisible(tension).setAngle(tension ? anguloTension(l.fraccion!) : 0);
   }
 
+  /** Naves pendientes: cada una es un contenedor que entra deslizándose; al despachar las demás suben un lugar. */
+  private colaNaves = new Map<number, Phaser.GameObjects.Container>();
   private pintarCola(numero: number, total: number) {
-    this.ui.cola.removeAll(true).add(cola(numero, total).flatMap((n, i) => [
-      letras(this, 262, 70 + i * 26, String(n), 2, GRIS),
-      img(this, 278, 64 + i * 26, `${podDe(n).id}_mini_espera`, 2).setOrigin(0),
-    ]));
+    const lista = cola(numero, total), primera = this.colaNaves.size === 0;
+    for (const [n, c] of this.colaNaves) if (!lista.includes(n)) { this.colaNaves.delete(n); c.destroy(); }
+    lista.forEach((n, i) => {
+      const y = i * 26, ya = this.colaNaves.get(n);
+      if (ya) { this.tweens.killTweensOf(ya); this.tweens.add({ targets: ya, y, duration: 250, ease: "Cubic.Out", onComplete: () => ya.setY(y) }); return; }
+      const c = this.add.container(0, y, [letras(this, 262, 70, String(n), 2, GRIS), img(this, 278, 64, `${podDe(n).id}_mini_espera`, 2).setOrigin(0)]);
+      this.ui.cola.add(c); this.colaNaves.set(n, c);
+      if (REDUCIDO) return;
+      const retraso = retrasoCola(i, primera);
+      c.setX(120).setAlpha(0);
+      this.tweens.add({ targets: c, x: 0, alpha: 1, duration: 450, delay: retraso, ease: "Back.Out", onComplete: () => c.setPosition(0, c.y).setAlpha(1) });
+      // Tiempo real: una pestaña oculta frena los tweens; esto deja la nave en su sitio.
+      setTimeout(() => { if (c.active) { this.tweens.killTweensOf(c); c.setPosition(0, i * 26).setAlpha(1); } }, retraso + 700);
+    });
   }
 
   /** Cartel que aparece tras `retraso` ms, se queda `ms` y se desvanece (SCRUM-145). */
@@ -651,11 +764,15 @@ export class Taller extends Phaser.Scene {
     if (num !== this.podNum) {
       const viejo = this.podC;
       if (viejo) this.tweens.add({ targets: viejo, x: 420, alpha: 0, duration: 450, ease: "Cubic.In", onComplete: () => viejo.destroy() });
-      this.podC = num ? this.add.container(-400, POD_Y) : undefined;
-      if (this.podC) {
-        this.ui.escena.add(this.podC);
-        this.tweens.add({ targets: this.podC, x: POD_X, duration: 550, ease: "Cubic.Out", delay: viejo ? 250 : 0 });
-      }
+      this.podC = num ? this.add.container(REDUCIDO ? POD_X : -400, POD_Y) : undefined;
+      const nuevo = this.podC;
+      if (nuevo && !REDUCIDO) {
+        this.ui.escena.add(nuevo);
+        const retraso = viejo ? 250 : 0;
+        // Llega desde fuera de pantalla con un leve rebote (~1 s, ease-out).
+        this.tweens.add({ targets: nuevo, x: POD_X, duration: 1000, ease: "Back.Out", easeParams: [0.8], delay: retraso, onStart: () => sonar("clic"), onComplete: () => nuevo.setX(POD_X) });
+        setTimeout(() => { if (nuevo.active) { this.tweens.killTweensOf(nuevo); nuevo.setX(POD_X); } }, retraso + 1300); // tiempo real: pestaña oculta
+      } else if (nuevo) this.ui.escena.add(nuevo);
       this.ui.bahia.play(num ? "bahia_ocupada" : "bahia");
       if (viejo) this.cartel(img(this, 180, 210, "cartel_reparado", 3), 0, CARTEL.reparadoMs);
       if (num) this.cartel(anim(this, 180, 210, "cartel_averia"), viejo ? CARTEL.averiaRetraso : 0, 1500);
@@ -669,7 +786,7 @@ export class Taller extends Phaser.Scene {
     const m = podDe(pod.numero);
     this.podC.removeAll(true);
     for (const zona of m.orden) {
-      const estado = estadoZona(pod, zona as ZonaNombre, p.vistas), s = sprite(`${m.id}_${zona}_${estado}`)!;
+      const estado = estadoZona(pod, zona as ZonaNombre, this.vistasVivas(p)), s = sprite(`${m.id}_${zona}_${estado}`)!;
       const o = s.offset ?? { x: 0, y: 0 };
       this.podC.add(img(this, o.x * K, o.y * K, s.nombre).setOrigin(0));
       if (estado === "averiado" || estado === "quemado") {

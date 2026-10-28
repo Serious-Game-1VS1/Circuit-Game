@@ -1,4 +1,5 @@
 import { Arbiter } from "../../spike/src/arbiter/arbiter";
+import { generar } from "../../spike/src/engine/generador";
 import type { Nivel } from "../../spike/src/protocol";
 import type { Transport } from "../../spike/src/transport/transport";
 
@@ -12,9 +13,11 @@ export class PracticaTransport implements Transport {
   readonly arbiter: Arbiter;
   private timer?: ReturnType<typeof setInterval>;
 
-  constructor(nivel: Nivel, semilla?: number, oleadas = false) {
+  /** `pod` (índice 0-4) deja una práctica de ese solo pod: la zona sale de la misma semilla que en la partida completa. */
+  constructor(nivel: Nivel, semilla?: number, oleadas = false, pod?: number) {
+    if (pod !== undefined) semilla ??= Math.floor(Math.random() * 2 ** 32);
     // queueMicrotask: la respuesta llega después de enviar, como por la red.
-    this.arbiter = new Arbiter((_peer, msg) => queueMicrotask(() => this.onMessage(msg, "arbitro")), { nivel, semilla, practica: true, oleadas });
+    this.arbiter = new Arbiter((_peer, msg) => queueMicrotask(() => this.onMessage(msg, "arbitro")), { nivel, semilla, practica: true, oleadas, ...(pod !== undefined && { pods: generar(semilla!, nivel).slice(pod, pod + 1) }) });
   }
 
   async create(): Promise<void> {}

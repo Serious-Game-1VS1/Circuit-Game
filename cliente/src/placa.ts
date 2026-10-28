@@ -1,7 +1,7 @@
 /**
  * Placa 4×4 de Cabina y Turbina, sin Phaser (se prueba en test/placa.test.ts). El jugador arrastra
  * las dos cargas de la gaveta a la placa (cada una ocupa dos casillas en vertical) y une puntos con
- * cables curvos. CARGAS = posición por defecto (columnas 1 y 2, filas 1 y 2), la que usan las pruebas.
+ * cables rectos (ángulos de 90°). CARGAS = posición por defecto (columnas 1 y 2, filas 1 y 2), la que usan las pruebas.
  * El cliente no decide si está bien: traduce los cables al montaje que entiende el árbitro.
  *
  * Coordenadas: las del sprite `placa_4x4` (100×80, casillas de 16 px cada 17 px, riel + a la
@@ -48,29 +48,75 @@ export function puntoEn(x: number, y: number): Punto | null {
 }
 
 /**
- * Control de la curva cuadrática (la del prototipo v3, más arqueada): curvos para distinguir los que
- * se cruzan, y con el medio entre filas/columnas para poder tocarlos sin tocar una casilla.
+ * Punto donde cae un cable soltado en (x, y): el aro de un pin (17 px) manda; si no, el carril si se suelta en su banda
+ * (ampliada 6·K hacia la placa); si no, la casilla. Así soltar sobre el carril no se «engancha» al pin de una luz cercana.
  */
-export function control(x1: number, y1: number, x2: number, y2: number, i: number) {
-  const recto = Math.abs(y1 - y2) < 1;
-  return { x: (x1 + x2) / 2 + (i % 2 ? 40 : -40) * (recto ? 0 : 1), y: (y1 + y2) / 2 + (recto ? -50 : 0) };
-}
-/** Puntos de la curva del cable i (para pintarla y para tocarla). */
-export function curva(c: Cable, i: number, n = 20) {
-  const { a, b } = extremos(c), q = control(a.x, a.y, b.x, b.y, i);
-  return Array.from({ length: n + 1 }, (_, k) => {
-    const t = k / n, u = 1 - t;
-    return { x: u * u * a.x + 2 * u * t * q.x + t * t * b.x, y: u * u * a.y + 2 * u * t * q.y + t * t * b.y };
-  });
+export function puntoSoltar(x: number, y: number): Punto | null {
+  const p = puntoEn(x, y);
+  if (!p) return null;
+  if (p.includes(",") && Math.hypot(coord(p).x - x, coord(p).y - y) <= 17) return p;
+  return x < 22 * K ? "+" : x >= 78 * K ? "-" : p;
 }
 
-// Un cable se toca a ≤ 22 px de su curva (objetivo de 44 px) y lejos de sus extremos (allí manda la casilla).
+export interface P2 { x: number; y: number }
+const MEDIO = 8.5 * K; // de una casilla a la rendija (pasillo) entre columnas
+const cuenta = (r1: P2[], r2: P2[]) => {
+  let n = 0;
+  for (let i = 0; i + 1 < r1.length; i++) for (let j = 0; j + 1 < r2.length; j++) {
+    const [p, q, u, v] = [r1[i]!, r1[i + 1]!, r2[j]!, r2[j + 1]!];
+    const hv = (h: [P2, P2], w: [P2, P2]) => h[0].y === h[1].y && w[0].x === w[1].x
+      && w[0].x > Math.min(h[0].x, h[1].x) && w[0].x < Math.max(h[0].x, h[1].x) && h[0].y > Math.min(w[0].y, w[1].y) && h[0].y < Math.max(w[0].y, w[1].y);
+    if (hv([p, q], [u, v]) || hv([u, v], [p, q])) n++;
+  }
+  return n;
+};
+const esRiel = (p: P2) => p.x < 50 || p.x > ANCHO - 50;
+/** Rutas posibles de a a b con ángulos de 90°: recta, en Z por el pasillo junto a cada extremo, o en L. En la misma fila, también rodeando por el pasillo de arriba o de abajo. */
+export function candidatas(a: P2, b: P2): P2[][] {
+  const mismaFila = Math.abs(a.y - b.y) < 1, mismaCol = Math.abs(a.x - b.x) < 1;
+  if (mismaCol && Math.abs(a.y - b.y) <= 17 * K + 1) return [[a, b]];
+  if (mismaFila) {
+    const s = Math.sign(b.x - a.x) || 1, xa = esRiel(a) ? a.x : a.x + s * MEDIO, xb = esRiel(b) ? b.x : b.x - s * MEDIO;
+    return [[a, b], ...[-MEDIO, MEDIO].map((d) => [a, { x: xa, y: a.y }, { x: xa, y: a.y + d }, { x: xb, y: a.y + d }, { x: xb, y: b.y }, b])];
+  }
+  const s = mismaCol ? (a.x < ANCHO / 2 ? 1 : -1) : Math.sign(b.x - a.x);
+  const z = (gx: number) => [a, { x: gx, y: a.y }, { x: gx, y: b.y }, b];
+  return [z(a.x + s * MEDIO), z(b.x - s * MEDIO), [a, { x: b.x, y: a.y }, b], [a, { x: a.x, y: b.y }, b]];
+}
+const distSeg = (o: P2, p: P2, q: P2) => {
+  const l2 = (q.x - p.x) ** 2 + (q.y - p.y) ** 2, t = l2 ? Math.max(0, Math.min(1, ((o.x - p.x) * (q.x - p.x) + (o.y - p.y) * (q.y - p.y)) / l2)) : 0;
+  return Math.hypot(o.x - (p.x + t * (q.x - p.x)), o.y - (p.y + t * (q.y - p.y)));
+};
+/** Cuántos pines o cuerpos de piezas ajenas (no los extremos del cable) toca la ruta a menos de 22 px. */
+export function pinesTocados(r: P2[], cargas: Carga[]): number {
+  const [a, b] = [r[0]!, r.at(-1)!];
+  const obst = cargas.flatMap((k) => { const A = coord(k.a), B = coord(k.b); return [A, B, { x: A.x, y: (A.y + B.y) / 2 }]; })
+    .filter((o) => Math.hypot(o.x - a.x, o.y - a.y) > 2 && Math.hypot(o.x - b.x, o.y - b.y) > 2);
+  return obst.filter((o) => r.slice(0, -1).some((p, i) => distSeg(o, p, r[i + 1]!) < 22)).length;
+}
+/** Ruta de cada cable: de las candidatas, la que menos pasa por pines ajenos y luego la que menos cruza a los cables anteriores (empate: la primera). */
+export function rutas(cables: Cable[], cargas: Carga[] = []): P2[][] {
+  const hechas: P2[][] = [];
+  for (const c of cables) {
+    const { a, b } = extremos(c);
+    const peso = (r: P2[]) => 100 * pinesTocados(r, cargas) + hechas.reduce((n, h) => n + cuenta(r, h), 0);
+    hechas.push(candidatas(a, b).reduce((m, r) => (peso(r) < peso(m) ? r : m)));
+  }
+  return hechas;
+}
+/** Puntos de una ruta cada ~6 px (para tocarla). */
+const muestras = (r: P2[]): P2[] => r.slice(0, -1).flatMap((p, i) => {
+  const q = r[i + 1]!, n = Math.max(1, Math.round(Math.hypot(q.x - p.x, q.y - p.y) / 6));
+  return Array.from({ length: n }, (_, k) => ({ x: p.x + ((q.x - p.x) * k) / n, y: p.y + ((q.y - p.y) * k) / n }));
+}).concat(r.slice(-1));
+
+// Un cable se toca a ≤ 22 px de su ruta (objetivo de 44 px) y lejos de sus extremos (allí manda la casilla).
 /** Índice del cable bajo (x, y), o -1. */
-export function cableEn(cables: Cable[], x: number, y: number): number {
+export function cableEn(cables: Cable[], x: number, y: number, cargas: Carga[] = []): number {
   let mejor = -1, dMin = 22;
-  cables.forEach((c, i) => {
-    const pts = curva(c, i), ini = pts[0]!, fin = pts.at(-1)!;
-    for (const p of pts) {
+  rutas(cables, cargas).forEach((r, i) => {
+    const ini = r[0]!, fin = r.at(-1)!;
+    for (const p of muestras(r)) {
       if (Math.hypot(p.x - ini.x, p.y - ini.y) < 26 || Math.hypot(p.x - fin.x, p.y - fin.y) < 26) continue;
       const d = Math.hypot(p.x - x, p.y - y);
       if (d <= dMin) { dMin = d; mejor = i; }
@@ -80,20 +126,32 @@ export function cableEn(cables: Cable[], x: number, y: number): number {
 }
 
 /** Cable que quita un toque en (x, y), o -1: cerca del centro de una casilla manda la casilla (un cable puede pasar por encima). */
-export function cableTocado(cables: Cable[], x: number, y: number): number {
+export function cableTocado(cables: Cable[], x: number, y: number, cargas: Carga[] = []): number {
   const p = puntoEn(x, y);
   if (p && p.includes(",") && Math.hypot(coord(p).x - x, coord(p).y - y) < 18) return -1;
-  return cableEn(cables, x, y);
+  return cableEn(cables, x, y, cargas);
 }
 
 /** Un riel no se une consigo mismo; cualquier otro punto distinto del origen sirve (el árbitro decide el resto). */
 export const esDestino = (a: Punto | null | undefined, p: Punto | null | undefined) => !!a && !!p && a !== p;
+
+/** Solo los rieles y los bornes de las piezas puestas admiten cable: una casilla vacía no (soltar ahí dejaba un cable fantasma). */
+export const conectable = (puestas: Puestas, p: Punto | null | undefined) =>
+  !!p && (!p.includes(",") || cargasPuestas(puestas).some((k) => k.a === p || k.b === p));
+/** ¿Sirve soltar un cable de a en p? Distintos y ambos conectables. */
+export const destinoValido = (puestas: Puestas, a: Punto | null | undefined, p: Punto | null | undefined) =>
+  esDestino(a, p) && conectable(puestas, a) && conectable(puestas, p);
 
 /** Cables con uno nuevo de a a b; null si no sirve (mismo punto o cable repetido). */
 export function ponerCable(cables: Cable[], a: Punto, b: Punto): Cable[] | null {
   if (!esDestino(a, b) || cables.some((k) => (k.a === a && k.b === b) || (k.a === b && k.b === a))) return null;
   return [...cables, { a, b }];
 }
+/** Por qué no sirve un cable de a a b (para decirlo al jugador). */
+export const motivoCableNoValido = (cables: Cable[], a: Punto, b: Punto) =>
+  a === b ? "Ese es el mismo punto: une un punto amarillo con un carril u otra pieza."
+    : cables.some((k) => (k.a === a && k.b === b) || (k.a === b && k.b === a)) ? "Esos dos puntos ya tienen cable: toca el cable para quitarlo o une otro par."
+    : "Une un punto amarillo con un carril.";
 export const quitarCable = (cables: Cable[], i: number) => cables.filter((_, k) => k !== i);
 
 /** Color del cable: rojo si toca el +, azul si toca el −, amarillo entre casillas. */
@@ -130,6 +188,20 @@ export function ranuraEn(x: number, y: number): Punto | null {
 /** Puestas con la carga en `p`, o null si no cabe ahí (la pieza vuelve a la gaveta). */
 export const poner = (puestas: Puestas, carga: Carga["punto"], p: Punto | null): Puestas | null =>
   ranuraValida(puestas, carga, p) ? { ...puestas, [carga]: p! } : null;
+
+/** Pieza puesta cuyo cuerpo (entre sus dos bornes, sin 8 px de radio alrededor de cada pin; ~35 px tocables de 51) está bajo (x, y); null si no hay. */
+export const piezaEn = (puestas: Puestas, x: number, y: number): Carga["punto"] | null =>
+  cargasPuestas(puestas).find((k) => {
+    const A = coord(k.a), B = coord(k.b);
+    return Math.abs(x - A.x) <= 26 && y >= A.y && y <= B.y && Math.hypot(x - A.x, y - A.y) >= 8 && Math.hypot(x - B.x, y - B.y) >= 8;
+  })?.punto ?? null;
+/** Devuelve la pieza a la gaveta y quita los cables de sus dos bornes. */
+export function quitarPieza(puestas: Puestas, cables: Cable[], carga: Carga["punto"]): { puestas: Puestas; cables: Cable[] } {
+  const p = puestas[carga];
+  if (!p) return { puestas, cables };
+  const { [carga]: _fuera, ...resto } = puestas, bornes = [p, abajo(p)];
+  return { puestas: resto, cables: cables.filter((c) => !bornes.includes(c.a) && !bornes.includes(c.b)) };
+}
 
 /**
  * Montaje que el árbitro entiende ("serie" | "paralelo" | "puente") a partir de los cables, o null
