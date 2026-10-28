@@ -36,6 +36,12 @@ describe("multímetro: solo lo que mediría un multímetro real", () => {
     }
   });
 
+  it("continuidad del LED girado: «no pasa» (polaridad); con el LED directo, pasa", () => {
+    const z = { circuito: "invertido" as const, volts: 9 };
+    expect(medir(z, "inversa", "continuidad", "carga1")).toEqual({ pasa: false });
+    expect(medir(z, "directa", "continuidad", "carga1")).toEqual({ pasa: true });
+  });
+
   it("continuidad del fusible: los 3 (0,5 / 1 / 3 A) pasan siempre; el motor nunca devuelve «cortado»", () => {
     for (const volts of [3.7, 4.5, 9]) {
       for (const f of PIEZAS.fusible) expect(medir({ circuito: "fusible", volts }, f, "continuidad", "pieza")).toEqual({ pasa: true });

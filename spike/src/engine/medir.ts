@@ -4,8 +4,8 @@
  * veredicto, la corriente ni cuál opción es la correcta. Medir no es «Probar»: no penaliza.
  */
 import { solve, type Part } from "./circuit.js";
-import { montar } from "./pods.js";
-import type { Circuito, ModoMedir, Tramo } from "../protocol.js";
+import { montar, type ZonaCircuito } from "./pods.js";
+import type { ModoMedir, Tramo } from "../protocol.js";
 
 export type Lectura = { pasa: boolean } | { tension: Tramo; fraccion: number };
 
@@ -13,7 +13,7 @@ export type Lectura = { pasa: boolean } | { tension: Tramo; fraccion: number };
 const PROBADOR_V = 3, PROBADOR_OHMS = 1000, PASA_A = 1e-6;
 
 /** null si el punto no existe en ese circuito. */
-export function medir(z: { circuito: Circuito; volts: number }, pieza: string, modo: ModoMedir, punto: string): Lectura | null {
+export function medir(z: ZonaCircuito, pieza: string, modo: ModoMedir, punto: string): Lectura | null {
   // supuesto: en el Reactor se mide el pod tal como llega, con el calefactor en falla.
   const m = montar(z, pieza);
   const i = m.puntos[punto];
@@ -23,10 +23,13 @@ export function medir(z: { circuito: Circuito; volts: number }, pieza: string, m
   if (modo === "continuidad") {
     // Batería desconectada: se quita y se pone el probador entre los bornes de la pieza.
     const n = Math.max(...m.parts.flatMap((p) => [p.a, p.b])) + 1;
+    // El probador entra por el borne que en el circuito real está más cerca del + de la batería: un LED girado bloquea y «no pasa».
+    const base = solve(m.parts);
+    const [alto, bajo] = base.short || base.nodes[objetivo.a]! >= base.nodes[objetivo.b]! ? [objetivo.a, objetivo.b] : [objetivo.b, objetivo.a];
     const partes: Part[] = [
       ...m.parts.slice(1),
-      { kind: "battery", a: objetivo.a, b: n, volts: PROBADOR_V },
-      { kind: "resistor", a: n, b: objetivo.b, ohms: PROBADOR_OHMS },
+      { kind: "battery", a: alto, b: n, volts: PROBADOR_V },
+      { kind: "resistor", a: n, b: bajo, ohms: PROBADOR_OHMS },
     ];
     const r = solve(partes);
     return { pasa: !r.short && Math.abs(r.parts.at(-1)!.amps) > PASA_A };

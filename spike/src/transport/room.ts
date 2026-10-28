@@ -26,7 +26,15 @@ export function hostRoom(t: Transport, opts?: ArbiterOptions, alCaer?: () => voi
   const arbiter = new Arbiter((peer, msg) => t.send(msg, peer), opts);
   t.onMessage = (raw, from) => arbiter.handle(from, raw);
   t.onLeave = (peer) => arbiter.leave(peer);
-  const timer = setInterval(() => arbiter.tick(), 100);
+  let ultima = "";
+  const publicar = () => {
+    const jugadores = arbiter.vivo().jugadores.length;
+    const estado = arbiter.phase === "esperando" ? "esperando" : arbiter.phase === "listo" || arbiter.phase === "cuenta" ? "llena" : "jugando";
+    const info = { nivel: arbiter.nivel === 2 ? 2 : 1, jugadores, estado } as const;
+    const txt = JSON.stringify(info);
+    if (txt !== ultima) { ultima = txt; t.publicar?.(info); }
+  };
+  const timer = setInterval(() => { arbiter.tick(); publicar(); }, 100);
   timer.unref();
   t.onClose = () => { clearInterval(timer); alCaer?.(); };
   return { arbiter, stop: () => clearInterval(timer) };

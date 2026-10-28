@@ -13,10 +13,13 @@ export const PODS_POR_PARTIDA = 5;
 export const VOLTS_SORTEO = [3.7, 4.5, 9] as const;
 // supuesto: focos, motor y calefactor siempre a 9 V (son sus valores nominales).
 const VOLTS_FIJO = 9;
+// supuesto: con diodo (2,7 V de caídas) 3,7 y 4,5 V no tienen solución única con margen ±5 % (el 100 Ω queda en 9,9 o 20,1 mA); 6 y 9 V sí.
+const VOLTS_PROTEGIDO = [6, 9] as const;
+const R1_DIVISOR = [220, 470, 1000] as const;
 /** Margen: la solución sigue siendo la única correcta con la batería ±5 %. */
 const MARGEN = [1, 0.95, 1.05];
 
-export interface ZonaPod { zona: number; nombre: ZonaNombre; circuito: Circuito; volts: number; opciones: string[]; solucion: string }
+export interface ZonaPod { zona: number; nombre: ZonaNombre; circuito: Circuito; volts: number; opciones: string[]; solucion: string; r1?: number }
 /** `encadenada` (solo Oleadas): segunda falla escondida en una de las zonas; sale al reparar la primera. */
 export interface Pod { numero: number; zonas: ZonaPod[]; encadenada?: ZonaPod }
 
@@ -92,7 +95,7 @@ export type Perfil = Nivel | "mixto";
 /** Nivel del pod `i` (desde 0) según el perfil. */
 export const nivelDePod = (perfil: Perfil, i: number): Nivel => (perfil !== "mixto" ? perfil : i >= 3 ? 2 : 1);
 /** Familias que solo existen en el nivel 2; el perfil "mixto" pide al menos `MIN_N2` distintas en los pods 4 y 5. */
-const SOLO_N2: readonly Circuito[] = ["luces", "interruptor", "fusible", "invertido", "abierto"];
+const SOLO_N2: readonly Circuito[] = ["luces", "interruptor", "fusible", "invertido", "abierto", "combinar", "divisor", "protegido"];
 const MIN_N2 = 3;
 /** null si los circuitos por pod cumplen la cobertura del perfil; si no, el motivo. */
 function faltaCobertura(perfil: Perfil, cs: Circuito[][]): string | null {
@@ -104,14 +107,16 @@ function faltaCobertura(perfil: Perfil, cs: Circuito[][]): string | null {
 
 /** Sortea una zona válida: voltaje, 3 de las 4 resistencias (o todo el cableado/fusibles) en orden aleatorio. En demo, las 4. `excluir`: solución que no puede repetirse (falla encadenada). */
 function sortearZona(rnd: Rnd, zona: number, circuito: Circuito, demo = false, excluir?: string): ZonaPod {
-  const resistencias = circuito === "led" || circuito === "cabina";
+  const resistencias = circuito === "led" || circuito === "cabina" || circuito === "divisor" || circuito === "protegido";
+  const voltios: readonly number[] = circuito === "led" || circuito === "cabina" || circuito === "combinar" ? (demo ? VOLTS_DEMO : VOLTS_SORTEO) : circuito === "protegido" ? VOLTS_PROTEGIDO : [VOLTS_FIJO];
   for (let i = 0; i < MAX_INTENTOS; i++) {
-    const volts = resistencias ? pick(rnd, demo ? VOLTS_DEMO : VOLTS_SORTEO) : VOLTS_FIJO;
-    const z = { circuito, volts };
+    const volts = voltios.length > 1 ? pick(rnd, voltios) : voltios[0]!;
+    const r1 = circuito === "divisor" ? pick(rnd, R1_DIVISOR) : undefined;
+    const z = { circuito, volts, r1 };
     const solucion = PIEZAS[circuito].find((p) => evaluar(z, p) === "correcto");
     if (!solucion || solucion === excluir) continue;
     const distractores = shuffle(rnd, PIEZAS[circuito].filter((p) => p !== solucion)).slice(0, resistencias && !demo ? 2 : undefined);
-    const cand: ZonaPod = { zona, nombre: ZONAS[zona]!, circuito, volts, opciones: shuffle(rnd, [solucion, ...distractores]), solucion };
+    const cand: ZonaPod = { zona, nombre: ZONAS[zona]!, circuito, volts, opciones: shuffle(rnd, [solucion, ...distractores]), solucion, ...(r1 && { r1 }) };
     if (!validarZona(cand)) return cand;
   }
   throw new Error(`sin zona válida para ${circuito}`);
@@ -201,7 +206,7 @@ export function validarZona(z: ZonaPod): string | null {
   if (z.opciones.length < 2 || new Set(z.opciones).size !== z.opciones.length) return "opciones repetidas o insuficientes";
   if (!z.opciones.every((p) => PIEZAS[z.circuito].includes(p))) return "pieza fuera de catálogo";
   for (const f of MARGEN) {
-    const correctas = z.opciones.filter((p) => evaluar({ circuito: z.circuito, volts: z.volts * f }, p) === "correcto");
+    const correctas = z.opciones.filter((p) => evaluar({ ...z, volts: z.volts * f }, p) === "correcto");
     if (correctas.length !== 1 || correctas[0] !== z.solucion) {
       return `${f === 1 ? "solución no única" : "sin margen"}: ${z.circuito} ${z.volts} V [${z.opciones}] → [${correctas}]`;
     }

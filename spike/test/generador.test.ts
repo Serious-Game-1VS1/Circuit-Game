@@ -152,10 +152,10 @@ describe("generador en modo demo de cableado (Cabina y Turbina)", () => {
 
 describe("falla encadenada (solo Oleadas)", () => {
   const h = (x: string) => { let a = 5381; for (const c of x) a = (Math.imul(a, 33) ^ c.charCodeAt(0)) >>> 0; return a; };
-  // Huellas (nivel 2 actualizado al añadir LED invertido y circuito abierto); tomadas antes de añadir la encadenada: el duelo, la práctica normal y las zonas de Oleadas no deben cambiar.
+  // Huellas (nivel 2 actualizado al añadir LED invertido, circuito abierto, combinar, divisor y protegido); tomadas antes de añadir la encadenada: el duelo, la práctica normal y las zonas de Oleadas no deben cambiar.
   const HUELLAS: [Nivel, number, number, number][] = [
     [1, 1, 3303168567, 644005380], [1, 7, 350318067, 1267894063], [1, 42, 210100651, 2322169135], [1, 20261019, 1966667399, 4137727553],
-    [2, 1, 3355728347, 2966361371], [2, 7, 3147094937, 3772403275], [2, 42, 2982547121, 2629610711], [2, 20261019, 4235179758, 4285239548],
+    [2, 1, 2598769728, 2970486005], [2, 7, 2107403249, 3127677438], [2, 42, 2247608818, 821468661], [2, 20261019, 4205286578, 727355763],
   ];
   it.each(HUELLAS)("nivel %i, semilla %i: mismos pods que antes (partida y zonas de las 18 primeras oleadas)", (nivel, s, partida, oleada) => {
     expect(h(JSON.stringify(generar(s, nivel)))).toBe(partida);

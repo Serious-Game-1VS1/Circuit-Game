@@ -128,3 +128,20 @@ describe("caída del árbitro (Photon cortado)", () => {
     expect([1, 2, 3, 4, 5, 9].map(pausaReapertura)).toEqual([2000, 4000, 8000, 16000, 30000, 30000]);
   });
 });
+
+describe("lista de salas (relé local)", () => {
+  it("refleja la sala creada, llena y cerrada", async () => {
+    const arb = local();
+    const code = await createRoom(arb);
+    hostRoom(arb, { nivel: 2 });
+    const mia = async () => (await local().listar!()).find((s) => s.codigo === code);
+    await vi.waitFor(async () => expect(await mia()).toEqual({ codigo: code, nivel: 2, jugadores: 0, max: 2, estado: "esperando" }));
+    await joinAsPlayer(local(), code, "ana");
+    await vi.waitFor(async () => expect((await mia())?.jugadores).toBe(1));
+    await joinAsPlayer(local(), code, "beto");
+    await vi.waitFor(async () => expect(await mia()).toMatchObject({ jugadores: 2, estado: "llena" }));
+    expect(JSON.stringify(await mia())).not.toMatch(/ana|beto/);
+    await arb.close();
+    await vi.waitFor(async () => expect(await mia()).toBeUndefined());
+  });
+});

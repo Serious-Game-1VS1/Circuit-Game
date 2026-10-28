@@ -1,5 +1,5 @@
 import Photon from "photon-realtime";
-import type { PeerId, Transport } from "./transport.js";
+import type { PeerId, SalaInfo, SalaPublica, Transport } from "./transport.js";
 
 const LBC = Photon.LoadBalancing.LoadBalancingClient;
 const EVENT = 1;
@@ -31,6 +31,8 @@ export class PhotonTransport implements Transport {
   onLeave?: (peer: PeerId) => void;
   onClose?: () => void;
   private inRoom = false;
+  private listaLista = false;
+  private alLista?: () => void;
 
   constructor(private readonly appId: string, private readonly region = "us", private readonly appVersion = "circuitsync-spike") {}
 
@@ -46,11 +48,13 @@ export class PhotonTransport implements Transport {
       if (s === LBC.State.Joined) this.inRoom = true;
       // Si el servidor cierra el socket, el SDK pasa a Error (2003…) sin pasar por Disconnected.
       if (s === LBC.State.Disconnected || s === LBC.State.Error) {
-        this.readyForRooms = undefined; // el próximo create/join vuelve a conectar
+        this.readyForRooms = undefined; this.listaLista = false; // el próximo create/join vuelve a conectar
         this.settle(new Error("desconectado de Photon"));
         if (this.inRoom) { this.inRoom = false; this.onClose?.(); }
       }
     });
+    // El lobby manda la lista completa una vez y luego solo cambios; el SDK los mantiene en availableRooms().
+    lbc.onRoomList = mine(() => { this.listaLista = true; this.alLista?.(); });
     lbc.onError = mine((code: number, msg: string) => this.settle(new Error(`Photon error ${code}: ${msg}`)));
     lbc.onOperationResponse = mine((err: number, msg: string, op: number) => { if (err) this.settle(new Error(`Photon op ${op} error ${err}: ${msg}`)); });
     // cleanup = true es nuestra propia salida, no la de otro participante.
@@ -86,8 +90,33 @@ export class PhotonTransport implements Transport {
 
   async create(code: string) {
     await this.connect();
-    // isVisible=false: el código no aparece en el lobby; solo entra quien lo conoce. 3 = árbitro + 2 jugadores.
-    await this.step(() => this.lbc!.createRoom(code, { maxPlayers: 3, isVisible: false }));
+    // Visible en el lobby solo con nivel/jugadores/estado (propsListedInLobby): ni solución ni alias. 3 = árbitro + 2 jugadores.
+    await this.step(() => this.lbc!.createRoom(code, { maxPlayers: 3, isVisible: true, isOpen: true, customGameProperties: { nivel: 1, jug: 0, est: "esperando" }, propsListedInLobby: ["nivel", "jug", "est"] }));
+  }
+
+  /** Anfitrión: actualiza lo que muestra el lobby; cerrada (sin entradas nuevas) en cuanto deja de esperar. */
+  publicar({ nivel, jugadores, estado }: SalaPublica) {
+    if (!this.inRoom) return;
+    const sala = this.lbc?.myRoom();
+    sala?.setCustomProperties({ nivel, jug: jugadores, est: estado });
+    sala?.setIsOpen(estado === "esperando");
+  }
+
+  /** Salas del lobby con espacio o en juego; solo desde fuera de una sala (en sala el SDK ya no está en el lobby). */
+  async listar(): Promise<SalaInfo[]> {
+    if (this.inRoom) return [];
+    await this.connect();
+    if (!this.listaLista) await new Promise<void>((r) => { this.alLista = r; });
+    return (this.lbc?.availableRooms() ?? []).filter((r) => !r.removed && r.isVisible).map((r) => {
+      const est = r.getCustomPropertyOrElse("est", "esperando");
+      return {
+        codigo: r.name,
+        nivel: Number(r.getCustomPropertyOrElse("nivel", 1)) === 2 ? 2 : 1,
+        jugadores: Math.min(2, Math.max(0, Number(r.getCustomPropertyOrElse("jug", 0)) || 0)),
+        max: 2 as const,
+        estado: est === "llena" || est === "jugando" ? est : "esperando",
+      };
+    });
   }
 
   async join(code: string) {
@@ -102,7 +131,7 @@ export class PhotonTransport implements Transport {
 
   async close() {
     this.pending = undefined;
-    this.inRoom = false; // cierre propio: no es una pérdida de conexión
+    this.inRoom = false; this.listaLista = false; // cierre propio: no es una pérdida de conexión
     this.readyForRooms = undefined;
     this.lbc?.disconnect();
   }

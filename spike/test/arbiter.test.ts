@@ -469,6 +469,22 @@ describe("modo práctica (SCRUM-151)", () => {
   }
 });
 
+describe("práctica con pods propios", () => {
+  it("por defecto son 5 pods (total 5); con un pod propio total es 1 y termina al despacharlo", () => {
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA, practica: true });
+    expect(arb.pods).toHaveLength(5);
+    arb.handle("p1", { t: "hello", alias: "ana" });
+    expect(last("p1", "start")).toMatchObject({ total: 5 });
+    out.length = 0;
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA, practica: true, pods: generar(SEMILLA, 1).slice(2, 3) });
+    arb.handle("p1", { t: "hello", alias: "ana" });
+    expect(last("p1", "start")).toMatchObject({ total: 1, despachados: 0, pod: { numero: 1 } });
+    t += 10_000; solvePod("p1");
+    expect(arb.phase).toBe("fin");
+    expect(last("p1", "end")).toMatchObject({ phase: "fin", score: { A: { despachados: 1 } } });
+  });
+});
+
 describe("práctica: mejoras y modo Oleadas", () => {
   /** Semilla cuyos pods 1 a 3 de Oleadas (nivel 1, una zona) ofrecen una pieza que quema y otra correcta. */
   const SEM_OLEADAS = (() => {

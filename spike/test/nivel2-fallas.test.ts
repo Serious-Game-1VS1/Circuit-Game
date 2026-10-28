@@ -28,7 +28,7 @@ describe("nivel 2: LED invertido y circuito abierto", () => {
   });
 
   it("las familias vienen de familias.json y el generador las sortea en los pods 4 y 5", () => {
-    expect(familias(0, 2, true)).toEqual(["led", "invertido"]);
+    expect(familias(0, 2, true)).toEqual(["led", "invertido", "combinar"]);
     expect(familias(0, 2, false)).toEqual(["led"]);
     expect(COBERTURA[2]).toEqual(expect.arrayContaining(["invertido", "abierto"]));
     const vistas = new Set<string>();
@@ -51,12 +51,12 @@ describe("perfil mixto (duelo por defecto): rampa LED, LED, Cabina (nivel 1) y d
       expect(pods.slice(0, 3).map((p) => p.zonas.map((z) => z.zona === 1 ? "cabina" : z.circuito))).toEqual([["led"], ["led"], ["cabina"]]);
       pods.slice(0, 3).forEach((p) => p.zonas.forEach((z) => expect(familias(z.zona, 1, false)).toContain(z.circuito)));
       pods.slice(3).forEach((p) => p.zonas.forEach((z) => expect(familias(z.zona, 2, true)).toContain(z.circuito)));
-      const n2 = new Set(pods.slice(3).flatMap((p) => p.zonas.map((z) => z.circuito)).filter((c) => ["luces", "interruptor", "fusible", "invertido", "abierto"].includes(c)));
+      const n2 = new Set(pods.slice(3).flatMap((p) => p.zonas.map((z) => z.circuito)).filter((c) => ["luces", "interruptor", "fusible", "invertido", "abierto", "combinar", "divisor", "protegido"].includes(c)));
       expect(n2.size).toBeGreaterThanOrEqual(3);
       n2.forEach((c) => vistas.add(c));
       expect(pods.slice(3).every((p) => presupuesto(p) <= 7)).toBe(true);
     }
-    expect([...vistas].sort()).toEqual(["abierto", "fusible", "interruptor", "invertido", "luces"]);
+    expect([...vistas].sort()).toEqual(["abierto", "combinar", "divisor", "fusible", "interruptor", "invertido", "luces", "protegido"]);
   });
 
   it("validarPartida rechaza un mixto sin rampa; los niveles 1 y 2 no cambian", () => {
@@ -107,7 +107,9 @@ describe("nivel 2 de punta a punta en el árbitro: Probar y Despachar de cada fa
       const ultimo = (k: string) => out.filter((m) => m.t === k).at(-1) as Extract<ServerMsg, { t: "result" }> & { reason: string };
       let seq = 0;
       const probar = (zona: number, pieza: string) => { arb.handle("p1", { t: "test", seq: ++seq, t0: 0, zone: zona, pieza }); return ultimo("result"); };
-      const reparar = () => { for (const z of pod().zonas) if (!z.reparada) probar(z.zona, z.opciones.find((p) => evaluar(z, p) === "correcto")!); arb.handle("p1", { t: "despachar", seq: ++seq, t0: 0 }); };
+      // El divisor necesita su R1 fija, que el cliente ve en `fija` ("R1 470 Ω").
+      const conR1 = <T extends { fija?: string }>(z: T) => ({ ...z, r1: z.fija ? Number(/(\d+) Ω/.exec(z.fija)![1]) : undefined });
+      const reparar = () => { for (const z of pod().zonas) if (!z.reparada) probar(z.zona, z.opciones.find((p) => evaluar(conR1(z), p) === "correcto")!); arb.handle("p1", { t: "despachar", seq: ++seq, t0: 0 }); };
       // Avanza con juego perfecto hasta el pod que trae la falla.
       while (!pod().zonas.some((z) => z.circuito === circuito)) reparar();
       const z = pod().zonas.find((x) => x.circuito === circuito)!;

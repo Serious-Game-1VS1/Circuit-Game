@@ -10,6 +10,7 @@
 
 export const R_INTERNA = 0.5;
 export const LED_VF = 2;
+export const DIODE_VF = 0.7;
 export const LAMP_OHMS = 90; // foco 9 V / 0,1 A
 export const MOTOR_OHMS = 45;
 export const BATTERY_VOLTS = [3.7, 4.5, 9, 18] as const;
@@ -23,7 +24,7 @@ const METER_OHMS = 1e7; // voltímetro
 export type Part =
   | { kind: "battery"; a: number; b: number; volts: number }
   | { kind: "resistor"; a: number; b: number; ohms: number }
-  | { kind: "lamp" | "motor" | "led" | "wire"; a: number; b: number }
+  | { kind: "lamp" | "motor" | "led" | "diode" | "wire"; a: number; b: number }
   | { kind: "heater"; a: number; b: number; ohms: number; maxA: number }
   | { kind: "fuse"; a: number; b: number; maxA: number };
 
@@ -50,6 +51,9 @@ export function ledLabel(amps: number): Label {
   return "se quema";
 }
 
+/** LED y diodo comparten lógica (conducen de a hacia b pasada su Vf); solo el LED tiene veredicto. */
+const vfOf = (p: Part) => p.kind === "led" ? LED_VF : p.kind === "diode" ? DIODE_VF : null;
+
 /** Conductancia y fem (caída a→b en vacío) de cada pieza; null = abierta. */
 function stamp(p: Part, ledOn: boolean, blown: boolean): { g: number; e: number } | null {
   switch (p.kind) {
@@ -59,7 +63,7 @@ function stamp(p: Part, ledOn: boolean, blown: boolean): { g: number; e: number 
     case "motor": return { g: 1 / MOTOR_OHMS, e: 0 };
     case "wire": return { g: G_ON, e: 0 };
     case "fuse": return blown ? null : { g: G_ON, e: 0 };
-    case "led": return ledOn ? { g: G_ON, e: LED_VF } : null;
+    case "led": case "diode": return ledOn ? { g: G_ON, e: vfOf(p)! } : null;
   }
 }
 
@@ -112,15 +116,16 @@ function gauss(A: number[][], z: number[]): number[] {
 }
 
 export function solve(parts: Part[]): SolveResult {
-  const ledOn = parts.map((p) => p.kind === "led");
+  const ledOn = parts.map((p) => vfOf(p) !== null);
   const blown = parts.map(() => false);
   let sol = nodal(parts, ledOn, blown);
   // Estados discretos: primero se asientan los LED, luego se funden fusibles.
   for (let iter = 0; iter < 4 * parts.length + 4; iter++) {
     let changed = false;
     parts.forEach((p, i) => {
-      if (p.kind !== "led") return;
-      const want = ledOn[i] ? sol.ab[i]!.i >= 0 : sol.ab[i]!.v > LED_VF;
+      const vf = vfOf(p);
+      if (vf === null) return;
+      const want = ledOn[i] ? sol.ab[i]!.i >= 0 : sol.ab[i]!.v > vf;
       if (want !== ledOn[i]) { ledOn[i] = want; changed = true; }
     });
     if (!changed) {

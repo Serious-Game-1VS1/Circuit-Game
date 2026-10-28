@@ -36,6 +36,8 @@ export interface ArbiterOptions {
    * termina al quemar `QUEMADAS_OLEADAS` piezas. El start lleva `total: 0` y `oleadas: true`.
    */
   oleadas?: boolean;
+  /** Pods propios en lugar de los 5 generados (p. ej. una práctica de un solo pod); la partida termina al despachar todos. Ignorado con `oleadas`. */
+  pods?: Pod[];
 }
 
 interface Seat {
@@ -105,7 +107,7 @@ export class Arbiter {
     this.demo = opts.demo ?? false;
     this.practica = opts.practica ?? false;
     this.oleadas = this.practica && (opts.oleadas ?? false);
-    this.pods = this.oleadas ? [] : generar(this.semilla, this.nivel, this.demo);
+    this.pods = this.oleadas ? [] : opts.pods ?? generar(this.semilla, this.nivel, this.demo);
   }
 
   /** Práctica: aplica las mejoras del jugador (factor del enfriamiento sobre 2/4/8 s y escudo contra la próxima quemada). */
@@ -292,7 +294,7 @@ export class Arbiter {
     s.lastPieza.set(z.zona, pieza);
 
     const v = evaluar(z, pieza);
-    const pieces = [z.circuito === "led" || z.circuito === "cabina" ? `R=${pieza}` : `${z.circuito}=${pieza}`];
+    const pieces = [["led", "cabina", "protegido"].includes(z.circuito) ? `R=${pieza}` : z.circuito === "divisor" ? `R2=${pieza}` : `${z.circuito}=${pieza}`];
     let waitMs = 0, escudo = false, hayMas = false;
     if (v === "correcto") {
       s.penalties.registerSuccess(z.zona, pieces);
@@ -357,7 +359,7 @@ export class Arbiter {
     this.send(s.peer!, { t: "despachado", seq, t0, despachados: s.despachados, pod: this.podView(s) });
     this.syncRival(s, t0);
     // Despachos casi simultáneos: gana el primero que llega aquí (el árbitro procesa en orden de llegada).
-    if (!this.oleadas && s.despachados >= PODS_TO_WIN) this.finish("5 pods despachados", s.station);
+    if (!this.oleadas && s.despachados >= this.pods.length) this.finish("5 pods despachados", s.station);
   }
 
   private finish(reason: string, winner?: Station): void {
@@ -397,14 +399,14 @@ export class Arbiter {
 
   private podView(s: Seat): PodView {
     // Tras el quinto despacho se sigue mostrando el último pod (la partida ya terminó).
-    const pod = this.podAt(this.oleadas ? s.despachados : Math.min(s.despachados, PODS_TO_WIN - 1));
+    const pod = this.podAt(this.oleadas ? s.despachados : Math.min(s.despachados, this.pods.length - 1));
     // Campo por campo, sin `solucion`: la solución nunca sale del árbitro.
     return {
       numero: s.despachados + 1,
-      nivel: nivelDePod(this.nivel, this.oleadas ? 0 : Math.min(s.despachados, PODS_TO_WIN - 1)),
+      nivel: nivelDePod(this.nivel, this.oleadas ? 0 : Math.min(s.despachados, this.pods.length - 1)),
       zonas: pod.zonas.map((z) => {
-        const { zona, nombre, circuito, volts, opciones } = this.zonaDe(s, pod, z.zona)!;
-        return { zona, nombre, circuito, volts, opciones: [...opciones], reparada: s.repaired.has(zona) };
+        const { zona, nombre, circuito, volts, opciones, r1 } = this.zonaDe(s, pod, z.zona)!;
+        return { zona, nombre, circuito, volts, opciones: [...opciones], reparada: s.repaired.has(zona), ...(r1 && { fija: `R1 ${r1} Ω` }) };
       }),
     };
   }
@@ -418,7 +420,7 @@ export class Arbiter {
     const other = this.seats.find((x) => x !== s);
     return {
       t: "start", restanteMs: this.practica ? 0 : this.limitMs - (this.now() - this.startAt), despachados: s.despachados,
-      total: this.oleadas ? 0 : PODS_TO_WIN, nivel: nivelDePod(this.nivel, 0), demo: this.demo !== false, pod: this.podView(s), rival: other ? this.rivalView(other) : null,
+      total: this.oleadas ? 0 : this.pods.length, nivel: nivelDePod(this.nivel, 0), demo: this.demo !== false, pod: this.podView(s), rival: other ? this.rivalView(other) : null,
       ...(this.practica && { practica: true }), ...(this.oleadas && { oleadas: true }),
     };
   }

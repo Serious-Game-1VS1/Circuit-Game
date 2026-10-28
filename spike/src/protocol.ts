@@ -17,6 +17,9 @@
  *  - PodView suma `nivel` (opcional): el nivel de ese pod. En el perfil "mixto" el pod 5 es de nivel 2 y el Snapshot
  *    trae el nivel base (1).
  *
+ * Nivel 2, tres familias nuevas: "combinar" (Radar: gaveta una|serie|paralelo de dos resistencias de 220 Ω), "divisor" (Reactor: R2 contra la R1 fija
+ *  que llega en `ZonaView.fija`) y "protegido" (Turbina: resistencia en serie con un diodo de protección). `fija` es opcional.
+ *
  * Despacho explícito (anteproyecto, RF-03). NO compatible con el cliente anterior:
  *  - Reparar la última zona ya no despacha: el Result trae el pod con todas sus zonas `reparada` y
  *    `despachados` sin cambiar. El jugador manda Dispatch ("despachar") y solo entonces cuenta el pod.
@@ -51,7 +54,7 @@ import type { Label } from "./engine/circuit.js";
 export type Station = "A" | "B";
 export type Phase = "esperando" | "listo" | "cuenta" | "jugando" | "fin" | "anulada";
 export type RivalStatus = "reparando" | "penalizado" | "sin-conexion";
-export type Circuito = "led" | "cabina" | "luces" | "interruptor" | "fusible" | "invertido" | "abierto";
+export type Circuito = "led" | "cabina" | "luces" | "interruptor" | "fusible" | "invertido" | "abierto" | "combinar" | "divisor" | "protegido";
 export type ZonaNombre = "radar" | "cabina" | "turbina" | "reactor";
 export type Nivel = 1 | 2;
 export type Verdict = Label | "corto";
@@ -65,7 +68,9 @@ export interface MedirMsg { t: "medir"; seq: number; t0: number; zone: number; p
 export type ClientMsg = Hello | Ready | TestMsg | Dispatch | MedirMsg;
 
 /** Lo que el jugador ve de una zona dañada: nunca cuál de las opciones es la correcta. */
-export interface ZonaView { zona: number; nombre: ZonaNombre; circuito: Circuito; volts: number; opciones: string[]; reparada: boolean }
+export interface ZonaView { zona: number; nombre: ZonaNombre; circuito: Circuito; volts: number; opciones: string[]; reparada: boolean;
+  /** Dato fijo del circuito que se imprime en la placa, p. ej. «R1 470 Ω» (divisor). Nunca revela la solución. */
+  fija?: string }
 export interface PodView { numero: number; nivel?: Nivel; zonas: ZonaView[] }
 export interface RivalView { alias: string; despachados: number; estado: RivalStatus }
 

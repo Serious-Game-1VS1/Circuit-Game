@@ -22,7 +22,16 @@ export const PIEZAS: Record<Circuito, readonly string[]> = {
   // nivel 2: LED montado al revés (se corrige girándolo) y camino cortado (se empalma).
   invertido: ["directa", "inversa"],
   abierto: ["empalmar", "dejar"],
+  // nivel 2: LED con dos resistencias de 220 Ω (una = 220, serie = 440, paralelo = 110); divisor R1 → R2; R + diodo + LED.
+  combinar: ["una", "serie", "paralelo"],
+  divisor: ["100", "220", "470", "1000"],
+  protegido: ["100", "220", "470", "1000"],
 };
+
+/** Zona tal como la ven montar/evaluar/medir; `r1` es la resistencia fija del divisor (Ω). */
+export interface ZonaCircuito { circuito: Circuito; volts: number; r1?: number }
+/** Divisor del Reactor: la tensión del nodo medio entra a un pin de Arduino (máx. 5 V). */
+export const DIVISOR_V = { poco: 4, correcto: 5, quema: 5.5 } as const;
 
 const RANK: Label[] = ["correcto", "poco", "demasiado", "se quema"];
 const worst = (ls: Label[]) => ls.reduce((a, b) => (RANK.indexOf(b) > RANK.indexOf(a) ? b : a));
@@ -32,7 +41,7 @@ const worst = (ls: Label[]) => ls.reduce((a, b) => (RANK.indexOf(b) > RANK.index
  * piezas que el multímetro puede medir: "pieza" (la elegida en la gaveta), "carga1" y "carga2".
  */
 export interface Montaje { parts: Part[]; puntos: Record<string, number> }
-export function montar(z: { circuito: Circuito; volts: number }, pieza: string, calefactorOhms: number = HEATER_OHMS.falla): Montaje {
+export function montar(z: ZonaCircuito, pieza: string, calefactorOhms: number = HEATER_OHMS.falla): Montaje {
   const bat: Part = { kind: "battery", a: 1, b: 0, volts: z.volts };
   switch (z.circuito) {
     case "led":
@@ -42,6 +51,16 @@ export function montar(z: { circuito: Circuito; volts: number }, pieza: string, 
       if (z.circuito === "cabina") parts.push({ kind: "led", a: 2, b: 0 });
       return { parts, puntos: z.circuito === "cabina" ? { pieza: 1, carga1: 2, carga2: 3 } : { pieza: 1, carga1: 2 } };
     }
+    case "combinar": { // LED con dos resistencias de 220 Ω: una sola, en serie o en paralelo.
+      const n = pieza === "serie" ? 3 : 2;
+      const rs: Part[] = (pieza === "una" ? [[1, 2]] : pieza === "serie" ? [[1, 2], [2, 3]] : [[1, 2], [1, 2]]).map(([a, b]) => ({ kind: "resistor", a: a!, b: b!, ohms: 220 }));
+      const parts: Part[] = [bat, ...rs, { kind: "led", a: n, b: 0 }];
+      return { parts, puntos: { pieza: 1, carga1: parts.length - 1 } };
+    }
+    case "divisor": // batería → R1 (fija) → R2 (elegida) → masa; pieza = R2, carga1 = R1; el nodo medio es la tensión de R2.
+      return { parts: [bat, { kind: "resistor", a: 1, b: 2, ohms: z.r1 ?? 470 }, { kind: "resistor", a: 2, b: 0, ohms: Number(pieza) }], puntos: { pieza: 2, carga1: 1 } };
+    case "protegido": // R → diodo de protección → LED: cada pieza en serie se come su tensión.
+      return { parts: [bat, { kind: "resistor", a: 1, b: 2, ohms: Number(pieza) }, { kind: "diode", a: 2, b: 3 }, { kind: "led", a: 3, b: 0 }], puntos: { pieza: 1, carga1: 3, carga2: 2 } };
     case "invertido": // R → LED; "inversa" = el LED con el ánodo a tierra (no conduce).
       return { parts: [bat, { kind: "resistor", a: 1, b: 2, ohms: 470 }, pieza === "inversa" ? { kind: "led", a: 0, b: 2 } : { kind: "led", a: 2, b: 0 }], puntos: { pieza: 1, carga1: 2 } };
     case "abierto": // R → hueco → LED; "empalmar" cierra el hueco con un cable, "dejar" lo deja (resistencia enorme).
@@ -70,15 +89,24 @@ export function montar(z: { circuito: Circuito; volts: number }, pieza: string, 
 }
 
 /** Veredicto de una zona con la pieza `pieza` y la batería `volts`. Sin cifras. */
-export function evaluar(z: { circuito: Circuito; volts: number }, pieza: string): Verdict {
+export function evaluar(z: ZonaCircuito, pieza: string): Verdict {
   switch (z.circuito) {
     case "led":
     case "cabina": {
       const r = solve(montar(z, pieza).parts);
       return r.short ? "corto" : worst(r.parts.slice(2).map((p) => p.label!));
     }
+    case "divisor": {
+      const { parts, puntos } = montar(z, pieza);
+      const r = solve(parts);
+      if (r.short) return "corto";
+      const v = r.parts[puntos.pieza!]!.volts;
+      return v < DIVISOR_V.poco ? "poco" : v <= DIVISOR_V.correcto ? "correcto" : v <= DIVISOR_V.quema ? "demasiado" : "se quema";
+    }
     case "invertido":
-    case "abierto": {
+    case "abierto":
+    case "combinar":
+    case "protegido": {
       const r = solve(montar(z, pieza).parts);
       return r.short ? "corto" : r.parts.at(-1)!.label!;
     }
