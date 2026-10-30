@@ -24,6 +24,7 @@ declare module "photon-realtime" {
     raiseEvent(code: number, data: unknown, options?: { receivers?: number; targetActors?: number[] }): void;
     disconnect(): void;
     myActor(): { actorNr: number };
+    myRoomMasterActorNr(): number;
     onStateChange: (state: number) => void;
     onError: (code: number, msg: string) => void;
     onOperationResponse: (errorCode: number, errorMsg: string, opCode: number, content: unknown) => void;

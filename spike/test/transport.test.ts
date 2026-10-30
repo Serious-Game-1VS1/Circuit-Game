@@ -4,6 +4,7 @@ import { LocalTransport, startLocalRelay } from "../src/transport/local.js";
 import { Bot } from "../src/sim/bot.js";
 import { simulateDuel } from "../src/sim/duel.js";
 import { createRoom, hostRoom, joinAsPlayer, newCode, pausaReapertura, validAlias } from "../src/transport/room.js";
+import { eventoAceptable } from "../src/transport/photon.js";
 import type { Transport } from "../src/transport/transport.js";
 
 let relay: Awaited<ReturnType<typeof startLocalRelay>>;
@@ -143,5 +144,16 @@ describe("lista de salas (relé local)", () => {
     expect(JSON.stringify(await mia())).not.toMatch(/ana|beto/);
     await arb.close();
     await vi.waitFor(async () => expect(await mia()).toBeUndefined());
+  });
+});
+
+
+describe("Photon: solo el anfitrión habla como árbitro (S-03)", () => {
+  it("un cliente rechaza eventos de otro cliente y acepta los del anfitrión", () => {
+    expect(eventoAceptable(3, 1, 2)).toBe(false); // jugador 3, anfitrión 1, evento del jugador 2
+    expect(eventoAceptable(3, 1, 1)).toBe(true);
+  });
+  it("el anfitrión acepta eventos de los jugadores", () => {
+    expect(eventoAceptable(1, 1, 2)).toBe(true);
   });
 });

@@ -19,6 +19,14 @@ function Only443(uri: string, prot: string) {
 Photon.PhotonPeer.setWebSocketImpl(Only443);
 
 /**
+ * S-03: el anfitrión (árbitro) acepta eventos de cualquiera, pero un cliente solo los del anfitrión de la sala.
+ * Photon entrega `actorNr` verdadero (lo pone el servidor); el contenido JSON, en cambio, lo escribe el remitente.
+ */
+export function eventoAceptable(yo: number, anfitrion: number, de: number): boolean {
+  return yo === anfitrion || de === anfitrion;
+}
+
+/**
  * Transporte sobre Photon Realtime (Photon Cloud) con el SDK oficial `photon-realtime`.
  * Cada instancia es un participante (1 CCU). El que crea la sala es su MasterClient: el árbitro.
  * Los datos van como JSON en un evento propio; el destino es el actorNr o, sin `to`, el MasterClient.
@@ -63,6 +71,7 @@ export class PhotonTransport implements Transport {
     lbc.onActorLeave = mine((actor: { actorNr: number }, cleanup: boolean) => { if (!cleanup) this.onLeave?.(String(actor.actorNr)); });
     lbc.onEvent = mine((code: number, content: unknown, actorNr: number) => {
       if (code !== EVENT || typeof content !== "string") return;
+      if (!eventoAceptable(lbc.myActor().actorNr, lbc.myRoomMasterActorNr(), actorNr)) return; // un rival no puede hacerse pasar por el árbitro
       try { this.onMessage(JSON.parse(content), String(actorNr)); } catch { /* evento mal formado: se ignora */ }
     });
     return lbc;
