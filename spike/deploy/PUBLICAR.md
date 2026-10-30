@@ -23,13 +23,13 @@ En tu PC: Node 22 y npm, Azure CLI (`az`), git, `ssh`, `scp` y `tar` (Windows 11
 
 El árbitro solo hace conexiones **salientes** WSS por el puerto 443 hacia Photon (Azure las permite por defecto). Del lado de ENTRADA del NSG solo hace falta **SSH (22) desde tu IP**. No abras 80, 443 ni 8787.
 
-**2.1** IP de la VM y tu IP pública (PowerShell). Los nombres `rg-circuitsync`, `vm-arbitro` y `nsg-arbitro` son los de `GUIA-AZURE.md`; cámbialos si los tuyos difieren. (SUPOSICIÓN: no se verificó el estado real de la VM.)
+**2.1** IP de la VM y tu IP pública (PowerShell). Los nombres `circuitsync-rg`, `arbitro-vm` y `arbitro-vm-nsg` son los reales (verificados en la auditoría del 30-oct). (SUPOSICIÓN: no se verificó el estado real de la VM.)
 ```powershell
 az login
-az vm start -g rg-circuitsync -n vm-arbitro        # solo si está desasignada
-az vm show -d -g rg-circuitsync -n vm-arbitro --query publicIps -o tsv
+az vm start -g circuitsync-rg -n arbitro-vm        # solo si está desasignada
+az vm show -d -g circuitsync-rg -n arbitro-vm --query publicIps -o tsv
 (Invoke-RestMethod https://api.ipify.org)
-az network nsg rule list -g rg-circuitsync --nsg-name nsg-arbitro -o table
+az network nsg rule list -g circuitsync-rg --nsg-name arbitro-vm-nsg -o table
 ```
 
 **2.2** Entra por SSH:
@@ -125,7 +125,7 @@ Móvil: el peso no es el problema (descarga real ~0,5 MB con gzip); lo es el nú
 **HTTPS es obligatorio**: el navegador solo permite el WSS de Photon desde una página HTTPS, y el audio en móviles también lo exige. Los tres servicios siguientes dan HTTPS automático.
 
 ### 4a. Azure Static Web Apps (plan Free)
-1. Portal de Azure, Crear recurso, "Static Web App". Grupo `rg-circuitsync`, plan **Free**.
+1. Portal de Azure, Crear recurso, "Static Web App". Grupo `circuitsync-rg`, plan **Free**.
 2. En "Origen de implementación" elige **Otro** (subida manual).
 3. Al crear, copia el token de despliegue (Administrar token de implementación). Es secreto.
 ```powershell
@@ -134,6 +134,8 @@ cd "C:\Users\holaq\OneDrive\Documents\Electronic Basico\cliente"
 swa deploy ./dist --deployment-token <TOKEN> --env production
 ```
 Carpeta a publicar: `cliente/dist`. Dominio: `https://<nombre-aleatorio>.azurestaticapps.net` (en la página del recurso). Con GitHub Actions el build lo haría Actions: habría que poner los `VITE_*` como secretos del repo y escribir el workflow (el CI actual no despliega). Actualizar: `npm run build` y repetir `swa deploy`.
+
+**Cabeceras de seguridad (S-01/S-12).** La config de Static Web Apps vive en `cliente/public/staticwebapp.config.json`: Vite la copia sola a `dist/` en cada `npm run build` (ya no se recrea a mano; `dist/_headers` es de Netlify y SWA lo ignora). Trae caché larga en `/assets/*`, respaldo a `/index.html` y `globalHeaders` (CSP en modo enforce, `X-Frame-Options`, `Permissions-Policy`, COOP). `swa deploy ./dist` la sube con el sitio; comprueba tras publicar con `curl -sI https://juego.circuitsyncjuego.com/` que aparece `Content-Security-Policy`. Si agregas el panel docente (`VITE_DOCENTE_URL`), añade su host a `connect-src` en ese archivo. Hosts permitidos: el propio sitio, `wss://ns.photonengine.io`, `wss://*.photonengine.io` y `wss://*.exitgames.com`.
 
 ### 4b. Alternativas
 **Netlify (arrastrar):** app.netlify.com, "Add new site", "Deploy manually", arrastra `cliente\dist`. Dominio `https://<nombre>.netlify.app`. Actualizar: arrastra el nuevo `dist/` en "Deploys".
@@ -145,6 +147,14 @@ npm run build -- --base=/Circuit-Game/
 Sube el contenido de `dist/` a una rama `gh-pages` y activa Pages en Settings. Comprueba que los PNG de `arte/` carguen con la subruta (el cliente los pide con la ruta relativa `arte/`; no verificado). Si fallan, usa Netlify o Static Web Apps.
 
 Recomendación: Netlify manual para salir rápido, o Static Web Apps si quieres todo en Azure.
+
+## Dominio propio (ejemplo real)
+
+1. Comprar `<tu-dominio>` en un registrador (por ejemplo Cloudflare Registrar) y activar la auto-renovación.
+2. En el DNS del dominio, crear un registro `CNAME` con nombre `juego` y destino `<tu-app>.<id>.azurestaticapps.net`, en modo «DNS only» (sin proxy; en Cloudflare, nube gris).
+3. En Azure: Static Web App → Custom domains → Add → `juego.<tu-dominio>`; esperar el estado Ready. Azure emite y renueva el certificado.
+4. Opcional: marcar el dominio nuevo como predeterminado y probar `https://juego.<tu-dominio>`.
+5. Un futuro panel docente iría en `docente.<tu-dominio>` (registro `A` hacia la IP de la VM); el SSH tendría que salir del puerto 443.
 
 ## 5. Comprobación de punta a punta
 
@@ -160,7 +170,7 @@ Recomendación: Netlify manual para salir rápido, o Static Web Apps si quieres 
 | «El servidor de juego no está bien configurado. Avisa al docente.» | App ID inválido o de una app que no es Realtime (errores 32767 y 32756), en el build del cliente o en `arbitro.env`. |
 | «No se pudo conectar con el servidor de juego. Revisa tu conexión.» | La red del jugador bloquea WSS 443 (prueba datos móviles), la página no es HTTPS, o Photon caído. |
 | Se ve la versión vieja | Caché del navegador o del host: Ctrl+F5 o ventana privada. |
-| No entra el SSH | Tu IP cambió: `az network nsg rule update -g rg-circuitsync --nsg-name nsg-arbitro -n ssh-mi-ip --source-address-prefixes <TU_IP>/32` |
+| No entra el SSH | Tu IP cambió: `az network nsg rule update -g circuitsync-rg --nsg-name arbitro-vm-nsg -n ssh-mi-ip --source-address-prefixes <TU_IP>/32` |
 | `Falta PHOTON_APP_ID` en el log | `arbitro.env` sigue con `<PEGA_AQUI>`; el servicio se reinicia en bucle. |
 | `No se pudo abrir sala en Photon... reintento` | App ID o región mal, o CCU agotados (baja `MAX_SALAS`). |
 
@@ -171,9 +181,9 @@ Actualizar después: árbitro, copia el código nuevo (2.3) y repite `sudo bash 
 | Concepto | Detalle |
 |---|---|
 | VM Standard_B1s encendida | Cobra por hora mientras está **asignada**. Estimado, por verificar en la calculadora de Azure: unos USD 8 a 10 al mes. Azure for Students (~USD 100) alcanza para la demo. |
-| Apagar | Apagar desde dentro del SO NO deja de cobrar: `az vm deallocate -g rg-circuitsync -n vm-arbitro`. Volver: `az vm start -g rg-circuitsync -n vm-arbitro` (el servicio arranca solo). |
-| IP pública | Dinámica: puede cambiar al reiniciar y cambia tu destino de SSH (los jugadores no la usan; van por Photon). Estática: sigue costando poco con la VM desasignada. Consulta: `az vm show -d -g rg-circuitsync -n vm-arbitro --query publicIps -o tsv`. |
-| Borrar todo | `az group delete -n rg-circuitsync --yes` (**irreversible**). |
+| Apagar | Apagar desde dentro del SO NO deja de cobrar: `az vm deallocate -g circuitsync-rg -n arbitro-vm`. Volver: `az vm start -g circuitsync-rg -n arbitro-vm` (el servicio arranca solo). |
+| IP pública | Dinámica: puede cambiar al reiniciar y cambia tu destino de SSH (los jugadores no la usan; van por Photon). Estática: sigue costando poco con la VM desasignada. Consulta: `az vm show -d -g circuitsync-rg -n arbitro-vm --query publicIps -o tsv`. |
+| Borrar todo | `az group delete -n circuitsync-rg --yes` (**irreversible**). |
 | Static Web Apps Free, Netlify, GitHub Pages | Gratis (límites de ancho de banda del plan Free de SWA: por verificar). |
 | App ID en el cliente | Viaja en el JS: público por diseño en Photon. Los secretos reales son la clave SSH, `arbitro.env` y el token de despliegue. |
 | Plan gratis de Photon | 20 CCU. Cada sala usa 3 (árbitro + 2 jugadores): `MAX_SALAS=6` usa 18 y el árbitro siempre deja una sala libre abierta. Sin CCU, las salas nuevas fallan. Baja `MAX_SALAS` si quieres margen. |
@@ -186,3 +196,46 @@ Actualizar después: árbitro, copia el código nuevo (2.3) y repite `sudo bash 
 - Que `--base` funcione con los PNG de `arte/` en GitHub Pages.
 - Costos exactos y límites del plan Free de Static Web Apps.
 - Tiempo de carga real en móvil y comportamiento de caché con la URL publicada.
+
+## Endurecimiento de la VM (30-oct-2026)
+
+Aplicado en `arbitro-vm` (Ubuntu 24.04, sshd solo en 443). Mantén siempre una sesión SSH abierta mientras tocas firewall o NSG y prueba con una conexión nueva antes de cerrar.
+
+**systemd (S-05).** Drop-in `spike/deploy/azure/endurecimiento.conf` (lo instala `instalar.sh` en `/etc/systemd/system/arbitro.service.d/`). Sin `MemoryDenyWriteExecute` (Node lo necesita). Puntaje `systemd-analyze security arbitro`: 8,7 EXPOSED a 1,3 OK.
+```bash
+sudo mkdir -p /etc/systemd/system/arbitro.service.d
+sudo install -m 644 endurecimiento.conf /etc/systemd/system/arbitro.service.d/
+sudo systemctl daemon-reload && sudo systemctl restart arbitro
+systemd-analyze security arbitro --no-pager | tail -1
+```
+Antes de reiniciar, mira `sudo journalctl -u arbitro` por partidas en curso. Para revertir, borra el drop-in y haz `daemon-reload` + `restart`.
+
+**ufw (S-06).** Permitir 443 antes de habilitar:
+```bash
+sudo ufw default deny incoming && sudo ufw default allow outgoing
+sudo ufw allow 443/tcp && sudo ufw --force enable
+```
+
+**fail2ban (S-06).** `sudo apt-get install -y fail2ban` y `/etc/fail2ban/jail.d/sshd-443.local`:
+```
+[DEFAULT]
+ignoreip = 127.0.0.1/8 ::1 <TU_IP>
+bantime = 1h
+findtime = 10m
+maxretry = 5
+[sshd]
+enabled = true
+port = 443
+backend = systemd
+```
+`sudo systemctl restart fail2ban && sudo fail2ban-client status sshd`.
+
+**NSG (S-08).** Se borró la regla SSH del 22; queda `SSH-443` desde una sola IP: `az network nsg rule delete -g circuitsync-rg --nsg-name arbitro-vm-nsg -n SSH`. Si cambia tu IP, actualiza esa regla y el `ignoreip` de fail2ban.
+
+**sshd (S-07).** `/etc/ssh/sshd_config.d/99-endurecimiento.conf` con `PermitRootLogin no`, `X11Forwarding no`, `PasswordAuthentication no`, `MaxAuthTries 3` (el puerto no se toca; en Ubuntu 24.04 lo gestiona `ssh.socket`). Antes de recargar: `sudo sshd -t`; recarga con `sudo systemctl reload ssh`, comprueba `ss -ltn | grep :443` y abre una sesión nueva antes de cerrar la anterior. Revertir: borrar el archivo y recargar.
+
+**Journal (S-11b).** El log del árbitro no lleva alias ni semilla. `/etc/systemd/journald.conf.d/retencion.conf` con `[Journal]` y `MaxRetentionSec=30day`, luego `sudo systemctl restart systemd-journald` y `sudo journalctl --vacuum-time=30d`.
+
+**Parches.** `unattended-upgrades` activo (seguridad diaria); se aplicó `apt upgrade` el 30-oct sin necesidad de reinicio.
+
+> **Retención (S-11):** `src/docente/retencion.ts` (purga a los 12 meses de partidas y sesiones al arrancar y cada 24 h) está **ACTIVA en producción** desde el 30-oct-2026 (desplegada con el procedimiento 2.3 opción B + `instalar.sh`; el log de arranque muestra «retención: N registros eliminados»; respaldo previo en `/opt/circuitsync/spike.bak-retencion`). Escribe solo en `DOCENTE_DATA` (`/var/lib/circuitsync/docente`), dentro de `ReadWritePaths`.

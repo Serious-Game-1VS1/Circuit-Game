@@ -37,6 +37,8 @@ chown -R arbitro:arbitro /opt/circuitsync /var/lib/circuitsync
 sudo -u arbitro bash -c "cd $SPIKE && npm ci"
 
 install -m 644 "$AQUI/arbitro.service" /etc/systemd/system/arbitro.service
+mkdir -p /etc/systemd/system/arbitro.service.d
+install -m 644 "$AQUI/endurecimiento.conf" /etc/systemd/system/arbitro.service.d/endurecimiento.conf
 systemctl daemon-reload
 systemctl enable arbitro
 if grep -v '^#' "$ENVF" | grep -q '<PEGA_AQUI>'; then
