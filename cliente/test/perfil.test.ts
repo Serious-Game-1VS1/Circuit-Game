@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { inicial, type Pantalla } from "../src/pantalla";
-import { firmaEnd, aplicarPartida, cargarPerfil, guardarPerfil, INSIGNIAS, marcarTutorial, tutorialCompletado, cambiarNivel, nivelElegido, textoNivel, perfilNuevo, progresoRango, rangoDe, registrarOleada, registrarTiempo, registrarTotal, resultadoDe, UMBRALES_MEDALLA, type Resultado } from "../src/perfil";
+import { firmaEnd, aplicarPartida, cargarPerfil, guardarPerfil, INSIGNIAS, marcarTutorial, tutorialCompletado, cambiarNivel, nivelBotElegido, nivelElegido, textoNivel, perfilNuevo, progresoRango, rangoDe, registrarOleada, registrarTiempo, registrarTotal, resultadoDe, UMBRALES_MEDALLA, type Resultado } from "../src/perfil";
 
 const res = (o: Partial<Resultado> = {}): Resultado => ({ puntos: 0, pods: 0, total: 5, quemadas: 0, limpios: 0, gano: false, nivel: 1, ...o });
 const ids = (r: ReturnType<typeof aplicarPartida>) => r.eventos.insignias.map((i) => i.id);
@@ -53,9 +53,11 @@ describe("aplicarPartida", () => {
     expect(textoNivel(p, 1)).toContain("Completa el nivel 1 para abrirlo");
     expect(cambiarNivel(p, 1)).toBe(1);
     expect(nivelElegido(p, 2)).toBe(1);
+    expect(nivelBotElegido(p, "mixto")).toBe(1); // bloqueado hasta abrir el nivel 2
     expect(cambiarNivel(abierto, 1)).toBe(2);
     expect(cambiarNivel(abierto, 2)).toBe(1);
     expect(nivelElegido(abierto, 2)).toBe(2);
+    expect([nivelBotElegido(abierto, "1"), nivelBotElegido(abierto, "2"), nivelBotElegido(abierto, "mixto")]).toEqual([1, 2, "mixto"]);
     expect(textoNivel(abierto, 2)).not.toContain("🔒");
     expect(textoNivel(p, 1)).toContain("bloqueado");
     expect(textoNivel(p, 1)).not.toContain("🔒");

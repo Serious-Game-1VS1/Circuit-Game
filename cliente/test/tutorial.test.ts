@@ -23,15 +23,15 @@ const SEMILLAS: Record<string, { circuito: string; volts?: number; r1?: number; 
 /** Un estado por paso (menos el último): el que confirma ese paso, con los contadores como los lleva el Taller. */
 const ESTADOS: Record<string, EstadoTut[]> = {
   resistencia: [e({ elegida: "1000" }), e({ elegida: "1000", aguja: "poco" }), e({ elegida: "100", quemado: true }), e({ elegida: "100", quemado: true }), e({ elegida: "470", reparada: true }), e({ despachados: 1 })],
-  multimetro: [e({ elegida: "1000" }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "470" }), e({ reparada: true }), e({ despachados: 1 })],
-  fusible: [e({ elegida: "3" }), e({ elegida: "3", quemado: true }), e({ elegida: "1" }), e({ elegida: "1", reparada: true }), e({ despachados: 1 })],
-  invertido: [e({ elegida: "inversa" }), e({ pruebas: 1 }), e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "directa" }), e({ reparada: true }), e({ despachados: 1 })],
-  abierto: [e({ elegida: "dejar" }), e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "empalmar" }), e({ reparada: true }), e({ despachados: 1 })],
-  placa: [e({ falta: "cablear" }), e({ falta: null }), e({ falta: null, reparada: true }), e({ despachados: 1 })],
+  multimetro: [e({ elegida: "1000" }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "470", reparada: true }), e({ despachados: 1 })],
+  fusible: [e({ elegida: "3", quemado: true }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ elegida: "1", reparada: true }), e({ despachados: 1 })],
+  invertido: [e({ elegida: "inversa", pruebas: 1 }), e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "directa", reparada: true }), e({ despachados: 1 })],
+  abierto: [e({ elegida: "dejar" }), e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "empalmar", reparada: true }), e({ despachados: 1 })],
+  placa: [e({ falta: "cablear" }), e({ falta: null }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ falta: null, reparada: true }), e({ despachados: 1 })],
   turbina: [e({ falta: "cablear" }), e({ falta: null }), e({ falta: null, reparada: true }), e({ despachados: 1 })],
-  combinar: [e({ elegida: "una" }), e({ elegida: "una", quemado: true }), e({ elegida: "paralelo" }), e({ elegida: "paralelo", quemado: true, pruebas: 1 }), e({ elegida: "serie" }), e({ elegida: "serie", reparada: true }), e({ despachados: 1 })],
-  divisor: [e({ elegida: "470" }), e({ elegida: "470", modo: "tension" }), e({ elegida: "470", modo: "tension", medido: true }), e({ elegida: "220", modo: "tension", medido: true }), e({ elegida: "220", modo: "tension", medido: true, medidas: 1 }), e({ elegida: "220", reparada: true }), e({ despachados: 1 })],
-  protegido: [e({ elegida: "100" }), e({ elegida: "100", quemado: true }), e({ elegida: "100", quemado: true, modo: "tension" }), e({ elegida: "100", quemado: true, modo: "tension", medido: true }), e({ elegida: "220" }), e({ elegida: "220", reparada: true }), e({ despachados: 1 })],
+  combinar: [e({ elegida: "una", quemado: true }), e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "paralelo", quemado: true, pruebas: 1 }), e({ elegida: "serie", reparada: true }), e({ despachados: 1 })],
+  divisor: [e({ elegida: "470" }), e({ elegida: "470", modo: "tension" }), e({ elegida: "470", modo: "tension", medido: true }), e({ elegida: "220", reparada: true }), e({ despachados: 1 })],
+  protegido: [e({ elegida: "100", quemado: true }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ elegida: "220", reparada: true }), e({ despachados: 1 })],
 };
 
 describe("mini-tutoriales por mecánica", () => {
@@ -90,13 +90,17 @@ describe("mini-tutoriales por mecánica", () => {
       expect(avanzar(t, e({ despachados: 5 }))).toBe(t); // el último solo se deja con sus botones
     });
 
-    it("elegir y probar casi a la vez: el pod ya reparado lleva a Despacha y, despachado, al cierre", () => {
+    it("cubre el multímetro: la luz y al menos una lectura (o el paso del multímetro)", () => {
+      expect(mecanica(id)!.pasos.some((p) => ["multimetro", "tension", "pieza", "carga"].includes(p.objetivo)), id).toBe(true);
+    });
+
+    it("arrastrar y probar casi a la vez: el pod ya reparado lleva a CHECK y, despachado, al cierre", () => {
       const sol = SEMILLAS[id]!.solucion, rep = e({ elegida: sol, reparada: true, falta: null });
       let t = iniciar(id), ms = 0;
-      const ultima = id === "resistencia" ? "check" : "despachar"; // la mecánica 1 cierra con CHECK en vez de Despachar
+      const ultima = "check"; // todas las mecánicas cierran con CHECK
       for (let n = 0; n < 20 && actual(t).pide !== ultima && !esFin(t); n++) t = avanzar(t, rep, (ms += 1500));
-      expect(actual(t).pide, `${id} no llegó a Despacha`).toBe(ultima);
-      expect(permite(iniciar(id), ultima, rep), `${id} deja despachar desde el paso 1`).not.toBeNull();
+      expect(actual(t).pide, `${id} no llegó a CHECK`).toBe(ultima);
+      expect(permite(iniciar(id), ultima, rep), `${id} deja CHECK desde el paso 1`).not.toBeNull();
       for (let n = 0; n < 5 && !esFin(t); n++) t = avanzar(t, e({ despachados: 1, reparada: true }), (ms += 1500));
       expect(esFin(t), `${id} sin cierre`).toBe(true);
     });
@@ -134,24 +138,23 @@ describe("mecánica del tutorial", () => {
     expect(vistos[1]!.desde).toBeGreaterThanOrEqual(5400);
   });
 
-  it("solo deja elegir la pieza del paso y Probar en los pasos de Probar", () => {
+  it("solo deja arrastrar la pieza del paso; CHECK solo en sus pasos", () => {
     const t = iniciar("fusible");
-    expect(permite(t, { elegir: "3" })).toBeNull();
-    expect(permite(t, { elegir: "1" })).toBe("Ahora toca: Fusible grueso");
-    expect(permite(t, "probar")).not.toBeNull();
-    const t2 = avanzar(t, e({ elegida: "3" }));
-    expect(permite(t2, "probar")).toBeNull();
-    expect(permite(t2, { elegir: "1" })).not.toBeNull();
+    expect(permite(t, { arrastrar: "3" })).toBeNull();
+    expect(permite(t, { arrastrar: "1" })).toBe("Ahora toca: Fusible grueso");
+    expect(permite(t, "check")).not.toBeNull();
+    const t2 = { ...t, i: t.pasos.findIndex((p) => typeof p.pide === "object" && p.pide.arrastrar === "1") };
+    expect(permite(t2, { arrastrar: "1" })).toBeNull();
+    expect(permite(t2, { arrastrar: "3" })).not.toBeNull();
   });
 
-  it("resistencia: arrastrar solo la pieza del paso; elegir, Probar y Despachar no valen; CHECK solo en su paso", () => {
+  it("resistencia: arrastrar solo la pieza del paso; CHECK solo en su paso", () => {
     const t = iniciar("resistencia");
     expect(permite(t, { arrastrar: "1000" })).toBeNull();
     expect(permite(t, { arrastrar: "470" })).toBe("Ahora toca: Falta la resistencia");
-    for (const a of [{ elegir: "1000" }, "probar", "despachar", "check"] as const) expect(permite(t, a), String(a)).not.toBeNull();
+    expect(permite(t, "check")).not.toBeNull();
     const ck = { ...t, i: t.pasos.findIndex((p) => p.pide === "check") };
     expect(permite(ck, "check")).toBeNull();
-    expect(permite(ck, "despachar")).not.toBeNull();
     expect(permite({ ...ck, i: ck.i - 1 }, "check", e({ reparada: true }))).toBeNull(); // jugador rápido: ya en verde, pulsa CHECK antes de 1,4 s
     expect(permite({ ...ck, i: ck.i - 1 }, "check", base)).not.toBeNull();
   });
@@ -163,26 +166,12 @@ describe("mecánica del tutorial", () => {
   });
 
   it("jugador rápido: con el paso cumplido acepta la acción del siguiente (<1,4 s), pero no la de dos pasos más allá", () => {
-    const t = avanzar(iniciar("fusible"), base, 0);
-    const elegida = e({ elegida: "3" });
-    expect(permite(t, "probar", elegida)).toBeNull();
-    expect(permite(t, "probar", base)).not.toBeNull();
-    expect(permite(t, { elegir: "1" }, elegida)).not.toBeNull();
-    expect(avanzar(t, elegida, 100)).toBe(t);
-  });
-
-  it("elegir y Probar en el mismo cuadro (<50 ms): el estado se calcula al hacer clic", () => {
-    let elegida: string | undefined;
-    const estado = (): EstadoTut => e({ elegida });
-    const t0 = iniciar("fusible");
-    const idx = t0.pasos.findIndex((p) => typeof p.pide === "object" && t0.pasos[t0.pasos.indexOf(p) + 1]?.pide === "probar");
-    const t = { ...t0, i: idx, desde: 0 };
-    const pide = (t.pasos[idx]!.pide as { elegir: string }).elegir;
-    expect(permite(t, { elegir: pide }, estado())).toBeNull();
-    elegida = pide;
-    expect(permite(t, "probar", estado())).toBeNull();
-    expect(avanzar(t, estado(), 40)).toBe(t);
-    expect(permite(t, { elegir: "otra" }, estado())).not.toBeNull();
+    const t = { ...iniciar("resistencia"), i: 1, desde: 0 }; // «Multímetro» (ámbar); el siguiente pide arrastrar 100 Ω
+    const ambar = e({ elegida: "1000", aguja: "poco" });
+    expect(permite(t, { arrastrar: "100" }, ambar)).toBeNull();
+    expect(permite(t, { arrastrar: "100" }, base)).not.toBeNull();
+    expect(permite(t, "check", ambar)).not.toBeNull();
+    expect(avanzar(t, ambar, 100)).toBe(t);
   });
 
   it("saltar lo desactiva, libera todo y no pierde el paso", () => {
@@ -190,40 +179,32 @@ describe("mecánica del tutorial", () => {
     expect(t.activo).toBe(false);
     expect(actual(t).titulo).toBe("Multímetro");
     expect(permite(t, { arrastrar: "470" })).toBeNull();
-    expect(permite(null, "probar")).toBeNull();
+    expect(permite(null, "check")).toBeNull();
   });
 
-  it("el último paso deja usar el botón Despachar y todo lo demás", () => {
+  it("el último paso deja usar CHECK y todo lo demás", () => {
     const t = { ...iniciar("placa"), i: mecanica("placa")!.pasos.length - 1 };
-    expect(permite(t, "despachar")).toBeNull();
+    expect(permite(t, "check")).toBeNull();
+    expect(permite(t, { arrastrar: "x" })).toBeNull();
   });
 
-  it("un quemado anterior no hace avanzar la «Prueba» del paralelo; hace falta un veredicto nuevo", () => {
-    const i = iniciar("combinar").pasos.findIndex((p) => p.titulo === "Prueba" && p.texto.includes("110"));
+  it("un quemado anterior no hace avanzar «En paralelo»; hace falta un veredicto nuevo", () => {
+    const i = iniciar("combinar").pasos.findIndex((p) => p.titulo === "En paralelo");
     const s = e({ elegida: "paralelo", quemado: true });
-    let t = avanzar({ ...iniciar("combinar"), i: i - 1, desde: 0 }, { ...s, pruebas: 1 }, 5000);
-    expect(t.i).toBe(i);
-    expect(avanzar(t, { ...s, pruebas: 1 }, 9000)).toBe(t);
+    let t = { ...iniciar("combinar"), i, desde: 0, p0: 1 }; // el quemado de «Una sola» ya contó
+    expect(avanzar(t, { ...s, pruebas: 1 }, 5000)).toBe(t);
     t = avanzar(t, { ...s, pruebas: 2 }, 9000);
     expect(t.i).toBe(i + 1);
   });
 
   it("una prueba hecha en la ventana de <1,4 s (jugador rápido) sí cuenta", () => {
-    const i = iniciar("combinar").pasos.findIndex((p) => p.titulo === "Prueba" && p.texto.includes("110"));
+    const i = iniciar("combinar").pasos.findIndex((p) => p.titulo === "En paralelo");
     const t0 = { ...iniciar("combinar"), i: i - 1, desde: 0 };
-    const s = e({ elegida: "paralelo", quemado: true });
-    avanzar(t0, { ...s, pruebas: 1 }, 100);
-    const t = avanzar(t0, { ...s, pruebas: 2 }, 2000);
+    const medido = e({ elegida: "una", quemado: true, modo: "continuidad", medidas: 1, pruebas: 1 });
+    avanzar(t0, medido, 100);
+    const t = avanzar(t0, { ...medido, elegida: "paralelo", pruebas: 2 }, 2000);
     expect(t.i).toBe(i);
-    expect(avanzar(t, { ...s, pruebas: 2 }, 4000).i).toBe(i + 1);
-  });
-
-  it("«Mide otra» del divisor exige una lectura nueva", () => {
-    const i = iniciar("divisor").pasos.findIndex((p) => p.titulo === "Mide otra");
-    const s = e({ elegida: "220", medido: true, modo: "tension", medidas: 1 });
-    const t = avanzar({ ...iniciar("divisor"), i: i - 1, desde: 0 }, s, 5000);
-    expect(avanzar(t, s, 9000)).toBe(t);
-    expect(avanzar(t, { ...s, medidas: 2 }, 9000).i).toBe(i + 1);
+    expect(avanzar(t, { ...medido, elegida: "paralelo", pruebas: 2 }, 4000).i).toBe(i + 1);
   });
 
   it("la continuidad exige medir DESPUÉS de elegir el modo (una lectura vieja no vale)", () => {

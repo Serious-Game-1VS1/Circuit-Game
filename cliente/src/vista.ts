@@ -31,12 +31,10 @@ export const RETO: Record<Circuito, string> = {
   protegido: "El diodo se come 0,7 V: la resistencia debe ajustarse",
 };
 
-/** Qué se elige en la gaveta: pieza o montaje. */
+/** Qué se arrastra desde la gaveta al hueco: pieza o montaje. */
 export const GAVETA: Record<Circuito, string> = {
-  led: "Elige una resistencia (más Ω, más freno)", cabina: "Elige una resistencia (más Ω, más freno)", luces: "Elige el montaje",
-  interruptor: "Elige el montaje", fusible: "Elige un fusible (A = lo que aguanta)",
-  invertido: "Elige la posición del LED", abierto: "Elige qué hacer con el corte",
-  combinar: "Elige cómo usar las dos resistencias", divisor: "Elige la resistencia de abajo (R2)", protegido: "Elige una resistencia (más Ω, más freno)",
+  led: "Más Ω, más freno", cabina: "Más Ω, más freno", protegido: "Más Ω, más freno", luces: "Arma el montaje", interruptor: "Arma el montaje",
+  fusible: "A = lo que aguanta", invertido: "Gira o deja el LED", abierto: "Empalma o deja el corte", combinar: "Una, en serie o en paralelo", divisor: "R2: la de abajo",
 };
 
 /** Nombre estable de cada resistencia por valor (textos.js, gaveta.res): más Ω, más freno. */
@@ -47,27 +45,18 @@ export const FRENA: Record<string, string> = { "100": "Frena poco", "220": "Fren
  * circuito.cablesAyuda y tutorial.p6; «colocar» no existe en textos.js (el prototipo no arrastraba piezas).
  */
 export const PISTA_DEMO = {
-  elegir: "Pon una pieza que frene la corriente.",
+  elegir: "Arrastra una pieza al hueco rojo.",
   colocar: "Arrastra cada pieza a la placa.",
   cablear: "Arrastra de un punto a otro, o tócalos uno y luego otro.",
-  probar: "Prueba si funciona",
+  probar: "Pulsa CHECK para probar",
 } as const;
 
 const COMBINAR: Record<string, string> = { una: "Una sola", serie: "En serie", paralelo: "En paralelo" };
 const MONTAJE: Record<string, string> = { serie: "Serie", paralelo: "Paralelo", puente: "Puente", directa: "Girar el LED", inversa: "Dejar el LED", empalmar: "Empalmar", dejar: "Dejar igual" };
 
-/** ¿Probar está activo? Hay elección, la zona sigue sin reparar, no hay espera y cambió algo desde la última prueba (el árbitro rechaza «sin-cambios»). */
-export function probarActivo(eleccion: string | undefined, ultima: string | undefined, reparada: boolean, espera: boolean): boolean {
-  return !!eleccion && eleccion !== ultima && !reparada && !espera;
-}
-
-/**
- * Mecánica 1 (validación): la resistencia se ARRASTRA al hueco rojo, el multímetro valida y CHECK reemplaza a Despachar.
- * Solo en el tutorial «resistencia» y en las zonas led/cabina de la práctica de nivel 1; el resto y el duelo siguen con Probar.
- */
-export const conValidacion = (c: { tutorial: string | null; practica: boolean; nivel: number; oleadas?: boolean }, circuito: Circuito): boolean =>
-  c.tutorial !== null ? c.tutorial === "resistencia" && circuito === "led"
-    : c.practica && !c.oleadas && c.nivel === 1 && (circuito === "led" || circuito === "cabina");
+/** Hueco rojo con «?» donde falta la pieza: igual en todas las mecánicas de gaveta (la placa tiene su propia gaveta de piezas). */
+export const conHueco = (c: Circuito, elegida: string | undefined, reparada: boolean): boolean =>
+  !elegida && !reparada && c !== "luces" && c !== "interruptor";
 
 /** Leyenda de los iconos de las pestañas de zona (rojo = alerta, verde = reparada, cian = la que ves). */
 export const LEYENDA_ZONAS = "Rojo: falla  Verde: lista  Cian: aquí";
@@ -80,10 +69,6 @@ export const aPixel = (t: string) => t.replace(/º/g, "").replace(/[•—−]/g
 
 /** Tiempos (ms) de los carteles al despachar: el «¡REPARADO!» termina antes de que llegue el pod nuevo (sale en 450 ms, entra a los 250). */
 export const CARTEL = { reparadoMs: 350, averiaRetraso: 700, avisoDespachoMs: 450, puntosMs: 550 } as const;
-
-/** Texto sobre el botón Probar mientras dura el bloqueo ("" si no hay): el jugador ve que el clic no se perdió. */
-export const textoProbarEspera = (esperaHasta: number, ahora: number): string =>
-  esperaHasta > ahora ? `Probar · ${Math.ceil((esperaHasta - ahora) / 1000)} s` : "";
 
 /** Etiqueta de la pieza tal como viene impresa ("470 Ω", "0,5 A") o el nombre del montaje. */
 export function textoOpcion(pieza: string, circuito: Circuito): string {

@@ -249,7 +249,7 @@ export class Tablero {
     if (this.circuito === "luces" && todasPuestas(nuevas)) this.ev.aviso(TC.ordenNoImporta);
   }
 
-  /** La pieza vuelve a la gaveta con sus cables; el árbitro no se entera hasta que se pulse Probar. */
+  /** La pieza vuelve a la gaveta con sus cables; el árbitro no se entera hasta que se pulse CHECK. */
   private quitar(k: Carga["punto"]) {
     const { puestas, cables } = quitarPieza(this.puestas, this.cables, k);
     this.origen = null;

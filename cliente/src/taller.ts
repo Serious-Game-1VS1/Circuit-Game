@@ -7,7 +7,7 @@ import * as Phaser from "phaser";
 import type { Circuito, Medida, ModoMedir, ZonaNombre, ZonaView } from "../../spike/src/protocol";
 import type { Net } from "./net";
 import { anim, cargarArte, img, letras, marco, pintarMontaje, toque } from "./arte";
-import { anguloTension, COLOR_LUZ, lecturaLista, luzValidacion, TEXTO_LUZ, T as TM, textoMedida, textoModo, TRAMO, type Midiendo } from "./multimetro";
+import { anguloTension, COLOR_LUZ, lecturaLista, leerMedida, luzValidacion, TEXTO_LUZ, T as TM, textoMedida, textoModo, TRAMO, type LecturaVista, type Midiendo } from "./multimetro";
 import { generarPuerta, mostrarPuerta } from "./puerta";
 import { avisoVivo, despachable, faltan, pistaDemo, reloj, tarjetaVisible, textoRival, type Falta, type Pantalla } from "./pantalla";
 import { crearChispa, expresionGuia, type Chispa } from "./chispa";
@@ -21,7 +21,7 @@ import { QUEMADAS_OLEADAS } from "../../spike/src/arbiter/penalties";
 import { conDoble, etiquetas, MEJORAS, medirMs, ofrecer } from "./mejoras";
 import { mecanica, actual, avanzar, esFin, iniciar, permite, siguiente, textoPaso, type EstadoTut, type Objetivo, type Tutorial } from "./tutorial";
 import { montajeCarga, montajePieza, cargas, cola, estadoZona, etiquetaCarga, nivelCarga, pestanasArte, podDe, sprite, spriteBateria, spriteCarga, spritePieza, spriteTarjeta } from "./sprites";
-import { botonesGaveta, CARTEL, conValidacion, FRENA, GAVETA, LEYENDA_ZONAS, NOMBRE_ZONA, PISTA_DEMO, probarActivo, RETO, retrasoCola, textoOpcion, textoProbarEspera, textoVolts, type Aguja } from "./vista";
+import { botonesGaveta, CARTEL, conHueco, FRENA, GAVETA, LEYENDA_ZONAS, NOMBRE_ZONA, PISTA_DEMO, RETO, retrasoCola, textoOpcion, textoVolts, type Aguja } from "./vista";
 
 const K = 4;
 const ANGULO: Record<Aguja, number> = { poco: -60, correcto: 0, demasiado: 60 };
@@ -54,16 +54,16 @@ export class Taller extends Phaser.Scene {
   private modo: ModoMedir | null = null;
   private midiendo?: Midiendo;
   private lectura?: Medida;
+  /** La misma lectura ya interpretada (cifra, estado, luz) y los voltios de la última en cada punto, para «más que antes». */
+  private leida?: LecturaVista;
+  private previas = new Map<string, number>();
+  private simbolo!: Phaser.GameObjects.Image;
+  private tinteLectura = false;
   private avisoVisto: string | null = null; // para limpiar el multímetro cuando llega un aviso nuevo del árbitro
   private bloqueado = false;
-  /** Validación (mecánica 1): hueco rojo de la resistencia que falta y botón CHECK (reemplaza a Despachar). */
+  /** Flujo único (todas las mecánicas y modos): hueco rojo de la pieza que falta, soltar = probar, luz del multímetro y botón CHECK (= Despachar). */
   private hueco!: Phaser.GameObjects.Rectangle;
   private check!: { c: Bloque; fondo: Phaser.GameObjects.NineSlice; marca: Phaser.GameObjects.Graphics; texto: Letras };
-  /** ¿Esta zona se resuelve arrastrando la resistencia y validando con el multímetro (en vez de Probar)? */
-  private validar(z?: ZonaView) {
-    const p = this.net.estado;
-    return !!z && conValidacion({ tutorial: this.net.tutorial ? this.net.idTutorial : null, practica: p.practica, nivel: p.nivel, oleadas: p.oleadas }, z.circuito);
-  }
   private avisoClave = "";
   private avisoLocal?: { texto: string; hasta: number };
   private podC?: Bloque;
@@ -87,8 +87,6 @@ export class Taller extends Phaser.Scene {
   private racha = 0;
   private podDesde = 0;
   private rivalCasillas!: Phaser.GameObjects.Graphics;
-  /** Cuenta atrás sobre el botón Probar mientras dura el bloqueo («Probar · 2 s»). */
-  private esperaProbar!: Bloque;
   /** Modo demo: ya probó una vez (la pista del primer pod no vuelve). */
   private intento = false;
   /** Tutorial: paso en curso (null si no es el tutorial) y qué paso se pintó por última vez. */
@@ -124,11 +122,11 @@ export class Taller extends Phaser.Scene {
     podT: Letras; llamas: Phaser.GameObjects.Sprite[]; mejorasT: Letras;
     pestanas: Phaser.GameObjects.Image[]; globo: Letras; bocadillo: Phaser.GameObjects.Image; cola: Bloque; bahia: Phaser.GameObjects.Sprite;
     circuito: Bloque; carga: Phaser.GameObjects.Image[]; aguja: Phaser.GameObjects.Image; aviso: Letras; gaveta: Letras;
-    opciones: { fondo: Phaser.GameObjects.NineSlice; zona: Phaser.GameObjects.Zone; texto: Letras; nombre: Letras }[]; probar: Phaser.GameObjects.Image; despachar: Phaser.GameObjects.Image; golpes: Phaser.GameObjects.Zone[];
+    opciones: { fondo: Phaser.GameObjects.NineSlice; zona: Phaser.GameObjects.Zone; texto: Letras; nombre: Letras }[]; golpes: Phaser.GameObjects.Zone[];
     tarjeta: Bloque; cables: Phaser.GameObjects.Graphics; tablero: Tablero; fila: Bloque; etiquetas: Letras[];
     modos: { modo: ModoMedir; fondo: Phaser.GameObjects.NineSlice; icono: Phaser.GameObjects.Image; rotulo: Letras }[]; pasa: Phaser.GameObjects.Image; zonasMedir: Phaser.GameObjects.Zone[];
     /** Pista del primer pod en modo demo: flecha a la gaveta y resaltes (gaveta o Probar). */
-    flecha: Phaser.GameObjects.Sprite; resalteGaveta: Phaser.GameObjects.NineSlice; resalteProbar: Phaser.GameObjects.NineSlice; resalteDespachar: Phaser.GameObjects.NineSlice;
+    flecha: Phaser.GameObjects.Sprite; resalteGaveta: Phaser.GameObjects.NineSlice; resalteCheck: Phaser.GameObjects.NineSlice;
     /** Demo de cableado: flecha de la gaveta de la placa hacia arriba (hacia la placa). */
     flechaPlaca: Phaser.GameObjects.Sprite;
     /** Resalte de la ranura del circuito mientras se arrastra una pieza de la gaveta. */
@@ -163,7 +161,7 @@ export class Taller extends Phaser.Scene {
     return !todasPuestas(this.puestasZona()) ? "colocar" : this.eleccion(z) ? null : "cablear";
   }
   private avisar(texto: string) { this.avisoLocal = { texto, hasta: Date.now() + 2600 }; }
-  private limpiarMedida() { this.lectura = undefined; this.midiendo = undefined; }
+  private limpiarMedida() { this.lectura = this.leida = this.midiendo = undefined; }
   private medir(punto: string) {
     const z = this.zonaActual(), modo = this.modo;
     if (!z || !modo || this.midiendo) return;
@@ -236,6 +234,7 @@ export class Taller extends Phaser.Scene {
     const medidor = img(this, 180, 178, "medidor_fondo", 2).setOrigin(0.5);
     const aguja = img(this, 180, medidor.y - 22 + 40, "medidor_aguja", 2).setVisible(false);
     const pasa = img(this, 180, 172, "icono_pasa", 3).setOrigin(0.5).setVisible(false);
+    this.simbolo = img(this, 0, 146, "icono_pasa", 1.5).setOrigin(0.5).setVisible(false); // ✓ / ✗ junto a la cifra de tensión
     const etiquetas = [letras(this, 136, 182, "", 2, GRIS).setOrigin(1, 0.5), letras(this, 180, 146, "", 2, GRIS).setOrigin(0.5), letras(this, 224, 182, "", 2, GRIS).setOrigin(0, 0.5)];
     const modos = (["tension", "continuidad"] as const).map((modo, i) => {
       const x = i ? 326 : 34;
@@ -248,7 +247,7 @@ export class Taller extends Phaser.Scene {
       const rotulo = letras(this, i ? 354 : 6, 146, i ? TM.continuidad : TM.tension, 1.5, GRIS).setOrigin(i, 0.5);
       return { modo, fondo, icono: img(this, x, 178, `multimetro_modo_${modo}`, 2).setOrigin(0.5), rotulo };
     });
-    const fila = this.add.container(0, 0, [medidor, aguja, pasa, ...etiquetas, ...modos.flatMap((m) => [m.fondo, m.icono, m.rotulo])]);
+    const fila = this.add.container(0, 0, [medidor, aguja, pasa, this.simbolo, ...etiquetas, ...modos.flatMap((m) => [m.fondo, m.icono, m.rotulo])]);
     // Fuera de la placa se mide tocando la pieza de la gaveta o la carga del dibujo.
     const medirToque = (x: number, y: number, w: number, h: number, punto: (ly: number) => string) =>
       this.add.zone(x, y, w, h).setInteractive().on("pointerdown", (_p: unknown, _lx: number, ly: number) => {
@@ -279,18 +278,17 @@ export class Taller extends Phaser.Scene {
       const zona = this.add.zone(0, 290, 104, 48).setInteractive({ useHandCursor: true }); // área táctil aparte: crece con ajustarGolpes()
       const pieza = () => { const z = this.zonaActual(); return z && !z.reparada ? z.opciones[i] : undefined; };
       const elegir = (o: string) => {
-        const z = this.zonaActual(), val = this.validar(z);
-        const no = permite(this.tut, val ? { arrastrar: o } : { elegir: o }, this.estTut());
+        const z = this.zonaActual()!;
+        const no = permite(this.tut, { arrastrar: o }, this.estTut());
         if (no) { this.avisar(no); return false; }
-        if (val) { // colocar = probar: mismo test, misma espera y mismo «sin cambios» que el botón Probar (ni un ensayo gratis)
-          const falta = net.estado.esperaHasta - Date.now();
-          if (falta > 0) { this.avisar(`Espera ${Math.ceil(falta / 1000)} s y arrastra otra resistencia`); return false; }
-          if (o === this.probadas.get(this.clave())) { this.avisar("Esa ya la probaste. Arrastra otra."); return false; }
-        }
+        // soltar = probar: mismo test, misma espera y mismo «sin cambios» que el antiguo botón Probar (ni un ensayo gratis)
+        const falta = net.estado.esperaHasta - Date.now();
+        if (falta > 0) { this.avisar(`Espera ${Math.ceil(falta / 1000)} s y arrastra otra pieza`); return false; }
+        if (o === this.probadas.get(this.clave())) { this.avisar("Esa ya la probaste. Arrastra otra."); return false; }
         sonar("elegir");
         if (this.elegidas.get(this.clave()) !== o) this.limpiarMedida();
         this.elegidas.set(this.clave(), o);
-        if (val) { net.probar(z!.zona, o); this.intento = true; this.probadas.set(this.clave(), o); }
+        net.probar(z.zona, o); this.intento = true; this.probadas.set(this.clave(), o);
         this.pintar(net.estado); return true;
       };
       const enRanura = (p: Phaser.Input.Pointer) => { const v = panel.getWorldTransformMatrix().applyInverse(p.worldX, p.worldY); return dentro(this.ranura, v.x, v.y); };
@@ -305,20 +303,13 @@ export class Taller extends Phaser.Scene {
       // Valor impreso ("470 Ω") y, en resistencias, su nombre estable ("Frena medio") debajo, más pequeño.
       return { fondo, zona, texto: letras(this, 0, 290, "", 2).setOrigin(0.5), nombre: letras(this, 0, 302, "", 2).setOrigin(0.5) }; // k entero: 1,5 se veía borroso
     });
-    const probar = img(this, 92, 340, "boton_probar_normal", 2);
-    const despachar = img(this, 268, 340, "boton_despachar_deshabilitado", 2);
-    this.esperaProbar = this.add.container(92, 340, [marco(this, 0, 0, "boton_secundario", 156, 40), letras(this, 0, 0, "", 2, ALERTA).setOrigin(0.5)]).setVisible(false);
-    const pulsar = (b: Phaser.GameObjects.Image, base: string, fn: () => void) => () => {
-      b.setTexture(`${base}_presionado`); this.time.delayedCall(120, () => this.pintar(net.estado)); fn();
-    };
     const golpes: Phaser.GameObjects.Zone[] = [];
     const tarjeta = this.add.container(180, 76).setVisible(false);
     // Pista del modo demo: se ven solo en el primer pod hasta el primer intento (pistaDemo en pantalla.ts).
     const flecha = anim(this, 180, 268, "flecha_guia", 2).setVisible(false);
     const resalteGaveta = marco(this, 180, 290, "recuadro_resaltado", 358, 60).setVisible(false);
-    const resalteProbar = marco(this, 92, 340, "recuadro_resaltado", 160, 46).setVisible(false);
-    const resalteDespachar = marco(this, 268, 340, "recuadro_resaltado", 160, 46).setVisible(false);
-    this.tweens.add({ targets: [resalteGaveta, resalteProbar, resalteDespachar], alpha: 0.35, duration: 500, yoyo: true, repeat: -1 });
+    const resalteCheck = marco(this, 180, 340, "recuadro_resaltado", 300, 46).setVisible(false);
+    this.tweens.add({ targets: [resalteGaveta, resalteCheck], alpha: 0.35, duration: 500, yoyo: true, repeat: -1 });
     this.tweens.add({ targets: flecha, y: 274, duration: 400, yoyo: true, repeat: -1 });
     // Demo de cableado: flecha girada que sale de la gaveta de la placa (entre sus dos huecos) hacia la placa.
     const flechaPlaca = anim(this, 180, 246, "flecha_guia", 2).setAngle(180).setVisible(false);
@@ -331,29 +322,9 @@ export class Taller extends Phaser.Scene {
     this.check.c.add([this.check.fondo, checkMarca, this.check.texto]);
     panel.add([
       marco(this, 180, 177, "panel_oscuro", 360, 356), cables, this.hueco, circuito, resalteRanura, ...carga, ...zonasMedir, tablero.c, fila, aviso, gaveta,
-      ...opciones.flatMap((o) => [o.fondo, o.zona, o.texto, o.nombre]), probar, despachar, this.check.c, this.esperaProbar, resalteGaveta, resalteProbar, resalteDespachar, flecha, flechaPlaca,
-      // Probar/Despachar miden 34 px de alto: el área táctil es de 48 o más (ajustarGolpes).
-      golpes[0] = toque(this, 92, 340, 150, 48, pulsar(probar, "boton_probar", () => {
-        const z = this.zonaActual(), elegida = z && this.eleccion(z);
-        const no = permite(this.tut, "probar", this.estTut());
-        if (z && !z.reparada && elegida && no) this.avisar(no);
-        // Respuesta inmediata en el cliente: antes el clic bloqueado esperaba el rechazo del árbitro y parecía perdido.
-        else if (z && !z.reparada && elegida && net.estado.esperaHasta > Date.now()) this.avisar(`Espera ${Math.ceil((net.estado.esperaHasta - Date.now()) / 1000)} s y vuelve a probar`);
-        else if (z && !z.reparada && elegida && elegida === this.probadas.get(this.clave())) this.avisar("No cambiaste nada. Cambia una pieza o un cable y prueba.");
-        else if (z && !z.reparada && elegida) { net.probar(z.zona, elegida); this.intento = true; this.probadas.set(this.clave(), elegida); this.pintar(net.estado); }
-        else if (z && !z.reparada && conPlaca(z.circuito)) {
-          this.avisar(faltaColocar(this.puestasZona(), z.circuito) ?? faltaCablear(this.cablesZona(), z.circuito, cargasPuestas(this.puestasZona())));
-        }
-      })),
-      // Siempre visible; solo se activa con todas las zonas reparadas (Net.despachar lo comprueba).
-      golpes[1] = toque(this, 268, 340, 150, 48, () => {
-        if (this.validar(this.zonaActual())) return this.pulsarCheck();
-        if (despachable(net.estado)) {
-          const no = permite(this.tut, "despachar", this.estTut()); // el tutorial no deja despachar antes de ver sus botones de salida
-          if (no) this.avisar(no); else pulsar(despachar, "boton_despachar", () => net.despachar())();
-        }
-        else if (faltan(net.estado.pod)) this.avisar(`Aún falta reparar: ${faltan(net.estado.pod)}`);
-      }),
+      ...opciones.flatMap((o) => [o.fondo, o.zona, o.texto, o.nombre]), this.check.c, resalteGaveta, resalteCheck, flecha, flechaPlaca,
+      // CHECK mide 40 px de alto: el área táctil es de 48 o más (ajustarGolpes).
+      golpes[0] = toque(this, 180, 340, 300, 48, () => this.pulsarCheck()),
       tarjeta,
     ]);
 
@@ -363,12 +334,13 @@ export class Taller extends Phaser.Scene {
     this.add.zone(212, 21, 44, 44).setDepth(1001).setInteractive({ useHandCursor: true }).on("pointerdown", () => { desbloquear(); alternarSilencio(); pintarMudo(); });
     pintarMudo();
     this.ui = {
-      escena, panel, estado, rival, salir, reloj: relojT, contador, podT, llamas, mejorasT, pestanas, globo, bocadillo, cola: colaC, bahia, circuito, carga, aguja, aviso, gaveta, opciones, probar, despachar, tarjeta,
-      cables, tablero, fila, etiquetas, modos, pasa, zonasMedir, flecha, resalteGaveta, resalteProbar, resalteDespachar, flechaPlaca, resalteRanura, golpes,
+      escena, panel, estado, rival, salir, reloj: relojT, contador, podT, llamas, mejorasT, pestanas, globo, bocadillo, cola: colaC, bahia, circuito, carga, aguja, aviso, gaveta, opciones, tarjeta,
+      cables, tablero, fila, etiquetas, modos, pasa, zonasMedir, flecha, resalteGaveta, resalteCheck, flechaPlaca, resalteRanura, golpes,
     };
     this.crearGuia();
     this.tut = net.tutorial ? iniciar(net.idTutorial!) : null;
     // Phaser reusa la escena: sin esto, la pieza del pod 1 del tutorial salía ya elegida en el pod 1 de la práctica.
+    this.previas.clear(); this.tinteLectura = false; this.modo = null; this.limpiarMedida(); // la escena se reusa: el modo del multímetro de la partida anterior no pasa a la nueva
     this.elegidas.clear(); this.probadas.clear(); this.cables.clear(); this.puestas.clear();
     this.guiaClave = ""; this.avisoClave = "";
     this.golpe = 0;
@@ -394,15 +366,18 @@ export class Taller extends Phaser.Scene {
     // Un aviso nuevo (resultado, despacho) manda sobre la lectura del multímetro; sin esto el panel seguía en «Pasa…».
     if (p.aviso !== this.avisoVisto) { this.avisoVisto = p.aviso; if (p.aviso) { this.limpiarMedida(); this.modo = null; this.pintar(p); } }
     if ((p.esperaHasta > ahora) !== this.bloqueado) { if (this.bloqueado) sonar("listo"); this.bloqueado = !this.bloqueado; this.pintar(p); } // Probar se apaga mientras dura el bloqueo
-    const espera = textoProbarEspera(p.esperaHasta, ahora);
-    this.esperaProbar.setVisible(!!espera && !!z && !z.reparada && !this.validar(z));
-    if (espera) (this.esperaProbar.getAt(1) as Letras).setText(espera);
     this.ui.reloj.setText(p.practica ? "--:--" : reloj(p, ahora)); // la práctica no tiene límite de tiempo
     this.ui.podT.setText(tiempoPod(ahora - this.podDesde));
     // Multímetro: «Midiendo…» ~1 s con la aguja buscando; luego la lectura del árbitro.
     if (this.midiendo) {
       const l = lecturaLista(this.midiendo, p.medida, ahora, medirMs(this.net.mejoras));
-      if (l) { this.midiendo = undefined; this.lectura = l; this.medidas++; this.pintarMedidor(); }
+      if (l) {
+        this.midiendo = undefined; this.lectura = l; this.medidas++;
+        const clave = `${this.clave()}|${l.modo}|${l.punto}`, v = this.vistasVivas(p)[this.zona];
+        this.leida = leerMedida(l, { circuito: z?.circuito, volts: z?.volts ?? 0, previa: this.previas.get(clave), vistaLuz: this.tut?.activo ? luzValidacion(v) : null });
+        if (this.leida.voltios !== undefined) this.previas.set(clave, this.leida.voltios);
+        this.pintarMedidor();
+      }
       else if (ahora - this.midiendo.desde > 5000) this.midiendo = undefined; // rechazo o red caída: se puede volver a medir
       else if (this.modo === "tension") this.ui.aguja.setVisible(true).setAngle(Math.sin(ahora / 90) * 50);
     }
@@ -419,13 +394,16 @@ export class Taller extends Phaser.Scene {
     }
     const local = this.avisoLocal && ahora < this.avisoLocal.hasta ? this.avisoLocal.texto : null;
     const corto = z && conPlaca(z.circuito) ? cableDelCorto(this.cablesZona()) : null; // persiste mientras exista el cable que lo provoca
-    const medidor = !this.modo ? null : this.midiendo ? TM.midiendo : this.lectura ? textoMedida(this.lectura, z?.circuito) : textoModo(this.modo, z?.circuito);
+    const medidor = !this.modo ? null : this.midiendo ? TM.midiendo : this.lectura ? (this.leida?.estado ?? textoMedida(this.lectura, z?.circuito)) : textoModo(this.modo, z?.circuito);
     const placa = !!z && conPlaca(z.circuito);
     const falta = z ? this.falta(z) : null, pista = z ? pistaDemo(p, this.intento, falta) : null;
-    const texto = this.acabo(p) ? "" : (local ?? (corto && textoCorto(corto, z!.circuito, cargasPuestas(this.puestasZona()))) ?? medidor ?? (pista && PISTA_DEMO[pista]) ?? (z && this.rancio(z) ? null : this.sinRespuesta(z, avisoVivo(p, ahora))) ?? (despachable(p) ? (this.validar(z) ? "Multímetro en verde: pulsa CHECK" : "Pod reparado: pulsa Despachar") : z?.reparada ? (this.validar(z) ? "Multímetro en verde: pulsa CHECK" : "Zona reparada")
-      : placa && falta === "colocar" ? faltaColocar(this.puestasZona(), z!.circuito)! : placa && falta ? ayudaCables(z!.circuito) : `${this.tut?.activo ? "" : `${textoObjetivo(p)}. `}${this.validar(z) ? "Arrastra una resistencia al hueco rojo" : falta ? "Elige y pulsa Probar" : "Pulsa Probar"}`)) as string;
-    const clave = `${placa}|${texto}`;
-    if (clave !== this.avisoClave) { // en la placa el aviso cabe entre «Correcto» y Probar (44 px): 1-2 líneas a 16 px, 3 a 12 px
+    const texto = this.acabo(p) ? "" : (local ?? (corto && textoCorto(corto, z!.circuito, cargasPuestas(this.puestasZona()))) ?? medidor ?? (pista && PISTA_DEMO[pista]) ?? (z && this.rancio(z) ? null : this.sinRespuesta(z, avisoVivo(p, ahora))) ?? (despachable(p) || z?.reparada ? "Multímetro en verde: pulsa CHECK"
+      : placa && falta === "colocar" ? faltaColocar(this.puestasZona(), z!.circuito)! : placa && falta ? ayudaCables(z!.circuito) : `${this.tut?.activo ? "" : `${textoObjetivo(p)}. `}${placa ? "Pulsa CHECK para probar" : `Arrastra ${["led", "cabina", "protegido", "divisor"].includes(z!.circuito) ? "una resistencia" : "una pieza"} al hueco rojo`}`)) as string;
+    const tinte = this.modo && this.lectura && !this.midiendo && this.leida && texto === this.leida.estado ? COLOR_LUZ[this.leida.luz] : null; // el aviso lleva el color de la lectura
+    const clave = `${placa}|${texto}|${tinte}`;
+    if (clave !== this.avisoClave) {
+      if (tinte !== null) this.ui.aviso.setTint(tinte); else if (this.tinteLectura) this.ui.aviso.setTint(0xffffff);
+      this.tinteLectura = tinte !== null; // en la placa el aviso cabe entre «Correcto» y Probar (44 px): 1-2 líneas a 16 px, 3 a 12 px
       this.avisoClave = clave;
       this.ui.aviso.setText(texto);
       for (const k of placa ? [16, 12, 8] : [16]) { this.ui.aviso.setFontSize(k); if (!placa || this.ui.aviso.height <= 44) break; }
@@ -457,7 +435,7 @@ export class Taller extends Phaser.Scene {
 
   /** En el tutorial del LED girado el aviso del árbitro regalaba la causa («está al revés»): se mide para descubrirla. */
   private sinRespuesta(z: ZonaView | undefined, aviso: string | null) {
-    if (aviso && this.validar(z)) aviso = aviso.replace(/pulsa Despachar/i, (m) => m.replace("Despachar", "CHECK")); // en validación el botón se llama CHECK
+    if (aviso) aviso = aviso.replace(/pulsa Despachar/i, (m) => m.replace("Despachar", "CHECK")); // el botón se llama CHECK
     return aviso && this.tut?.activo && z?.circuito === "invertido" && !z.reparada && aviso.includes("al revés") ? "El LED no enciende. Averigua por qué con el multímetro." : aviso;
   }
 
@@ -473,8 +451,6 @@ export class Taller extends Phaser.Scene {
     const u = this.ui, pod = p.pod, z = this.zonaActual();
     if (!pod || !z) return;
     this.zona = z.zona;
-    const val = this.validar(z);
-    if (val) this.modo = null; // el multímetro valida solo: sin modos ni toques de medir
     u.estado.setText(`${p.demo ? "Demo · " : ""}${textoPod(pod.numero, p.total)}`);
     this.pintarProgreso(p);
     u.contador.setTexture(`contador_pods_${Math.min(p.despachados, 5)}`);
@@ -499,8 +475,8 @@ export class Taller extends Phaser.Scene {
     u.circuito.removeAll(true).add([
       img(this, 50, 76, bat, bat === "icono_bateria" ? 4 : 2).setOrigin(0.5),
       letras(this, 50, 122, textoVolts(z.volts), 2).setOrigin(0.5, 0),
-      ...(mp ? pintarMontaje(this, mp, 180, 34) : pieza ? [img(this, 180, 34, pieza).setOrigin(0.5)] : z.circuito === "divisor" ? [] : val && !elegida ? [] : [marco(this, 180, 34, "boton_secundario", 104, 40)]),
-      ...(z.circuito === "divisor" ? [] : [letras(this, 180, mp ? 34 + mp.alto + 4 : pieza ? 66 : 34, elegida ? textoOpcion(elegida, z.circuito) : "?", 2).setOrigin(0.5, mp || pieza ? 0 : 0.5)]),
+      ...(mp ? pintarMontaje(this, mp, 180, 34) : pieza ? [img(this, 180, 34, pieza).setOrigin(0.5)] : z.circuito === "divisor" || !elegida ? [] : [marco(this, 180, 34, "boton_secundario", 104, 40)]),
+      ...(z.circuito === "divisor" ? (elegida ? [] : [letras(this, MC.x + 28, MC.y, "?", 2).setOrigin(0.5)]) : [letras(this, 180, mp ? 34 + mp.alto + 4 : pieza ? 66 : 34, elegida ? textoOpcion(elegida, z.circuito) : "?", 2).setOrigin(0.5, mp || pieza ? 0 : 0.5)]),
       ...(mc ? [...pintarMontaje(this, mc, MC.x, MC.y), ...(z.circuito === "divisor" ? [] : [letras(this, MC.x, MC.y + mc.alto + 4, etiquetaCarga(z), 2).setOrigin(0.5, 0)])] : [letras(this, 310, 122, etiquetaCarga(z), 2).setOrigin(0.5, 0)]),
     ]);
     this.dibujarCables(z.circuito === "abierto" && elegida === "dejar" && !z.reparada);
@@ -515,6 +491,7 @@ export class Taller extends Phaser.Scene {
     u.zonasMedir[0]!.setPosition(div ? MC.x + 28 : 180, div ? MC.y : 44).setSize(div ? 52 : 120, div ? 70 : 84);
     u.zonasMedir[1]!.setPosition(mc ? (div ? MC.x - 28 : MC.x) : 310, mc ? MC.y : 76).setSize(mc ? (div ? 52 : 110) : 72, mc ? 70 : 110);
     this.ranura = div ? { x: MC.x + 28, y: MC.y, w: 64, h: 70 } : RANURA;
+    this.hueco.setPosition(this.ranura.x, this.ranura.y).setSize(div ? this.ranura.w : 108, div ? this.ranura.h : 44);
     u.resalteRanura.setPosition(this.ranura.x, this.ranura.y).setSize(this.ranura.w / 4, this.ranura.h / 4);
     u.carga.forEach((c, i) => c.setVisible(i < n).setTexture(spriteCarga(z.circuito, nivel, z.fija)).setAngle(0)
       .setScale(n === 2 ? 3 : 4).setPosition(310, n === 2 ? 52 + i * 48 : 76));
@@ -533,8 +510,8 @@ export class Taller extends Phaser.Scene {
     u.aviso.setY(placa ? 283 : 206);
     u.etiquetas[1]!.setY(placa ? 210 : 146); // en la placa, la etiqueta del centro va debajo del medidor
 
-    u.gaveta.setText(z.reparada || fin ? "" : val ? "Más Ω, más freno" : GAVETA[z.circuito]);
-    this.hueco.setVisible(val && !elegida && !z.reparada && !fin);
+    u.gaveta.setText(z.reparada || fin ? "" : GAVETA[z.circuito]);
+    this.hueco.setVisible(conHueco(z.circuito, elegida, z.reparada) && !fin);
     const botones = botonesGaveta(z, elegida);
     // 3 botones de 104 px o 4 de 82 px, centrados en el panel de 360 px.
     const nb = botones.length, ancho = nb > 3 ? 82 : 104, paso = nb > 3 ? 88 : 116;
@@ -549,7 +526,7 @@ export class Taller extends Phaser.Scene {
     });
     // Modo demo: sin multímetro (solo se usa en otras zonas).
     if (p.demo) this.modo = null;
-    for (const m of u.modos) { m.fondo.setVisible(!p.demo && !val); m.icono.setVisible(!p.demo && !val); m.rotulo.setVisible(!p.demo && !val).setY(placa ? 210 : 150); }
+    for (const m of u.modos) { m.fondo.setVisible(!p.demo); m.icono.setVisible(!p.demo); m.rotulo.setVisible(!p.demo).setY(placa ? 210 : 150); }
     const pista = pistaDemo(p, this.intento, this.falta(z));
     u.flecha.setVisible(pista === "elegir");
     u.flechaPlaca.setVisible(pista === "colocar");
@@ -557,21 +534,15 @@ export class Taller extends Phaser.Scene {
     const recuadro = pista === "colocar" ? [180, 240, 220, 68] : pista === "cablear" ? [180, 92, 340, 252] : [180, 290, 358, 60];
     u.resalteGaveta.setVisible(pista === "elegir" || pista === "colocar" || pista === "cablear")
       .setPosition(recuadro[0], recuadro[1]).setSize(recuadro[2]! / 4, recuadro[3]! / 4);
-    u.resalteProbar.setVisible(pista === "probar");
-    const verde = val && z.reparada && !p.despachando; // CHECK habilitado: el multímetro está en verde
-    u.resalteDespachar.setVisible(val ? verde : despachable(p)).setPosition(val ? 180 : 268, 340).setSize(val ? 300 / 4 : 160 / 4, 46 / 4);
+    const e = this.eleccion(z), probable = conPlaca(z.circuito) && !z.reparada && !!e && e !== this.probadas.get(this.clave());
+    const verde = z.reparada && !p.despachando; // CHECK habilitado: el multímetro está en verde (o, en la placa, el circuito está listo para probar)
+    u.resalteCheck.setVisible(!fin && (verde || pista === "probar" || probable));
     if (pista === "elegir") u.gaveta.setText(""); // la pista dice lo mismo y la flecha ocupa su lugar
-    u.probar.setTexture(probarActivo(this.eleccion(z), this.probadas.get(this.clave()), z.reparada, p.esperaHasta > Date.now()) ? "boton_probar_normal" : "boton_probar_deshabilitado");
-    u.despachar.setTexture(despachable(p) ? "boton_despachar_normal" : "boton_despachar_deshabilitado");
-
-    for (const o of [u.probar, u.despachar]) o.setVisible(!fin && !val);
-    u.golpes[0]!.input!.enabled = !fin && !val;
-    u.golpes[1]!.setX(val ? 180 : 268).setSize(val ? 300 : 150, u.golpes[1]!.height);
-    this.check.c.setVisible(val && !fin);
-    this.check.fondo.setTexture(verde ? "boton_primario" : "boton_secundario");
-    this.check.marca.setVisible(verde);
-    this.check.texto.setText(verde ? "CHECK" : "Aún no está verde").setTint(verde ? OSCURO : GRIS).setX(verde ? 14 : 0); // tras el último pod de un tutorial el árbitro manda un pod 2 que no existe
-    u.golpes[1]!.input!.enabled = !fin;
+    u.golpes[0]!.input!.enabled = !fin;
+    this.check.c.setVisible(!fin);
+    this.check.fondo.setTexture(verde || probable ? "boton_primario" : "boton_secundario");
+    this.check.marca.setVisible(verde || probable);
+    this.check.texto.setText(verde || probable ? "CHECK" : "Aún no está verde").setTint(verde || probable ? OSCURO : GRIS).setX(verde || probable ? 14 : 0); // tras el último pod de un tutorial el árbitro manda un pod 2 que no existe
     this.pintarMedidor();
     u.aviso.setTint(v?.quemado || v?.cortocircuito ? ALERTA : pista ? PISTA : 0xffffff);
     if (v?.cortocircuito) this.cameras.main.shake(250, 0.01);
@@ -672,26 +643,38 @@ export class Taller extends Phaser.Scene {
     this.tweens.add({ targets: [x, f], y: 230, alpha: 0, duration: ms, ease: "Cubic.Out", onComplete: () => { x.destroy(); f.destroy(); } });
   }
 
-  /** CHECK: solo con el multímetro en verde (zona reparada); despacha el pod o pasa a la siguiente zona sin reparar. */
+  /**
+   * CHECK. Con la zona reparada (multímetro en verde) despacha el pod o pasa a la siguiente zona sin reparar. En la placa (dos piezas y
+   * cables, soltar no tiene sentido) también PRUEBA: con el circuito completo manda el mismo `test` que antes mandaba Probar.
+   */
   private pulsarCheck() {
     const z = this.zonaActual(), p = this.net.estado;
     if (!z) return;
     const no = permite(this.tut, "check", this.estTut());
     if (no) return this.avisar(no);
-    if (!z.reparada) return this.avisar("Aún no está verde");
+    if (!z.reparada) return conPlaca(z.circuito) ? this.probarPlaca(z) : this.avisar("Aún no está verde");
     sonar("clic");
     if (despachable(p)) return this.net.despachar();
     const sig = p.pod?.zonas.find((x) => !x.reparada);
     if (sig) { this.zona = sig.zona; this.limpiarMedida(); this.net.limpiarAviso(); this.pintar(p); }
   }
 
-  /** Áreas táctiles de la gaveta y de Probar/Despachar: >= 44 px en pantalla (el lienzo se escala con FIT) sin solaparse. */
+  private probarPlaca(z: ZonaView) {
+    const e = this.eleccion(z), falta = this.net.estado.esperaHasta - Date.now();
+    if (!e) return this.avisar(faltaColocar(this.puestasZona(), z.circuito) ?? faltaCablear(this.cablesZona(), z.circuito, cargasPuestas(this.puestasZona())));
+    if (falta > 0) return this.avisar(`Espera ${Math.ceil(falta / 1000)} s y vuelve a probar`);
+    if (e === this.probadas.get(this.clave())) return this.avisar("No cambiaste nada. Cambia una pieza o un cable y prueba.");
+    sonar("clic");
+    this.net.probar(z.zona, e); this.intento = true; this.probadas.set(this.clave(), e); this.pintar(this.net.estado);
+  }
+
+  /** Áreas táctiles de la gaveta y de CHECK: >= 44 px en pantalla (el lienzo se escala con FIT) sin solaparse. */
   private ajustarGolpes() {
     const h = Math.ceil(Math.max(48, 44 * this.scale.displayScale.y));
     if (h === this.golpe) return;
     this.golpe = h;
     for (const o of this.ui.opciones) o.zona.setSize(o.zona.width, h);
-    // Probar/Despachar empiezan donde acaba la gaveta (290 + h/2).
+    // CHECK empieza donde acaba la gaveta (290 + h/2).
     for (const z of this.ui.golpes) z.setSize(z.width, h).setY(Math.max(340, 290 + h));
     for (const z of this.guia.zonas) z.setSize(z.width, Math.max(56, h));
   }
@@ -735,11 +718,9 @@ export class Taller extends Phaser.Scene {
     const contador: [number, number, number, number] = [c.centerX, c.centerY, c.width + 16, c.height + 16];
     switch (o) {
       case "gaveta": return [placa ? [P.x + 180, P.y + 240, 220, 68] : [P.x + 180, P.y + 290, 358, 60]];
-      case "probar": return [[P.x + 92, P.y + 340, 160, 52], [P.x + 180, fila, 110, 52]];
       case "tension": return [[P.x + (cont ? 326 : 36), fila - 4, 68, 64]]; // «Toca Continuidad» usa el mismo objetivo que Tensión
       case "pieza": return [div ? [P.x + MC.x + 30, P.y + MC.y + 10, 56, 68] : [P.x + 180, P.y + 44, 130, 92], [P.x + 180, fila, 110, 52]];
       case "carga": return [[P.x + 310, P.y + 76, 84, 118], [P.x + 180, fila, 110, 52]];
-      case "despachar": return [[P.x + 268, P.y + 340, 160, 52]];
       case "contador": return [contador];
       case "multimetro": return [[P.x + 180, fila, 200, 64]];
       case "check": return [[P.x + 180, P.y + 340, 308, 52]];
@@ -783,8 +764,9 @@ export class Taller extends Phaser.Scene {
   private pintarMedidor() {
     const u = this.ui, v = this.vistasVivas(this.net.estado)[this.zona], l = this.lectura;
     u.modos.forEach((m) => m.fondo.setTexture(m.modo === this.modo ? "boton_primario" : "boton_secundario"));
-    const luz = this.validar(this.zonaActual()) ? luzValidacion(v) : undefined; // undefined: no es validación; null: multímetro apagado
+    const luz = this.modo ? undefined : luzValidacion(v); // undefined: lectura del modo activo; null: multímetro apagado (aún sin veredicto)
     u.fila.setAlpha(luz === null ? 0.4 : 1);
+    this.simbolo.setVisible(false);
     u.aguja.clearTint();
     u.etiquetas.forEach((e) => e.setTint(GRIS));
     if (luz !== undefined) { // validación: apagado hasta colocar la pieza; luego verde / ámbar / rojo según el veredicto del árbitro
@@ -793,10 +775,14 @@ export class Taller extends Phaser.Scene {
       if (luz) { u.etiquetas[1]!.setTint(COLOR_LUZ[luz]); u.aguja.setTint(COLOR_LUZ[luz]); }
       return u.aguja.setVisible(!!luz).setAngle(v?.aguja ? ANGULO[v.aguja] : 0);
     }
-    const textos = this.modo === "tension" ? [TRAMO.nada.etiqueta, TRAMO.parte.etiqueta, TRAMO.toda.etiqueta] : this.modo ? ["", "", ""] : ["poco", "correcto", "demasiado"];
+    const lv = this.modo && l && this.leida ? this.leida : null; // lectura interpretada: cifra con unidad + luz (✓ verde, ! ámbar, ✗ rojo)
+    const cifra = lv ? `${lv.luz === "ambar" ? "! " : ""}${lv.cifra}` : "";
+    const textos = this.modo === "tension" ? [TRAMO.nada.etiqueta, lv ? cifra : TRAMO.parte.etiqueta, TRAMO.toda.etiqueta] : ["", cifra, ""];
     u.etiquetas.forEach((e, i) => e.setText(textos[i]!));
     u.pasa.setVisible(this.modo === "continuidad" && !!l).setTexture(l?.pasa ? "icono_pasa" : "icono_no_pasa");
-    if (!this.modo) return u.aguja.setVisible(!!v?.aguja).setAngle(v?.aguja ? ANGULO[v.aguja] : 0);
+    const centro = u.etiquetas[1]!;
+    this.simbolo.setVisible(this.modo === "tension" && lv?.luz !== undefined && lv.luz !== "ambar").setTexture(lv?.luz === "rojo" ? "icono_no_pasa" : "icono_pasa").setPosition(centro.x - centro.displayWidth / 2 - 14, centro.y);
+    if (lv) { centro.setTint(COLOR_LUZ[lv.luz]); u.aguja.setTint(COLOR_LUZ[lv.luz]); }
     const tension = this.modo === "tension" && l?.fraccion !== undefined;
     u.aguja.setVisible(tension).setAngle(tension ? anguloTension(l.fraccion!) : 0);
   }

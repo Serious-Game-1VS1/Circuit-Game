@@ -61,6 +61,9 @@ export const completoNivel1 = (r: Resultado) => r.nivel === 1 && r.pods >= r.tot
 /** Selector de nivel de la práctica: el 2 sale con candado hasta desbloquearlo. El duelo no lo usa (el servidor fija el nivel con --nivel/NIVEL). */
 export const textoNivel = (p: Perfil, sel: Nivel) => p.nivelDesbloqueado === 2 ? `Nivel de práctica: ${sel} (toca para cambiar)` : "Nivel de práctica: 1\nNivel 2: bloqueado. Completa el nivel 1 para abrirlo";
 export const nivelElegido = (p: Perfil, sel: Nivel): Nivel => (p.nivelDesbloqueado === 2 ? sel : 1);
+/** Nivel de «Jugar solo»: 1, 2 o mixto (el del duelo). El 2 y el mixto traen fallas de nivel 2: siguen bloqueados hasta abrirlo. */
+export type NivelBot = "1" | "2" | "mixto";
+export const nivelBotElegido = (p: Perfil, sel: NivelBot): 1 | 2 | "mixto" => (p.nivelDesbloqueado === 2 ? (sel === "mixto" ? "mixto" : sel === "2" ? 2 : 1) : 1);
 export const cambiarNivel = (p: Perfil, sel: Nivel): Nivel => (p.nivelDesbloqueado === 2 && sel === 1 ? 2 : 1);
 
 /** Saludo del menú (ajusta al ancho): primer uso, XP que falta para el siguiente rango y aviso del nivel 2. */

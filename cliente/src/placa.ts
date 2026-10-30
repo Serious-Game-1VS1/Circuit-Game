@@ -259,7 +259,7 @@ export function cableDelCorto(cables: Cable[]): Cable | null {
 export const textoCorto = (c: Cable, circuito: Circuito, cargas: Carga[] = CARGAS) =>
   `Ojo: el cable entre ${etiquetaPunto(circuito, c.a, cargas)} y ${etiquetaPunto(circuito, c.b, cargas)} hará corto. Tócalo para quitarlo.`;
 
-/** Qué hay que corregir en el cableado para poder probar (texto para el botón Probar gris). */
+/** Qué hay que corregir en el cableado para poder probar (texto para el botón CHECK gris). */
 export function faltaCablear(cables: Cable[], circuito: Circuito, cargas: Carga[] = CARGAS): string {
   const corto = cableDelCorto(cables);
   if (corto) return textoCorto(corto, circuito, cargas);

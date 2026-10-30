@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { generar, type Perfil } from "../../spike/src/engine/generador";
 import { evaluar } from "../../spike/src/engine/pods";
 import type { End, PodView, ServerMsg } from "../../spike/src/protocol";
-import { ContraBotTransport, type DificultadBot } from "../src/contraBot";
+import { ContraBotTransport, COMPLEJIDAD, veredicto, type DificultadBot } from "../src/contraBot";
 
 /** Jugador perfecto (acierta siempre) que actúa cada `cadaMs` en un reloj virtual; devuelve el log y el desenlace. */
 async function partida(dif: DificultadBot, semilla: number, cadaMs = 2500) {
@@ -34,9 +35,9 @@ async function partida(dif: DificultadBot, semilla: number, cadaMs = 2500) {
 }
 
 /** El jugador no hace nada: ¿cuánto tarda el bot en despachar 5 pods (reloj virtual, sin límite de partida)? */
-async function soloBot(dif: DificultadBot, semilla: number) {
+async function soloBot(dif: DificultadBot, semilla: number, nivel: Perfil = 1) {
   let t = 1_000;
-  const tr = new ContraBotTransport(1, semilla, dif, { now: () => t, limitMs: 1e9 });
+  const tr = new ContraBotTransport(nivel, semilla, dif, { now: () => t, limitMs: 1e9 });
   let fin: End | undefined;
   tr.onMessage = (raw) => { const m = raw as ServerMsg; if (m.t === "end") fin = m; };
   await tr.join();
@@ -44,7 +45,7 @@ async function soloBot(dif: DificultadBot, semilla: number) {
   const t0 = t;
   for (let i = 0; i < 40_000 && !fin; i++) { t += 100; tr.tick(); await Promise.resolve(); }
   await tr.close();
-  return { pods: fin?.score.B?.despachados ?? 0, porPod: (t - t0) / 5 / 1000 };
+  return { pods: fin?.score.B?.despachados ?? 0, porPod: (t - t0) / 5 / 1000, quemadas: fin?.score.B?.quemadas ?? 0, circuitos: tr.arbiter.pods.flatMap((p) => p.zonas.map((z) => z.circuito)) };
 }
 
 describe("ContraBotTransport", () => {
@@ -109,4 +110,43 @@ describe("ContraBotTransport", () => {
     expect(JSON.stringify((tr as unknown as { pod: unknown }).pod)).not.toContain("solucion"); // lo que guarda el bot
     expect(tr.arbiter.pods[0]!.zonas[0]).toHaveProperty("solucion"); // existe en el árbitro, no en el pod que llega al bot
   });
+
+  it("decide como un jugador: el veredicto con lo que ve el jugador (circuito, volts, fija) coincide con la solución del árbitro en todas las familias", () => {
+    const vistas = new Set<string>();
+    for (const nivel of [1, 2, "mixto"] as Perfil[]) {
+      for (let s = 1; s <= 60; s++) {
+        for (const pod of generar(s, nivel)) for (const z of pod.zonas) {
+          const vista = { zona: z.zona, nombre: z.nombre, circuito: z.circuito, volts: z.volts, opciones: z.opciones, reparada: false, ...(z.r1 && { fija: `R1 ${z.r1} Ω` }) };
+          expect(vista.opciones.filter((o) => veredicto(vista, o) === "correcto"), `${nivel}/${s}/${z.circuito}`).toEqual([z.solucion]);
+          vistas.add(z.circuito);
+        }
+      }
+    }
+    expect([...vistas].sort()).toEqual(Object.keys(COMPLEJIDAD).sort()); // las 10 familias
+  });
+
+  it("completa 5 pods en nivel 1, nivel 2 y mixto con cada perfil, en tiempo razonable, sin atascarse (todas las familias de nivel 2 aparecen)", async () => {
+    const tope = { facil: 65, normal: 42, dificil: 28 } as const; // s/pod medios
+    const vistas = new Set<string>();
+    for (const nivel of [1, 2, "mixto"] as Perfil[]) {
+      for (const dif of ["facil", "normal", "dificil"] as const) {
+        let suma = 0;
+        for (let s = 1; s <= 8; s++) {
+          const r = await soloBot(dif, s, nivel);
+          expect(r.pods, `${nivel} ${dif} semilla ${s}`).toBe(5);
+          suma += r.porPod;
+          r.circuitos.forEach((c) => vistas.add(c));
+        }
+        expect(suma / 8, `${nivel} ${dif}`).toBeLessThanOrEqual(tope[dif]);
+      }
+    }
+    expect(vistas.size).toBe(10);
+  }, 120_000);
+
+  it("fácil se equivoca más que difícil también en nivel 2 y es determinista por semilla", async () => {
+    let f = 0, d = 0;
+    for (let s = 1; s <= 12; s++) { f += (await soloBot("facil", s, 2)).quemadas; d += (await soloBot("dificil", s, 2)).quemadas; }
+    expect(f).toBeGreaterThan(d);
+    expect(JSON.stringify(await soloBot("normal", 4, "mixto"))).toBe(JSON.stringify(await soloBot("normal", 4, "mixto")));
+  }, 60_000);
 });

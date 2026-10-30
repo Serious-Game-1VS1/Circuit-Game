@@ -19,9 +19,9 @@ export const T = {
   // sin entrada en textos.js: el árbitro necesita la pieza o el montaje puesto para medir.
   // Con gaveta (sin placa) lo que falta es elegir; con placa, colocar y cablear. 
   sinEleccion: "Primero elige una opción en la gaveta (abajo) y luego toca la pieza para medir.",
-  // Reactor: el árbitro no manda amperios (solo continuidad y tramo de tensión), así que el multímetro no dice cuánto consume el calefactor.
-  fusibleSano: "Pasa: el fusible está sano. No dice cuánto aguanta: prueba y mira al calefactor.",
-  fusibleAyuda: "Toca el fusible o el calefactor. No mide amperios: prueba (fino corta solo, grueso no protege).",
+  // Reactor: el multímetro no mide amperios. Con el consumo normal, un fusible que corta solo (0,5 A) lee toda la batería en sus bornes.
+  fusibleSano: "Pasa con poca corriente: no dice cuánto aguanta. Mide Tensión en el fusible.",
+  fusibleAyuda: "Toca el fusible o el calefactor. Con Tensión, casi toda la batería en el fusible = cortó solo.",
   sinMontaje: "Primero coloca y cablea las piezas, y luego mide.",
   ledSentido: "Cae casi toda la batería en el LED: el LED no deja pasar, mira su sentido.",
   ledNoPasa: "No pasa: el LED solo deja pasar la corriente en un sentido, mira el suyo.",
@@ -61,9 +61,31 @@ export interface Midiendo { seq: number; desde: number; punto: string }
 export const lecturaLista = (m: Midiendo, medida: Medida | undefined, ahora: number, medirMs = MEDIR_MS) =>
   ahora - m.desde >= medirMs && medida?.seq === m.seq ? medida : null;
 
-/** Validación (mecánica 1): verde = correcto, ámbar = poco/demasiado, rojo = se quema; null = apagado (aún no se colocó la pieza). */
+/** Luz de validación (todas las mecánicas): verde = correcto, ámbar = poco/demasiado, rojo = se quema; null = apagado (aún no se colocó la pieza). */
 export type Luz = "verde" | "ambar" | "rojo";
-export const luzValidacion = (v?: { aguja: string | null; quemado: boolean } | null): Luz | null =>
-  !v?.aguja ? null : v.quemado ? "rojo" : v.aguja === "correcto" ? "verde" : "ambar";
+export const luzValidacion = (v?: { aguja: string | null; quemado: boolean; cortocircuito?: boolean } | null): Luz | null =>
+  v?.cortocircuito ? "rojo" : !v?.aguja ? null : v.quemado ? "rojo" : v.aguja === "correcto" ? "verde" : "ambar";
 export const COLOR_LUZ: Record<Luz, number> = { verde: 0x6ee7a0, ambar: 0xffc23f, rojo: 0xff5a4a };
 export const TEXTO_LUZ: Record<Luz, string> = { verde: "Verde", ambar: "Ámbar", rojo: "Rojo" };
+
+/** Lo que se pinta de una medición: la cifra del aparato, un estado en palabras y la luz (verde ✓ / ámbar ! / rojo ✗). */
+export interface LecturaVista { cifra: string; estado: string; luz: Luz; /** Voltios medidos (para la próxima comparación «más que antes»). */ voltios?: number }
+const num = (n: number) => String(Math.round(n * 10) / 10).replace(".", ",");
+
+/**
+ * Interpreta una Medida. La luz describe LA LECTURA (¿cierra el circuito? ¿cae tensión?), nunca si la pieza elegida es la correcta:
+ * en partida real no hay forma de saberlo midiendo. En el tutorial `vistaLuz` (veredicto de la pieza) la pisa para confirmar la pieza.
+ * `previa` = voltios de la última lectura en el mismo punto.
+ */
+export function leerMedida(m: Medida, o: { circuito?: string; volts: number; previa?: number; vistaLuz?: Luz | null }): LecturaVista {
+  const texto = textoMedida(m, o.circuito);
+  if (m.modo === "continuidad") {
+    return { cifra: m.pasa ? (m.ohmios !== undefined ? `Cerrado ${num(m.ohmios)} Ω` : "Cerrado") : "Abierto", estado: texto, luz: m.pasa ? "verde" : "rojo" };
+  }
+  const v = m.voltios ?? (m.fraccion ?? 0) * o.volts;
+  const dif = o.previa === undefined ? null : v - o.previa;
+  const delta = dif === null ? null : Math.abs(dif) < 0.05 ? "Igual que antes" : dif > 0 ? "Más que antes" : "Menos que antes";
+  // «toda» en el divisor y el protegido no es un corte: ámbar. Sin tensión también (ámbar): el tramo no cae nada.
+  const luz: Luz = m.tension === "parte" ? "verde" : m.tension === "toda" && o.circuito !== "divisor" && o.circuito !== "protegido" ? "rojo" : "ambar";
+  return { cifra: `${num(v)} V`, estado: delta ? `${delta} (antes ${num(o.previa!)} V). ${texto}` : texto, luz: o.vistaLuz ?? luz, voltios: v };
+}

@@ -89,7 +89,7 @@ export interface Result { t: "result"; seq: number; t0: number; zona: number; ve
 export interface Dispatched { t: "despachado"; seq: number; t0: number; despachados: number; pod: PodView }
 export interface Reject { t: "reject"; seq: number; t0: number; reason: string; waitMs: number }
 export type Tramo = "nada" | "parte" | "toda";
-export interface Medida { t: "medida"; seq: number; t0: number; zona: number; modo: ModoMedir; punto: string; pasa?: boolean; tension?: Tramo; fraccion?: number }
+export interface Medida { t: "medida"; seq: number; t0: number; zona: number; modo: ModoMedir; punto: string; pasa?: boolean; tension?: Tramo; fraccion?: number; /** V entre los bornes (2 decimales) y Ω de una resistencia: solo lo que mostraría el aparato. */ voltios?: number; ohmios?: number }
 export interface Rival extends RivalView { t: "rival"; t0?: number }
 export interface Score { alias: string; despachados: number; quemadas: number }
 /** Zona/circuito con fallos del jugador, para «Qué repasar» del podio. */

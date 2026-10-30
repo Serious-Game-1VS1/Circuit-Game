@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluar, PIEZAS } from "../../spike/src/engine/pods";
 import type { Circuito, Verdict } from "../../spike/src/protocol";
-import { aPixel, botonesGaveta, conValidacion, GAVETA, pestanas, CARTEL, LEYENDA_ZONAS, probarActivo, reparadas, retrasoCola, textoProbarEspera, RETO, textoOpcion, textoVolts, vistaDeVeredicto } from "../src/vista";
+import { aPixel, botonesGaveta, conHueco, GAVETA, pestanas, CARTEL, LEYENDA_ZONAS, reparadas, retrasoCola, RETO, textoOpcion, textoVolts, vistaDeVeredicto } from "../src/vista";
 
 const CIRCUITOS: Circuito[] = ["led", "cabina", "luces", "interruptor", "fusible"];
 const VEREDICTOS: Verdict[] = ["poco", "correcto", "demasiado", "se quema", "corto"];
@@ -59,22 +59,7 @@ describe("vista de una zona", () => {
   });
 });
 
-describe("botón Probar", () => {
-  it("se apaga sin cambios desde la última prueba y vuelve al cambiar algo", () => {
-    expect(probarActivo("470", undefined, false, false)).toBe(true);
-    expect(probarActivo("470", "470", false, false)).toBe(false);
-    expect(probarActivo("220", "470", false, false)).toBe(true);
-    expect(probarActivo(undefined, undefined, false, false)).toBe(false);
-    expect(probarActivo("220", "470", true, false)).toBe(false);
-    expect(probarActivo("220", "470", false, true)).toBe(false);
-  });
-});
-
 describe("claridad del Taller", () => {
-  it("Probar muestra la cuenta atrás mientras dura el bloqueo", () => {
-    expect(textoProbarEspera(5000, 3500)).toBe("Probar · 2 s");
-    expect(textoProbarEspera(5000, 5000)).toBe("");
-  });
   it("el «¡REPARADO!» termina antes de que el pod nuevo muestre su avería", () => {
     expect(150 + CARTEL.reparadoMs + 150).toBeLessThanOrEqual(CARTEL.averiaRetraso);
     expect(CARTEL.puntosMs).toBeLessThanOrEqual(CARTEL.averiaRetraso + 100);
@@ -99,18 +84,24 @@ describe("retrasoCola", () => {
   });
 });
 
-describe("validación de la mecánica 1", () => {
-  const prac = { tutorial: null, practica: true, nivel: 1, oleadas: false };
-  it("solo el tutorial «resistencia» y las zonas led/cabina de la práctica de nivel 1", () => {
-    expect(conValidacion({ ...prac, tutorial: "resistencia" }, "led")).toBe(true);
-    expect(conValidacion({ ...prac, tutorial: "multimetro" }, "led")).toBe(false);
-    expect(conValidacion(prac, "led")).toBe(true);
-    expect(conValidacion(prac, "cabina")).toBe(true);
-    for (const c of ["fusible", "luces", "divisor", "combinar", "protegido", "invertido"] as const) expect(conValidacion(prac, c), c).toBe(false);
+describe("hueco rojo con «?»", () => {
+  it("sale en toda mecánica de gaveta mientras falta la pieza, igual en todos los modos", () => {
+    for (const c of ["led", "cabina", "fusible", "invertido", "abierto", "combinar", "divisor", "protegido"] as const) {
+      expect(conHueco(c, undefined, false), c).toBe(true);
+      expect(conHueco(c, "1", false), c).toBe(false); // ya colocada
+      expect(conHueco(c, undefined, true), c).toBe(false); // zona reparada
+    }
   });
-  it("el duelo, el nivel 2 y las oleadas siguen con Probar", () => {
-    expect(conValidacion({ ...prac, practica: false }, "led")).toBe(false);
-    expect(conValidacion({ ...prac, nivel: 2 }, "led")).toBe(false);
-    expect(conValidacion({ ...prac, oleadas: true }, "led")).toBe(false);
+  it("la placa (luces, interruptor) tiene su propia gaveta de piezas", () => {
+    expect(conHueco("luces", undefined, false)).toBe(false);
+    expect(conHueco("interruptor", undefined, false)).toBe(false);
+  });
+  it("soltar la pieza fuera del hueco no la coloca (la ranura es el único destino)", async () => {
+    const { dentro } = await import("../src/arrastre");
+    const ranura = { x: 180, y: 34, w: 140, h: 96 };
+    expect(dentro(ranura, 180, 34)).toBe(true);
+    expect(dentro(ranura, 180, 290)).toBe(false); // de vuelta en la gaveta
+    expect(dentro(ranura, 40, 34)).toBe(false);
   });
 });
+

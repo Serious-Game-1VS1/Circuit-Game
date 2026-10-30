@@ -9,7 +9,7 @@ import { elegirSalaRapida, salaDeUrl, salasAbiertas, textoSala, type Net, type S
 import type { DificultadBot } from "./contraBot";
 import { anim, letras, marco } from "./arte";
 import { alternarSilencio, desbloquear, silenciado, sonar } from "./audio";
-import { bienvenida, cambiarNivel, cargarPerfil, INSIGNIAS, mejorNave, nivelElegido, progresoRango, recordarAlias, textoNivel, tutorialCompletado, ultimoAlias } from "./perfil";
+import { type NivelBot, bienvenida, cambiarNivel, cargarPerfil, INSIGNIAS, mejorNave, nivelBotElegido, nivelElegido, progresoRango, recordarAlias, textoNivel, tutorialCompletado, ultimoAlias } from "./perfil";
 import type { Pantalla } from "./pantalla";
 import { MECANICAS } from "./tutorial";
 import { chasis } from "./podio";
@@ -213,25 +213,36 @@ export function menu(s: Phaser.Scene, net: Net) {
   s.events.once("shutdown", () => { consulta = Infinity; net.dejarDeListar(); });
   pintarSalas();
 
-  // Jugar solo: duelo contra un bot con dificultad recordada.
+  // Jugar solo: mismo juego que el duelo (mismos pods y fallas) contra un bot; el jugador elige nivel y dificultad, ambos recordados.
   const DIFS: [DificultadBot, string][] = [["facil", "FACIL"], ["normal", "NORMAL"], ["dificil", "DIFICIL"]];
-  let dif: DificultadBot = "normal";
-  try { const g = localStorage.getItem("circuitsync.dificultad"); if (g === "facil" || g === "normal" || g === "dificil") dif = g; } catch { /* sin disco */ }
-  duelo.add(letras(s, W / 2, 462, "Duelo contra un rival bot", 2, CIAN).setOrigin(0.5, 0));
-  const chips = DIFS.map(([d, nombre], k) => {
+  const NIVS: [NivelBot, string][] = [["1", "NIVEL 1"], ["2", "NIVEL 2"], ["mixto", "MIXTO"]];
+  let dif: DificultadBot = "normal", nivBot: NivelBot = "mixto";
+  try {
+    const g = localStorage.getItem("circuitsync.dificultad"); if (g === "facil" || g === "normal" || g === "dificil") dif = g;
+    const n = localStorage.getItem("circuitsync.nivelbot"); if (n === "1" || n === "2" || n === "mixto") nivBot = n;
+  } catch { /* sin disco */ }
+  duelo.add(letras(s, W / 2, 436, "Jugar solo: duelo contra un bot", 2, CIAN).setOrigin(0.5, 0));
+  const fila = <T extends string>(y: number, opciones: [T, string][], elegir: (v: T) => void) => opciones.map(([v, nombre], k) => {
     const x = W / 2 + (k - 1) * 100;
-    const m = marco(s, x, 504, "boton_secundario", 92, 40, 4);
-    const l = letras(s, x, 504, nombre, 2, 0x140f1f).setOrigin(0.5);
-    const z = s.add.zone(x, 504, 92, 40).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => {
-      dif = d; try { localStorage.setItem("circuitsync.dificultad", d); } catch { /* sin disco */ } pintarDif();
-    }));
+    const m = marco(s, x, y, "boton_secundario", 92, 36, 4);
+    const l = letras(s, x, y, nombre, 1.5, 0x140f1f).setOrigin(0.5);
+    const z = s.add.zone(x, y, 92, 36).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => elegir(v)));
     duelo.add([m, l, z]);
-    return { m, d };
+    return { m, v };
   });
-  const pintarDif = () => { for (const c of chips) c.m.setTexture(c.d === dif ? "boton_primario" : "boton_secundario"); };
-  pintarDif();
-  duelo.add(boton(W / 2, 552, 296, 48, "JUGAR SOLO", true, () => { if (alias()) recordarAlias(alias()); void net.jugarSolo(alias() || ultimoAlias(), nivelElegido(pf, 1), dif); }));
-  duelo.add(boton(W / 2, 604, 296, 40, "CANCELAR", false, () => abrir(null), 2.5));
+  const cNiv = fila(468, NIVS, (v) => {
+    if (v !== "1" && pf.nivelDesbloqueado !== 2) { aviso.setText("Nivel 2 y mixto: completa el nivel 1"); return; }
+    aviso.setText(""); nivBot = v; try { localStorage.setItem("circuitsync.nivelbot", v); } catch { /* sin disco */ } pintarBot();
+  });
+  const cDif = fila(508, DIFS, (v) => { dif = v; try { localStorage.setItem("circuitsync.dificultad", v); } catch { /* sin disco */ } pintarBot(); });
+  const pintarBot = () => {
+    const nb = String(nivelBotElegido(pf, nivBot));
+    for (const c of cNiv) c.m.setTexture(c.v === (nb === "1" || nb === "2" ? nb : "mixto") ? "boton_primario" : "boton_secundario").setAlpha(c.v !== "1" && pf.nivelDesbloqueado !== 2 ? 0.5 : 1);
+    for (const c of cDif) c.m.setTexture(c.v === dif ? "boton_primario" : "boton_secundario");
+  };
+  duelo.add(letras(s, W / 2, 536, "Mismos pods y fallas que el duelo", 1.5, GRIS).setOrigin(0.5, 0));
+  duelo.add(boton(W / 2, 572, 296, 44, "JUGAR SOLO", true, () => { if (alias()) recordarAlias(alias()); void net.jugarSolo(alias() || ultimoAlias(), nivelBotElegido(pf, nivBot), dif); }, 2.5));
+  duelo.add(boton(W / 2, 612, 296, 32, "CANCELAR", false, () => abrir(null), 2));
 
   const privacidad = panel(30, 560, "PRIVACIDAD");
   let pag = 0;
@@ -294,6 +305,7 @@ export function menu(s: Phaser.Scene, net: Net) {
     iconoN2.setTexture(abierto2 ? "icono_pasa" : "icono_candado");
     nivel2.setText(abierto2 ? "NIVEL 2: ABIERTO" : "NIVEL 2: BLOQUEADO").setTint(abierto2 ? VERDE : GRIS);
     nave.play(`${chasis(mejorNave(pf))}_reparado`);
+    pintarBot();
     for (const f of fichas) {
       f.m.setTexture(f.n === sel ? "boton_primario" : "boton_secundario");
       f.candado.setVisible(f.n === 2 && !abierto2);

@@ -10,7 +10,7 @@ import type { Falta } from "./pantalla";
 import type { Aguja } from "./vista";
 
 /** Qué elemento del Taller se resalta en cada paso. */
-export type Objetivo = "gaveta" | "probar" | "tension" | "pieza" | "carga" | "despachar" | "contador" | "pestanas" | "multimetro" | "check";
+export type Objetivo = "gaveta" | "tension" | "pieza" | "carga" | "contador" | "pestanas" | "multimetro" | "check";
 
 /** Lo que el Taller sabe de la zona del tutorial (la única del pod). */
 export interface EstadoTut {
@@ -30,16 +30,15 @@ export interface EstadoTut {
   medidas: number;
 }
 
-/** Acción que el paso deja hacer en la gaveta o en Probar; lo demás se frena con un aviso. */
-export type Accion = { elegir: string } | { arrastrar: string } | "probar" | "despachar" | "check";
+/** Acción que el paso deja hacer: arrastrar una pieza al hueco (soltar = probar) o CHECK (probar la placa / despachar); lo demás se frena con un aviso. */
+export type Accion = { arrastrar: string } | "check";
 
 /** `libre`: el paso deja tocar todo; `fin`: último paso con los botones de salida . */
 export interface Paso { titulo: string; texto: string; objetivo: Objetivo; pide?: Accion; libre?: boolean; /** Dibuja el esquema «paralelo» junto al texto. */ esquema?: boolean; fin?: boolean; hecho: (e: EstadoTut) => boolean }
 
 /** Datos de cada mini-tutorial: ids de piezas de la gaveta y estados que el Taller confirma. */
 const elige = (x: string) => (e: EstadoTut) => e.elegida === x;
-const pide = (x: string): Accion => ({ elegir: x });
-/** Mecánica 1 (validación): se arrastra la resistencia al hueco rojo y el multímetro valida; CHECK reemplaza a Despachar. */
+/** Flujo único: se arrastra la pieza al hueco rojo (soltar = probar), el multímetro da la luz y CHECK reemplaza a Despachar. */
 const arrastra = (x: string): Accion => ({ arrastrar: x });
 const SIN_FALLA = (e: EstadoTut) => e.reparada;
 const QUEMADO = (e: EstadoTut) => e.quemado;
@@ -50,8 +49,7 @@ const MIDE_CONT = (e: EstadoTut) => e.modo === "continuidad" && e.medidas > 0;
 const PIEZAS_PUESTAS = (e: EstadoTut) => e.falta === "cablear" || e.falta === null;
 const CABLEADA = (e: EstadoTut) => e.falta === null;
 
-const PROBAR_OK: Paso = { titulo: "Repara", objetivo: "probar", pide: "probar", hecho: SIN_FALLA, texto: "Pulsa Probar: la aguja debe marcar «correcto»." };
-const DESPACHA: Paso = { titulo: "Despacha", objetivo: "despachar", pide: "despachar", hecho: DESPACHADO, texto: "Con la zona reparada, pulsa Despachar." };
+const CHECK: Paso = { titulo: "Check", objetivo: "check", pide: "check", hecho: DESPACHADO, texto: "Multímetro en verde: pulsa CHECK para pasar al siguiente." };
 const LISTO = (texto: string): Paso => ({ titulo: "¡Listo!", objetivo: "contador", libre: true, fin: true, hecho: () => false, texto });
 const MODO_TENSION = (texto: string): Paso => ({ titulo: "Tensión", objetivo: "tension", hecho: (e) => e.modo === "tension", texto });
 const MODO_CONT = (texto: string): Paso => ({ titulo: "Continuidad", objetivo: "tension", hecho: (e) => e.modo === "continuidad", texto });
@@ -72,92 +70,86 @@ export interface Mecanica {
 
 export const MECANICAS: Mecanica[] = [
   { id: "resistencia", nombre: "Resistencia", ensena: "La resistencia frena la corriente: ni mucha ni poca.", nivel: 1, semilla: 11, pod: 0, circuito: "led", pasos: [
-    { titulo: "Falta la resistencia", objetivo: "gaveta", pide: arrastra("1000"), hecho: elige("1000"), texto: "El hueco rojo pide resistencia. Arrastra 1000 Ω hasta él." },
+    { titulo: "Falta la resistencia", objetivo: "gaveta", pide: arrastra("1000"), hecho: elige("1000"), texto: "Hueco rojo = falta resistencia. Arrastra 1000 Ω: soltar prueba." },
     { titulo: "Multímetro", objetivo: "multimetro", hecho: (e) => e.aguja === "poco", texto: "Multímetro encendido: ámbar = frena mucho. Sin verde no hay check." },
     { titulo: "Frena poco", objetivo: "gaveta", pide: arrastra("100"), hecho: QUEMADO, texto: "Arrastra 100 Ω (frena poco). Si pide esperar, espera unos segundos." },
     { titulo: "Rojo", objetivo: "multimetro", hecho: QUEMADO, texto: "Rojo: demasiada corriente, el LED se quema. Frena a medias." },
     { titulo: "La buena", objetivo: "gaveta", pide: arrastra("470"), hecho: SIN_FALLA, texto: "Arrastra 470 Ω: ni mucho ni poco. Espera si hace falta." },
-    { titulo: "Check", objetivo: "check", pide: "check", hecho: DESPACHADO, texto: "Multímetro en verde: pulsa CHECK para pasar al siguiente." },
+    CHECK,
     LISTO("El valor justo depende de la batería y del LED."),
   ] },
   { id: "multimetro", nombre: "Multímetro", ensena: "Medir tensión y continuidad sin gastar intentos.", nivel: 1, semilla: 12, pod: 0, circuito: "led", pasos: [
-    { titulo: "Elige una", objetivo: "gaveta", pide: pide("1000"), hecho: elige("1000"), texto: "Para medir hay que elegir una opción primero. Elige 1000 Ω." },
-    MODO_TENSION("El multímetro mide sin probar. Toca Tensión."),
+    { titulo: "Arrastra una", objetivo: "gaveta", pide: arrastra("1000"), hecho: elige("1000"), texto: "Arrastra 1000 Ω al hueco: soltar prueba y el multímetro da luz." },
+    MODO_TENSION("El multímetro también mide sin probar. Toca Tensión."),
     { titulo: "Mide", objetivo: "pieza", hecho: MIDE_TENSION, texto: "Toca la pieza del centro: la aguja marca cuánta batería cae en ella." },
     { titulo: "Continuidad", objetivo: "tension", hecho: MIDE_CONT, texto: "Toca Continuidad y luego la pieza: dice si está rota o sana." },
-    { titulo: "Según la lectura", objetivo: "gaveta", pide: pide("470"), hecho: elige("470"), texto: "No está rota, pero 1000 Ω frena de más. Elige 470 Ω." },
-    { ...PROBAR_OK, texto: "Probar sirve en cualquier modo. Púlsalo: «correcto»." }, DESPACHA,
+    { titulo: "Según la lectura", objetivo: "gaveta", pide: arrastra("470"), hecho: SIN_FALLA, texto: "No está rota, pero 1000 Ω frena de más. Arrastra 470 Ω: verde." },
+    CHECK,
     LISTO("Medir no gasta intentos: úsalo cuando dudes de una pieza."),
   ] },
   { id: "fusible", nombre: "Fusible", ensena: "El fusible justo aguanta lo normal y corta la falla.", nivel: 2, semilla: 2, pod: 1, circuito: "fusible", pasos: [
-    { titulo: "Fusible grueso", objetivo: "gaveta", pide: pide("3"), hecho: elige("3"), texto: "Es una prueba: pon el de 3 A y pulsa Probar para ver si protege." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: QUEMADO, texto: "Pulsa Probar: en falla pasan 3 A, el fusible no corta y se quema." },
-    { titulo: "El justo", objetivo: "gaveta", pide: pide("1"), hecho: elige("1"), texto: "Ahora elige 1 A: deja pasar 0,7 A normales y corta antes de 3 A." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: SIN_FALLA, texto: "Pulsa Probar: la aguja debe marcar «correcto»." },
-    DESPACHA,
+    { titulo: "Fusible grueso", objetivo: "gaveta", pide: arrastra("3"), hecho: QUEMADO, texto: "Prueba: arrastra el de 3 A. En falla pasan 3 A y se quema." },
+    MODO_TENSION("Toca Tensión: el multímetro mide el fusible sin gastar intentos."),
+    { titulo: "Mide", objetivo: "pieza", hecho: MIDE_TENSION, texto: "Toca el fusible: casi no cae tensión, es un hilo que deja pasar todo." },
+    { titulo: "El justo", objetivo: "gaveta", pide: arrastra("1"), hecho: SIN_FALLA, texto: "Arrastra 1 A: aguanta 0,7 A normales y corta antes de 3 A." },
+    CHECK,
     LISTO("Un fusible debe aguantar el consumo normal y cortar la falla."),
   ] },
   { id: "invertido", nombre: "LED girado", ensena: "El LED solo deja pasar la corriente en un sentido.", nivel: 2, semilla: 52, pod: 3, circuito: "invertido", pasos: [
-    { titulo: "Un solo sentido", objetivo: "gaveta", pide: pide("inversa"), hecho: elige("inversa"), texto: "El LED solo pasa corriente en un sentido. Elige «Dejar el LED»." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: (e) => e.pruebas > 0, texto: "Pulsa Probar y mira si el LED enciende." },
+    { titulo: "Un solo sentido", objetivo: "gaveta", pide: arrastra("inversa"), hecho: (e) => e.pruebas > 0, texto: "El LED pasa corriente en un sentido. Arrastra «Dejar el LED»." },
     MODO_CONT("Toca Continuidad: dice si la pieza deja pasar la corriente."),
     { titulo: "Mide", objetivo: "carga", hecho: MIDE_CONT, texto: "Toca el LED, a la derecha: «No pasa». Su polaridad lo bloquea." },
-    { titulo: "Girar el LED", objetivo: "gaveta", pide: pide("directa"), hecho: elige("directa"), texto: "Un LED solo conduce de + a −. Elige «Girar el LED» para corregirlo." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: SIN_FALLA, texto: "Pulsa Probar: el LED ya enciende." },
-    DESPACHA,
+    { titulo: "Girar el LED", objetivo: "gaveta", pide: arrastra("directa"), hecho: SIN_FALLA, texto: "Un LED solo conduce de + a −. Arrastra «Girar el LED» para corregirlo." },
+    CHECK,
     LISTO("Si un LED no enciende, revisa primero hacia dónde mira."),
   ] },
   { id: "abierto", nombre: "Cable roto", ensena: "Un corte en el cable se encuentra con Continuidad.", nivel: 2, semilla: 2, pod: 3, circuito: "abierto", pasos: [
-    { titulo: "Mira el cable", objetivo: "gaveta", pide: pide("dejar"), hecho: elige("dejar"), texto: "Elige «Dejar igual»: así medimos el circuito con el corte." },
+    { titulo: "Mira el cable", objetivo: "gaveta", pide: arrastra("dejar"), hecho: elige("dejar"), texto: "Arrastra «Dejar igual»: así medimos el circuito con el corte." },
     MODO_CONT("Toca Continuidad: avisa si la corriente puede cruzar la pieza."),
     { titulo: "Mide", objetivo: "pieza", hecho: MIDE_CONT, texto: "Toca la pieza del centro: «No pasa» = el cable está cortado." },
-    { titulo: "Empalmar", objetivo: "gaveta", pide: pide("empalmar"), hecho: elige("empalmar"), texto: "El cable está cortado. Elige «Empalmar» para cerrar el camino." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: SIN_FALLA, texto: "Pulsa Probar: el circuito vuelve a cerrarse." },
-    DESPACHA,
+    { titulo: "Empalmar", objetivo: "gaveta", pide: arrastra("empalmar"), hecho: SIN_FALLA, texto: "El cable está cortado. Arrastra «Empalmar» para cerrar el camino." },
+    CHECK,
     LISTO("Un circuito abierto no deja pasar corriente: mídelo con Continuidad."),
   ] },
   { id: "placa", nombre: "Placa", ensena: "Luces en paralelo: si una falla, la otra sigue.", nivel: 2, semilla: 47, pod: 3, circuito: "luces", pasos: [
     { titulo: "Piezas", objetivo: "gaveta", hecho: PIEZAS_PUESTAS, texto: "Esta zona usa una placa: arrastra cada pieza a su lugar." },
     { titulo: "Cables", objetivo: "pieza", esquema: true, hecho: CABLEADA, texto: "Une arriba de cada luz al carril +, abajo al carril −." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: SIN_FALLA, texto: "Pulsa Probar. Si no marca Correcto, toca un cable para quitarlo." },
-    { titulo: "Serie o paralelo", objetivo: "despachar", pide: "despachar", esquema: true, hecho: DESPACHADO, texto: "En serie, una luz que falla apaga la otra; en paralelo, no. Despacha." },
+    MODO_TENSION("Con la placa lista, toca Tensión: el multímetro mide antes de probar."),
+    { titulo: "Mide", objetivo: "pieza", hecho: MIDE_TENSION, texto: "Toca una luz: la aguja marca cuánta batería cae en ella." },
+    { titulo: "Prueba", objetivo: "check", pide: "check", hecho: SIN_FALLA, texto: "Pulsa CHECK: prueba y el multímetro da la luz. Verde = bien." },
+    { ...CHECK, objetivo: "check", esquema: true, texto: "En paralelo una luz que falla no apaga la otra. CHECK despacha." },
     LISTO("En paralelo cada luz tiene su propio camino entre + y −."),
   ] },
   { id: "turbina", nombre: "Interruptor", ensena: "El interruptor va en serie con el motor.", nivel: 2, semilla: 10, pod: 3, circuito: "interruptor", pasos: [
     { titulo: "Piezas", objetivo: "gaveta", hecho: PIEZAS_PUESTAS, texto: "Arrastra el motor y el interruptor a su lugar en la placa." },
     { titulo: "Cables", objetivo: "pieza", hecho: CABLEADA, texto: "Une carril +, interruptor, motor y carril − en fila (serie)." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: SIN_FALLA, texto: "Pulsa Probar: la corriente cruza el interruptor y el motor gira." },
-    { titulo: "Por qué serie", objetivo: "despachar", pide: "despachar", hecho: DESPACHADO, texto: "Ojo: un interruptor en paralelo al motor haría un corto. Despacha." },
+    { titulo: "Prueba", objetivo: "check", pide: "check", hecho: SIN_FALLA, texto: "Pulsa CHECK: el motor gira y el multímetro da verde." },
+    { ...CHECK, objetivo: "check", texto: "En paralelo al motor haría un corto. CHECK despacha." },
     LISTO("El interruptor va en serie con lo que enciende o apaga."),
   ] },
   { id: "combinar", nombre: "Combinar", ensena: "Dos resistencias en serie suman; en paralelo se reparten.", nivel: 2, semilla: 264, pod: 4, circuito: "combinar", pasos: [
-    { titulo: "Una sola", objetivo: "gaveta", pide: pide("una"), hecho: elige("una"), texto: "Hay dos resistencias de 220 Ω. Prueba primero con una sola." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: QUEMADO, texto: "Con 9 V una sola quema el LED: falta frenar más. Pulsa Probar." },
-    { titulo: "En paralelo", objetivo: "gaveta", pide: pide("paralelo"), hecho: elige("paralelo"), texto: "En paralelo quedan 110 Ω: frena aún menos. Elige «Paralelo»." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: (e) => e.elegida === "paralelo" && e.quemado && e.pruebas > 0, texto: "110 Ω deja pasar aún más corriente. Pulsa Probar." },
-    { titulo: "En serie", objetivo: "gaveta", pide: pide("serie"), hecho: elige("serie"), texto: "En serie se suman: 440 Ω, frena más. Elige «Serie»." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: SIN_FALLA, texto: "Más ohmios, menos corriente. Pulsa Probar: «correcto»." },
-    DESPACHA,
+    { titulo: "Una sola", objetivo: "gaveta", pide: arrastra("una"), hecho: QUEMADO, texto: "Dos resistencias de 220 Ω. Arrastra «Una sola»: se quema." },
+    MODO_CONT("Toca Continuidad: además de pasar o no, lee los ohmios de la pieza."),
+    { titulo: "Mide", objetivo: "pieza", hecho: MIDE_CONT, texto: "Toca la pieza: lee 220 Ω. Falta frenar más." },
+    { titulo: "En paralelo", objetivo: "gaveta", pide: arrastra("paralelo"), hecho: (e) => e.elegida === "paralelo" && e.quemado && e.pruebas > 0, texto: "En paralelo quedan 110 Ω: frena aún menos. Arrastra «En paralelo»." },
+    { titulo: "En serie", objetivo: "gaveta", pide: arrastra("serie"), hecho: SIN_FALLA, texto: "En serie se suman: 440 Ω, frena más. Arrastra «En serie»: verde." },
+    CHECK,
     LISTO("Serie suma ohmios; paralelo los reparte y baja el total."),
   ] },
   { id: "divisor", nombre: "Divisor", ensena: "Dos resistencias en fila se reparten la tensión.", nivel: 2, semilla: 240, pod: 3, circuito: "divisor", pasos: [
-    { titulo: "R2 = 470 Ω", objetivo: "gaveta", pide: pide("470"), hecho: elige("470"), texto: "R1 (220 Ω) viene impresa. Elige R2 = 470 Ω y mediremos el medio." },
+    { titulo: "R2 = 470 Ω", objetivo: "gaveta", pide: arrastra("470"), hecho: elige("470"), texto: "R1 (220 Ω) viene impresa. Arrastra R2 = 470 Ω al hueco." },
     MODO_TENSION("Toca Tensión para medir el nodo del medio, entre R1 y R2."),
     { titulo: "Mide R2", objetivo: "pieza", hecho: MIDE_TENSION, texto: "Toca R2: la aguja marca la tensión que queda en R2." },
-    { titulo: "R2 = R1", objetivo: "gaveta", pide: pide("220"), hecho: elige("220"), texto: "Con R2 igual a R1 cada una toma la mitad. Elige R2 = 220 Ω." },
-    { titulo: "Mide otra", objetivo: "pieza", hecho: (e) => e.elegida === "220" && e.medido && e.medidas > 0, texto: "Con Tensión puesta, toca R2 otra vez: ahora cae menos que con 470 Ω." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: SIN_FALLA, texto: "Pulsa Probar: 4,5 V en el medio es lo correcto." },
-    DESPACHA,
+    { titulo: "R2 = R1", objetivo: "gaveta", pide: arrastra("220"), hecho: SIN_FALLA, texto: "Con R2 igual a R1 cada una toma la mitad: 4,5 V. Arrastra R2 = 220 Ω." },
+    CHECK,
     LISTO("El divisor reparte la tensión según las dos resistencias."),
   ] },
   { id: "protegido", nombre: "Protegido", ensena: "Diodo, LED y resistencia en serie se reparten la batería.", nivel: 2, semilla: 340, pod: 3, circuito: "protegido", pasos: [
-    { titulo: "Poca R", objetivo: "gaveta", pide: pide("100"), hecho: elige("100"), texto: "Prueba con la más pequeña: elige 100 Ω." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: QUEMADO, texto: "Pasa de más y el LED se quema. Pulsa Probar." },
+    { titulo: "Poca R", objetivo: "gaveta", pide: arrastra("100"), hecho: QUEMADO, texto: "Arrastra la más pequeña, 100 Ω: pasa de más y se quema." },
     MODO_TENSION("Toca Tensión: la batería se reparte entre diodo, LED y R."),
     { titulo: "Mide", objetivo: "pieza", hecho: MIDE_TENSION, texto: "Toca una pieza: cada una se queda con una parte de la tensión." },
-    { titulo: "El diodo", objetivo: "gaveta", pide: pide("220"), hecho: elige("220"), texto: "El diodo toma 0,7 V y el LED 2 V; a R le quedan 3,3 V. Elige 220 Ω." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: SIN_FALLA, texto: "Pulsa Probar: unos 15 mA, justo para el LED." },
-    DESPACHA,
+    { titulo: "El diodo", objetivo: "gaveta", pide: arrastra("220"), hecho: SIN_FALLA, texto: "Diodo 0,7 V y LED 2 V: a R le quedan 3,3 V. Arrastra 220 Ω." },
+    CHECK,
     LISTO("Cada pieza en serie se queda con su parte de la batería."),
   ] },
 ];
@@ -197,7 +189,7 @@ export function avanzar(t: Tutorial, e: EstadoTut, ahora = t.desde + MIN_PASO_MS
  */
 const cumple = (t: Tutorial, e: EstadoTut) => {
   const p = actual(t);
-  return ((e.reparada || e.despachados > 0) && !p.fin && p.pide !== "despachar" && p.pide !== "check") || p.hecho(rel(t, e));
+  return ((e.reparada || e.despachados > 0) && !p.fin && p.pide !== "check") || p.hecho(rel(t, e));
 };
 /** El estado que ve `hecho`: pruebas y medidas contadas desde que se cumplió el paso anterior (una acción hecha antes no avanza este paso). */
 const rel = (t: Tutorial, e: EstadoTut): EstadoTut => ({ ...e, pruebas: e.pruebas - t.p0, medidas: e.medidas - t.m0 });

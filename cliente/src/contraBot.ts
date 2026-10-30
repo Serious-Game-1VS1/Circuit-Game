@@ -1,7 +1,7 @@
 import { Arbiter } from "../../spike/src/arbiter/arbiter";
 import { evaluar } from "../../spike/src/engine/pods";
 import type { Perfil } from "../../spike/src/engine/generador";
-import type { PodView, ServerMsg } from "../../spike/src/protocol";
+import type { Circuito, PodView, ServerMsg, ZonaView } from "../../spike/src/protocol";
 import type { Transport } from "../../spike/src/transport/transport";
 
 export type DificultadBot = "facil" | "normal" | "dificil";
@@ -16,6 +16,17 @@ export const PERFILES_BOT: Record<DificultadBot, { lectura: number; min: number;
   normal: { lectura: 8000, min: 5000, max: 9000, error: 0.15, quema: 0.2 },
   dificil: { lectura: 5000, min: 3200, max: 6000, error: 0.05, quema: 0.1 },
 };
+
+/**
+ * Cómo decide el bot cualquier familia (sin ver la solución): arma la zona SOLO con lo que ve un jugador (circuito, volts,
+ * opciones y el dato impreso `fija`, p. ej. «R1 470 Ω») y la resuelve con el motor, como un estudiante que aplica la ley de Ohm.
+ * Lo que cambia por perfil es la humanidad: lectura y espera, probabilidad de error/quemar, y la COMPLEJIDAD de la familia
+ * (placa, divisor, combinar… tardan más en leerse y se equivocan más) para que no sea imbatible ni siquiera en Difícil.
+ */
+export const COMPLEJIDAD: Record<Circuito, number> = {
+  led: 1, cabina: 1, invertido: 1, abierto: 1, fusible: 1.2, combinar: 1.25, divisor: 1.3, protegido: 1.3, interruptor: 1.4, luces: 1.5,
+};
+export const veredicto = (z: ZonaView, p: string) => evaluar({ circuito: z.circuito, volts: z.volts, r1: Number(/R1 (\d+)/.exec(z.fija ?? "")?.[1]) || undefined }, p);
 
 const mulberry32 = (a: number) => () => {
   a = (a + 0x6d2b79f5) | 0;
@@ -44,6 +55,7 @@ export class ContraBotTransport implements Transport {
   private pod?: PodView;
   private seq = 0;
   private factor = 1; // escala de ritmo del pod actual
+  private complejo = 1; // complejidad media de las zonas del pod actual
   private probadas = new Map<number, Set<string>>(); // piezas ya probadas por zona en este pod
   private proximo = Infinity; // cuándo actúa el bot; Infinity = esperando algo
   private fin = false;
@@ -89,11 +101,13 @@ export class ContraBotTransport implements Transport {
     return this.now() + extra + (lectura + this.perfil.min + this.rnd() * (this.perfil.max - this.perfil.min)) * this.factor;
   }
 
-  private nuevoPod(): void { this.factor = 0.8 + this.rnd() * 0.45; this.probadas.clear(); }
+  private nuevoPod(pod: PodView): void {
+    this.factor = 0.8 + this.rnd() * 0.45; this.probadas.clear();
+    this.complejo = pod.zonas.reduce((a, z) => a + COMPLEJIDAD[z.circuito], 0) / Math.max(1, pod.zonas.length);
+  }
 
   private delBot(m: ServerMsg): void {
-    if (m.t === "start") { this.nuevoPod(); this.pod = m.pod; this.proximo = this.espera(0, this.perfil.lectura); }
-    else if (m.t === "despachado") { this.nuevoPod(); this.pod = m.pod; this.proximo = this.espera(0, this.perfil.lectura); }
+    if (m.t === "start" || m.t === "despachado") { this.nuevoPod(m.pod); this.pod = m.pod; this.proximo = this.espera(0, this.perfil.lectura * this.complejo); }
     else if (m.t === "result") { if (m.hayMas) this.probadas.delete(m.zona); this.pod = m.pod; this.proximo = this.espera(m.waitMs); }
     else if (m.t === "reject") this.proximo = this.espera(m.waitMs);
     else if (m.t === "end") { this.fin = true; this.proximo = Infinity; }
@@ -103,14 +117,15 @@ export class ContraBotTransport implements Transport {
     const z = this.pod?.zonas.find((x) => !x.reparada);
     const base = { seq: ++this.seq, t0: this.now() };
     if (!z) return this.arbiter.handle("bot", { t: "despachar", ...base });
-    const mal = z.opciones.filter((p) => evaluar(z, p) !== "correcto");
-    const quema = mal.filter((p) => evaluar(z, p) === "se quema" || evaluar(z, p) === "corto");
-    const bien = z.opciones.filter((p) => evaluar(z, p) === "correcto");
+    const v = new Map(z.opciones.map((p) => [p, veredicto(z, p)]));
+    const mal = z.opciones.filter((p) => v.get(p) !== "correcto");
+    const quema = mal.filter((p) => v.get(p) === "se quema" || v.get(p) === "corto");
+    const bien = z.opciones.filter((p) => v.get(p) === "correcto");
     const vistas = this.probadas.get(z.zona) ?? new Set<string>();
     const nuevas = (l: string[]) => (l.filter((p) => !vistas.has(p)).length ? l.filter((p) => !vistas.has(p)) : l);
     const suave = mal.filter((p) => !quema.includes(p));
     let pool = bien;
-    if (mal.length && this.rnd() < this.perfil.error) pool = quema.length && this.rnd() < this.perfil.quema ? quema : suave.length ? suave : mal;
+    if (mal.length && this.rnd() < Math.min(0.6, this.perfil.error * COMPLEJIDAD[z.circuito])) pool = quema.length && this.rnd() < this.perfil.quema ? quema : suave.length ? suave : mal;
     pool = nuevas(pool);
     const pieza = pool[Math.floor(this.rnd() * pool.length)]!;
     this.probadas.set(z.zona, vistas.add(pieza));

@@ -4,6 +4,7 @@ import type { SalaInfo, Transport } from "../../spike/src/transport/transport";
 export type { SalaInfo };
 import { LocalTransport } from "../../spike/src/transport/ws-client";
 import { validAlias } from "../../spike/src/protocol";
+import type { Perfil } from "../../spike/src/engine/generador";
 import { registrar, type Dominio } from "./dominio";
 import { COOLDOWN_CORTO, elegir, sinMejoras, type Mejora } from "./mejoras";
 import { PracticaTransport } from "./practica";
@@ -89,7 +90,7 @@ export class Net {
   }
 
   /** Duelo contra un bot: como `practicar` pero la partida es un duelo (rival, start, 5 pods, sin `practica`). */
-  public async jugarSolo(alias: string, nivel: Nivel = 1, dificultad: DificultadBot = "normal"): Promise<void> {
+  public async jugarSolo(alias: string, nivel: Perfil = 1, dificultad: DificultadBot = "normal"): Promise<void> {
     if (!validAlias(alias)) {
       this.poner({ ...this.estado, aviso: "El alias debe tener de 1 a 12 caracteres" });
       return;

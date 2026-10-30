@@ -52,10 +52,10 @@ describe("divisor (Reactor): R1 fija, R2 elegida, tensión del nodo medio", () =
   });
 
   it("el multímetro de tensión mide el nodo medio (R2) con montar().puntos", () => {
-    expect(medir({ circuito: "divisor", volts: 9, r1: 470 }, "470", "tension", "pieza")).toEqual({ tension: "parte", fraccion: 0.5 });
-    expect(medir({ circuito: "divisor", volts: 9, r1: 470 }, "220", "tension", "pieza")).toEqual({ tension: "parte", fraccion: 0.3 });
-    expect(medir({ circuito: "divisor", volts: 9, r1: 470 }, "1000", "tension", "pieza")).toEqual({ tension: "parte", fraccion: 0.7 });
-    expect(medir({ circuito: "divisor", volts: 9, r1: 470 }, "470", "tension", "carga1")).toEqual({ tension: "parte", fraccion: 0.5 });
+    expect(medir({ circuito: "divisor", volts: 9, r1: 470 }, "470", "tension", "pieza")).toMatchObject({ tension: "parte", fraccion: 0.5 });
+    expect(medir({ circuito: "divisor", volts: 9, r1: 470 }, "220", "tension", "pieza")).toMatchObject({ tension: "parte", fraccion: 0.3 });
+    expect(medir({ circuito: "divisor", volts: 9, r1: 470 }, "1000", "tension", "pieza")).toMatchObject({ tension: "parte", fraccion: 0.7 });
+    expect(medir({ circuito: "divisor", volts: 9, r1: 470 }, "470", "tension", "carga1")).toMatchObject({ tension: "parte", fraccion: 0.5 });
   });
 });
 
