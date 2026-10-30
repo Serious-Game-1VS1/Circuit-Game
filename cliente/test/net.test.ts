@@ -445,4 +445,26 @@ describe("listarSalas", () => {
       expect(r.motivo).toMatch(/consultar/);
     }
   });
+  it("no abre una segunda consulta mientras hay una en curso, y dejarDeListar suelta el lobby", async () => {
+    let abiertas = 0, soltadas = 0, fin!: () => void;
+    const tr = { ...new Mem("x"), listar: () => { abiertas++; return new Promise<typeof sala[]>((r) => { fin = () => r([sala]); }); }, soltarLobby: () => { soltadas++; } };
+    const net = new Net(tr as unknown as Transport, () => 0);
+    const a = net.listarSalas(1000), b = net.listarSalas(1000);
+    expect(abiertas).toBe(1);
+    fin();
+    expect(await a).toEqual({ salas: [sala] });
+    expect(await b).toEqual({ salas: [sala] });
+    void net.listarSalas(1000); expect(abiertas).toBe(2); // terminada la anterior, se puede consultar otra vez
+    net.dejarDeListar();
+    expect(soltadas).toBe(1);
+  });
+  it("el timeout suelta la conexión a medias y la siguiente consulta empieza limpia", async () => {
+    let soltadas = 0, llamadas = 0;
+    const tr = { ...new Mem("x"), listar: () => { llamadas++; return new Promise<typeof sala[]>(() => {}); }, soltarLobby: () => { soltadas++; } };
+    const net = new Net(tr as unknown as Transport, () => 0);
+    expect((await net.listarSalas(10)).motivo).toMatch(/consultar/);
+    expect(soltadas).toBe(1);
+    void net.listarSalas(10);
+    expect(llamadas).toBe(2);
+  });
 });

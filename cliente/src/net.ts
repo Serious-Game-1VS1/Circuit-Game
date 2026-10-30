@@ -45,6 +45,7 @@ export class Net {
   public usadas: Mejora[] = [];
   public onCambio: (p: Pantalla) => void = () => {};
   private seq = 0;
+  private listando?: Promise<{ salas: SalaInfo[]; motivo?: string }>;
   private sala?: { codigo: string; alias: string };
   /** Código de la sala del duelo ("" en práctica). */
   public get codigo() { return this.sala?.codigo ?? ""; }
@@ -126,7 +127,16 @@ export class Net {
    * Salas abiertas ahora (nunca rechaza). Sin conexión, sin soporte o pasado `esperaMs`: `salas` vacío y `motivo` con el texto para la pantalla.
    * La pantalla repite la consulta cada pocos segundos; entrar sigue siendo `entrar(codigo, alias)`.
    */
-  public async listarSalas(esperaMs = 5000): Promise<{ salas: SalaInfo[]; motivo?: string }> {
+  public listarSalas(esperaMs = 5000): Promise<{ salas: SalaInfo[]; motivo?: string }> {
+    return (this.listando ??= this.consultarSalas(esperaMs).finally(() => { this.listando = undefined; })); // una sola consulta a la vez
+  }
+
+  /** Cierra la conexión de lobby (panel o escena cerrados). */
+  public dejarDeListar(): void {
+    this.duelo.soltarLobby?.();
+  }
+
+  private async consultarSalas(esperaMs: number): Promise<{ salas: SalaInfo[]; motivo?: string }> {
     const sinConexion = { salas: [], motivo: "No se pudo consultar las salas. Revisa tu conexión." };
     if (!this.duelo.listar) return sinConexion;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -134,6 +144,7 @@ export class Net {
       const limite = new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error("tiempo agotado")), esperaMs); });
       return { salas: await Promise.race([this.duelo.listar(), limite]) };
     } catch {
+      this.duelo.soltarLobby?.(); // conexión a medias: se corta para que la próxima consulta empiece limpia
       return sinConexion;
     } finally {
       clearTimeout(timer);

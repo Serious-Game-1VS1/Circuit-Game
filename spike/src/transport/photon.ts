@@ -33,6 +33,8 @@ export class PhotonTransport implements Transport {
   private inRoom = false;
   private listaLista = false;
   private alLista?: () => void;
+  /** create/join en marcha o hecho: la conexión ya no es solo de lobby y soltarLobby() no la toca. */
+  private ocupado = false;
 
   constructor(private readonly appId: string, private readonly region = "us", private readonly appVersion = "circuitsync-spike") {}
 
@@ -88,7 +90,18 @@ export class PhotonTransport implements Transport {
     }));
   }
 
+  /** Suelta la conexión de solo-lobby (panel cerrado, escena cerrada, consulta que no llegó); no toca una sala ni un create/join. */
+  soltarLobby() {
+    if (this.inRoom || this.ocupado || !this.lbc) return;
+    const lbc = this.lbc;
+    this.lbc = undefined; // los callbacks del cliente viejo ya no cuentan (ver mine)
+    this.readyForRooms = undefined; this.listaLista = false; this.alLista = undefined;
+    this.settle(new Error("lobby cerrado"));
+    lbc.disconnect();
+  }
+
   async create(code: string) {
+    this.ocupado = true;
     await this.connect();
     // Visible en el lobby solo con nivel/jugadores/estado (propsListedInLobby): ni solución ni alias. 3 = árbitro + 2 jugadores.
     await this.step(() => this.lbc!.createRoom(code, { maxPlayers: 3, isVisible: true, isOpen: true, customGameProperties: { nivel: 1, jug: 0, est: "esperando" }, propsListedInLobby: ["nivel", "jug", "est"] }));
@@ -120,6 +133,7 @@ export class PhotonTransport implements Transport {
   }
 
   async join(code: string) {
+    this.ocupado = true;
     await this.connect();
     await this.step(() => this.lbc!.joinRoom(code));
   }
@@ -131,7 +145,7 @@ export class PhotonTransport implements Transport {
 
   async close() {
     this.pending = undefined;
-    this.inRoom = false; this.listaLista = false; // cierre propio: no es una pérdida de conexión
+    this.inRoom = false; this.ocupado = false; this.listaLista = false; // cierre propio: no es una pérdida de conexión
     this.readyForRooms = undefined;
     this.lbc?.disconnect();
   }

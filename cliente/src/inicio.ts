@@ -107,6 +107,7 @@ export function menu(s: Phaser.Scene, net: Net) {
   let abierto: Phaser.GameObjects.Container | null = null;
   const abrir = (c: Phaser.GameObjects.Container | null) => {
     abierto?.setVisible(false);
+    if (abierto === duelo && c !== duelo) { consulta++; net.dejarDeListar(); } // fuera del duelo no queda conexión de lobby abierta
     abierto = c;
     c?.setVisible(true);
     for (const f of [codigoDom, aliasDom]) f.setVisible(c === duelo);
@@ -138,7 +139,7 @@ export function menu(s: Phaser.Scene, net: Net) {
 
   // Salas abiertas: hasta 4 tarjetas, «MAS» pasa de página; se consultan cada 4 s mientras el duelo está abierto.
   etiqueta(duelo, 34, 250, "SALAS ABIERTAS");
-  let salas: SalaInfo[] = [], pagina = 0, motivo: string | undefined, consulta = 0;
+  let salas: SalaInfo[] = [], pagina = 0, motivo: string | undefined, consulta = 0, buscando = true; // buscando: hasta la primera respuesta
   const vacio = letras(s, W / 2, 322, "", 2, GRIS).setOrigin(0.5).setMaxWidth(296).setCenterAlign();
   duelo.add(vacio);
   const filas = [0, 1, 2, 3].map((k) => {
@@ -167,16 +168,16 @@ export function menu(s: Phaser.Scene, net: Net) {
       if (sala) f.l.setText(textoSala(sala));
     });
     mas.setText(ab.length > 4 ? `MAS ${pagina + 1}/${Math.ceil(ab.length / 4)}` : "");
-    vacio.setText(motivo ? "Sin conexión a salas" : ab.length ? "" : "No hay salas abiertas. Crea una o juega solo.");
+    vacio.setText(buscando ? "Buscando salas…" : motivo ? "Sin conexión a salas" : ab.length ? "" : "No hay salas abiertas. Crea una o juega solo.");
   }
   const consultar = async () => {
     const mia = ++consulta;
-    const r = await net.listarSalas(3500);
+    const r = await net.listarSalas(8000);
     if (mia !== consulta || abierto !== duelo) return; // llegó tarde: se cerró el duelo o hay una consulta más nueva
-    salas = r.salas; motivo = r.motivo; pintarSalas();
+    salas = r.salas; motivo = r.motivo; buscando = false; pintarSalas();
   };
   s.time.addEvent({ delay: 4000, loop: true, callback: () => { if (abierto === duelo) void consultar(); } });
-  s.events.once("shutdown", () => { consulta = Infinity; });
+  s.events.once("shutdown", () => { consulta = Infinity; net.dejarDeListar(); });
   pintarSalas();
 
   // Jugar solo: duelo contra un bot con dificultad recordada.

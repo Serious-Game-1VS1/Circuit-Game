@@ -27,5 +27,7 @@ export interface Transport {
   publicar?(info: SalaPublica): void;
   /** Cliente fuera de sala: salas abiertas ahora. Rechaza si no hay conexión. */
   listar?(): Promise<SalaInfo[]>;
+  /** Suelta la conexión de solo-lobby que abrió `listar` (no toca una sala en curso). */
+  soltarLobby?(): void;
   close(): Promise<void>;
 }
