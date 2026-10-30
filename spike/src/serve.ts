@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { RECONNECT_MS, type Arbiter } from "./arbiter/arbiter.js";
 import { borrarVivo, guardarPartida, guardarVivo } from "./docente/almacen.js";
 import { partidaDe, vivoDe } from "./docente/registro.js";
+import { iniciarRetencion } from "./docente/retencion.js";
 import type { Demo, Perfil } from "./engine/generador.js";
 import { hostRoom, createRoom, pausaReapertura } from "./transport/room.js";
 import { LocalTransport, startLocalRelay } from "./transport/local.js";
@@ -48,6 +49,8 @@ const demo: Demo = demoTxt === "radar" ? "radar" : demoTxt === "1" ? "cableado" 
 const MAX_SALAS = Number(process.env.MAX_SALAS) || 6;
 const VIVO_MS = 5000;
 
+iniciarRetencion(); // S-11: purga a los 12 meses al arrancar y cada 24 h
+
 /** Escribe para el panel docente sin tumbar el juego si el disco falla. */
 const docente = (que: string, f: () => void) => { try { f(); } catch (e) { console.error(`docente: no se pudo ${que}: ${(e as Error).message}`); } };
 
@@ -73,7 +76,8 @@ function vigilar(code: string, arbiter: Arbiter, fin: () => void): () => void {
       const csv = arbiter.toCsv();
       writeFileSync(file, csv);
       if (!arbiter.practica) docente("guardar la partida", () => guardarPartida(partidaDe(arbiter, code, inicio || Date.now(), Date.now()), csv));
-      console.log(`[${code}] resultado: ${JSON.stringify(arbiter.outcome)} · CSV: ${file}`);
+      const o = arbiter.outcome; // sin alias ni semilla en el log (S-11b)
+      console.log(`[${code}] resultado: ${o ? `${o.phase}, ganador ${o.winner ?? "ninguno"}, motivo: ${o.reason}` : "sin resultado"} · CSV guardado`);
       // Tras el fin la sala sigue abierta la ventana de reconexión: quien recargue recibe el mismo resultado.
       setTimeout(() => { docente("borrar el vivo", () => borrarVivo(code)); fin(); }, arbiter.phase === "fin" ? RECONNECT_MS : 1000);
     }
@@ -101,7 +105,7 @@ async function abrir(t: Transport, alTerminar: () => void, codigo?: string, alCa
     alCaer?.();
   });
   parar = vigilar(code, room.arbiter, () => { room.stop(); void t.close().then(alTerminar); });
-  console.log(`[${code}] nivel: ${room.arbiter.nivel}${demo === "radar" ? " · MODO DEMO (solo Radar)" : demo ? " · MODO DEMO (cableado: Cabina y Turbina)" : ""} · semilla: ${room.arbiter.semilla}${limiteMin === undefined ? "" : ` · duración: ${limiteMin} min`}`);
+  console.log(`[${code}] nivel: ${room.arbiter.nivel}${demo === "radar" ? " · MODO DEMO (solo Radar)" : demo ? " · MODO DEMO (cableado: Cabina y Turbina)" : ""}${limiteMin === undefined ? "" : ` · duración: ${limiteMin} min`}`);
   return { code, arbiter: room.arbiter };
 }
 
