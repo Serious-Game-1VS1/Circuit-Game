@@ -116,13 +116,15 @@ describe("ContraBotTransport", () => {
     for (const nivel of [1, 2, "mixto"] as Perfil[]) {
       for (let s = 1; s <= 60; s++) {
         for (const pod of generar(s, nivel)) for (const z of pod.zonas) {
-          const vista = { zona: z.zona, nombre: z.nombre, circuito: z.circuito, volts: z.volts, opciones: z.opciones, reparada: false, ...(z.r1 && { fija: `R1 ${z.r1} Ω` }) };
-          expect(vista.opciones.filter((o) => veredicto(vista, o) === "correcto"), `${nivel}/${s}/${z.circuito}`).toEqual([z.solucion]);
+          const vista = { zona: z.zona, nombre: z.nombre, circuito: z.circuito, volts: z.volts, opciones: z.opciones, reparada: false, ...(z.r1 && { fija: `R1 ${z.r1} Ω` }), ...(z.cadena && { cadena: z.cadena }) };
+          // Cadena: el bot primero localiza el hueco muerto midiendo continuidad (aquí se le da); luego evalúa «hueco:repuesto».
+          const jugadas = z.cadena ? vista.opciones.map((o) => `${z.muerta}:${o}`) : vista.opciones;
+          expect(jugadas.filter((o) => veredicto(vista, o, z.muerta) === "correcto"), `${nivel}/${s}/${z.circuito}`).toEqual([z.solucion]);
           vistas.add(z.circuito);
         }
       }
     }
-    expect([...vistas].sort()).toEqual(Object.keys(COMPLEJIDAD).sort()); // las 10 familias
+    expect([...vistas].sort()).toEqual(Object.keys(COMPLEJIDAD).filter((c) => c !== "invertido" && c !== "abierto").sort()); // las 9 familias que se sortean (invertido/abierto ya no)
   });
 
   it("completa 5 pods en nivel 1, nivel 2 y mixto con cada perfil, en tiempo razonable, sin atascarse (todas las familias de nivel 2 aparecen)", async () => {
@@ -140,8 +142,31 @@ describe("ContraBotTransport", () => {
         expect(suma / 8, `${nivel} ${dif}`).toBeLessThanOrEqual(tope[dif]);
       }
     }
-    expect(vistas.size).toBe(10);
+    expect(vistas.size).toBe(9);
+    expect(vistas.has("cadena")).toBe(true); // el bot la resuelve midiendo continuidad
   }, 120_000);
+
+  it("cadena: el bot localiza la pieza muerta midiendo continuidad (sin penalizar) y solo entonces prueba repuestos en ese hueco", async () => {
+    let t = 1_000;
+    const tr = new ContraBotTransport(2, 3, "dificil", { now: () => t, limitMs: 1e9 });
+    const bot: Record<string, unknown>[] = [];
+    const manejar = tr.arbiter.handle.bind(tr.arbiter);
+    tr.arbiter.handle = (peer, m) => { if (peer === "bot") bot.push(m as Record<string, unknown>); return manejar(peer, m); };
+    let fin: End | undefined;
+    tr.onMessage = (raw) => { const m = raw as ServerMsg; if (m.t === "end") fin = m; };
+    await tr.join();
+    tr.send({ t: "hello", alias: "ana" });
+    for (let i = 0; i < 40_000 && !fin; i++) { t += 100; tr.tick(); await Promise.resolve(); }
+    await tr.close();
+    expect(fin?.score.B?.despachados).toBe(5);
+    const medidas = bot.filter((m) => m.t === "medir"), cadenas = tr.arbiter.pods.flatMap((p) => p.zonas).filter((z) => z.circuito === "cadena");
+    expect(cadenas.length).toBeGreaterThan(0);
+    expect(medidas.length).toBeGreaterThan(0);
+    expect(medidas.every((m) => m.modo === "continuidad" && m.pieza === "ninguna" && /^t\d$/.test(String(m.punto)))).toBe(true);
+    for (const m of bot.filter((x) => x.t === "test" && /^\d:/.test(String(x.pieza)))) {
+      expect(cadenas.some((z) => z.zona === m.zone && String(z.muerta) === String(m.pieza)[0]), `hueco ${m.pieza} zona ${m.zone}`).toBe(true);
+    }
+  }, 60_000);
 
   it("fácil se equivoca más que difícil también en nivel 2 y es determinista por semilla", async () => {
     let f = 0, d = 0;

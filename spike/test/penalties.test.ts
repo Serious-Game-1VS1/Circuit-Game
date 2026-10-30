@@ -82,4 +82,50 @@ describe("PenaltyTracker", () => {
         '2;1;"x;""y""";fallo;1500;si\r\n',
     );
   });
+
+  describe("racha y bono de enfriamiento reducido", () => {
+    const ok = (n: number) => { for (let i = 0; i < n; i++) p.registerSuccess(10 + i, []); };
+    const fail = (n: number) => { for (let i = 0; i < n; i++) p.registerFailure(0, []); };
+
+    it("3 despachos seguidos arman el bono; con 2 no", () => {
+      ok(2);
+      expect([p.racha, p.bono]).toEqual([2, false]);
+      ok(1);
+      expect([p.racha, p.bono, p.bonoEvento]).toEqual([3, true, "listo"]);
+    });
+    it("el próximo fallo espera la mitad (8→4, 4→2, 2→1), una sola vez, y reinicia la racha", () => {
+      fail(2); // fails=2 en la zona 0
+      ok(3);
+      expect(p.registerFailure(0, [])).toBe(4000); // 3.er fallo = 8 s → 4 s
+      expect([p.racha, p.bono, p.bonoEvento]).toEqual([0, false, "usado"]);
+      expect(p.registerFailure(0, [])).toBe(8000); // sin bono, vuelve la tabla normal
+      p.newPod();
+      ok(3);
+      expect(p.registerFailure(0, [])).toBe(1000); // mitad de 2 s, mínimo 1 s
+    });
+    it("fallar antes de armar reinicia la racha; la quemada pierde racha y bono", () => {
+      ok(2); fail(1);
+      expect(p.racha).toBe(0);
+      ok(3); p.registerBurn(0, []);
+      expect([p.racha, p.bono, p.bonoEvento]).toEqual([0, false, "perdido"]);
+    });
+    it("no se acumula: más aciertos con el bono armado no dan un segundo", () => {
+      ok(7);
+      expect(p.racha).toBe(3);
+      fail(3); // el primero gasta el bono; los otros siguen 2→4 s normales
+      expect(p.bono).toBe(false);
+    });
+    it("un acierto parcial (falla encadenada) no cuenta; se conserva al pasar de pod", () => {
+      p.registerSuccess(0, [], false);
+      expect(p.racha).toBe(0);
+      ok(3); p.newPod();
+      expect(p.bono).toBe(true);
+    });
+    it("el factor de la mejora se aplica y el mínimo de 1 s se respeta", () => {
+      p.cooldownFactor = 0.5; fail(2); ok(3);
+      expect(p.registerFailure(0, [])).toBe(2000); // 8 s * 0.5 = 4 s, mitad = 2 s
+      p.newPod(); p.cooldownFactor = 0.25; ok(3);
+      expect(p.registerFailure(0, [])).toBe(1000); // el piso de 1 s acota también la mejora (antes 500 ms): el bono no lo sube
+    });
+  });
 });

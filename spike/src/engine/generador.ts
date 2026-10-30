@@ -5,7 +5,7 @@
  * (lo usa `npm run validar:sorteos`, 10 000 sorteos por nivel).
  */
 import type { Circuito, Nivel, ZonaNombre } from "../protocol.js";
-import { PIEZAS, evaluar } from "./pods.js";
+import { PIEZAS, evaluar, jugadas } from "./pods.js";
 
 export const ZONAS: readonly ZonaNombre[] = ["radar", "cabina", "turbina", "reactor"];
 export const PODS_POR_PARTIDA = 5;
@@ -19,7 +19,9 @@ const R1_DIVISOR = [220, 470, 1000] as const;
 /** Margen: la solución sigue siendo la única correcta con la batería ±5 %. */
 const MARGEN = [1, 0.95, 1.05];
 
-export interface ZonaPod { zona: number; nombre: ZonaNombre; circuito: Circuito; volts: number; opciones: string[]; solucion: string; r1?: number }
+export interface ZonaPod { zona: number; nombre: ZonaNombre; circuito: Circuito; volts: number; opciones: string[]; solucion: string; r1?: number;
+  /** Cadena: piezas en serie ("cable", "led", "r220"), cuál (1..n) está muerta por dentro y por lo tanto la solución «hueco:repuesto». */
+  cadena?: string[]; muerta?: number }
 /** `encadenada` (solo Oleadas): segunda falla escondida en una de las zonas; sale al reparar la primera. */
 export interface Pod { numero: number; zonas: ZonaPod[]; encadenada?: ZonaPod }
 
@@ -95,7 +97,7 @@ export type Perfil = Nivel | "mixto";
 /** Nivel del pod `i` (desde 0) según el perfil. */
 export const nivelDePod = (perfil: Perfil, i: number): Nivel => (perfil !== "mixto" ? perfil : i >= 3 ? 2 : 1);
 /** Familias que solo existen en el nivel 2; el perfil "mixto" pide al menos `MIN_N2` distintas en los pods 4 y 5. */
-const SOLO_N2: readonly Circuito[] = ["luces", "interruptor", "fusible", "invertido", "abierto", "combinar", "divisor", "protegido"];
+const SOLO_N2: readonly Circuito[] = ["luces", "interruptor", "fusible", "invertido", "abierto", "combinar", "divisor", "protegido", "cadena"];
 const MIN_N2 = 3;
 /** null si los circuitos por pod cumplen la cobertura del perfil; si no, el motivo. */
 function faltaCobertura(perfil: Perfil, cs: Circuito[][]): string | null {
@@ -107,6 +109,7 @@ function faltaCobertura(perfil: Perfil, cs: Circuito[][]): string | null {
 
 /** Sortea una zona válida: voltaje, 3 de las 4 resistencias (o todo el cableado/fusibles) en orden aleatorio. En demo, las 4. `excluir`: solución que no puede repetirse (falla encadenada). */
 function sortearZona(rnd: Rnd, zona: number, circuito: Circuito, demo = false, excluir?: string): ZonaPod {
+  if (circuito === "cadena") return sortearCadena(rnd, zona);
   const resistencias = circuito === "led" || circuito === "cabina" || circuito === "divisor" || circuito === "protegido";
   const voltios: readonly number[] = circuito === "led" || circuito === "cabina" || circuito === "combinar" ? (demo ? VOLTS_DEMO : VOLTS_SORTEO) : circuito === "protegido" ? VOLTS_PROTEGIDO : [VOLTS_FIJO];
   for (let i = 0; i < MAX_INTENTOS; i++) {
@@ -120,6 +123,28 @@ function sortearZona(rnd: Rnd, zona: number, circuito: Circuito, demo = false, e
     if (!validarZona(cand)) return cand;
   }
   throw new Error(`sin zona válida para ${circuito}`);
+}
+
+/**
+ * Cadena de 3 o 4 piezas en serie (cable, LED, resistencia del valor justo para ese LED y, a veces, un segundo cable) con UNA muerta por dentro.
+ * La solución es «hueco:repuesto» (el repuesto es la misma pieza que murió); la gaveta lleva 4 repuestos: ese y 3 distractores, con al menos
+ * uno del mismo tipo pero equivocado (otro valor de R, o el LED girado). Se repite hasta que validarZona (±5 %) encuentre una sola jugada correcta.
+ */
+function sortearCadena(rnd: Rnd, zona: number): ZonaPod {
+  for (let i = 0; i < MAX_INTENTOS; i++) {
+    const volts = pick(rnd, VOLTS_SORTEO);
+    const rOk = PIEZAS.led.find((r) => evaluar({ circuito: "led", volts }, r) === "correcto");
+    if (!rOk) continue;
+    const cadena = shuffle(rnd, ["cable", "led", `r${rOk}`, ...(rnd() < 0.5 ? ["cable"] : [])]);
+    const muerta = 1 + Math.floor(rnd() * cadena.length), buena = cadena[muerta - 1]!;
+    const otros = PIEZAS.cadena.filter((p) => p !== buena);
+    const parecido = buena === "led" ? ["ledInv"] : buena.startsWith("r") ? otros.filter((p) => p.startsWith("r")) : [];
+    const forzado = parecido.length ? [pick(rnd, parecido)] : [];
+    const distractores = [...forzado, ...shuffle(rnd, otros.filter((p) => !forzado.includes(p)))].slice(0, 3);
+    const cand: ZonaPod = { zona, nombre: ZONAS[zona]!, circuito: "cadena", volts, opciones: shuffle(rnd, [buena, ...distractores]), solucion: `${muerta}:${buena}`, cadena, muerta };
+    if (!validarZona(cand)) return cand;
+  }
+  throw new Error("sin zona válida para cadena");
 }
 
 /** Los 5 pods de una partida. Pods 1 a 3: una zona sin cables; pods 4 y 5: de 1 a 4 zonas. Ver `Demo` para los modos demo. */
@@ -205,8 +230,11 @@ export function validarPodOleada(p: Pod, nivel: Nivel): string | null {
 export function validarZona(z: ZonaPod): string | null {
   if (z.opciones.length < 2 || new Set(z.opciones).size !== z.opciones.length) return "opciones repetidas o insuficientes";
   if (!z.opciones.every((p) => PIEZAS[z.circuito].includes(p))) return "pieza fuera de catálogo";
+  // Cadena: la jugada es «hueco:repuesto»; se prueban todas (y no poner nada) y debe quedar una sola correcta.
+  const todas = z.circuito === "cadena" ? ["ninguna", ...jugadas(z)] : z.opciones;
+  if (z.circuito === "cadena" && (!z.cadena || !z.muerta || z.solucion !== `${z.muerta}:${z.cadena[z.muerta - 1]}`)) return "cadena mal formada";
   for (const f of MARGEN) {
-    const correctas = z.opciones.filter((p) => evaluar({ ...z, volts: z.volts * f }, p) === "correcto");
+    const correctas = todas.filter((p) => evaluar({ ...z, volts: z.volts * f }, p) === "correcto");
     if (correctas.length !== 1 || correctas[0] !== z.solucion) {
       return `${f === 1 ? "solución no única" : "sin margen"}: ${z.circuito} ${z.volts} V [${z.opciones}] → [${correctas}]`;
     }

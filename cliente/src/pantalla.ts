@@ -3,7 +3,8 @@
  * los mensajes del árbitro. La prueba vive en test/pantalla.test.ts.
  */
 import { BURN_CARD_MS } from "../../spike/src/arbiter/penalties";
-import { validAlias, type End, type Medida, type Nivel, type PodView, type RivalView, type ServerMsg, type Station } from "../../spike/src/protocol";
+import { validAlias, type End, type Medida, type Nivel, type PodView, type RivalView, type ServerMsg, type Station, type TipoSabotaje } from "../../spike/src/protocol";
+import { avisoEnviado, avisoRecibido } from "./sabotaje";
 import { NOMBRE_ZONA, vistaDeVeredicto, type Vista } from "./vista";
 
 /** "carrera" y "podio": fin normal con carrera final; "fin": partida anulada (o árbitro sin carrera). */
@@ -34,6 +35,15 @@ export interface Pantalla {
   rival: RivalView | null;
   /** Tarjeta "pieza quemada": zona y hora local hasta la que se muestra (≥ BURN_CARD_MS). */
   tarjeta: { zona: number; hasta: number } | null;
+  /** Racha de despachos del árbitro (0-3; con 3 el bono de enfriamiento reducido está listo) y el último aviso suyo; `n` cuenta los avisos para que la escena reaccione una vez. */
+  racha: number;
+  eco?: { n: number; tipo: EcoTipo };
+  /** Pods limpios seguidos (0-3) según el árbitro: al tercero ganas un sabotaje. */
+  limpios: number;
+  /** Sabotaje que sufres: `hasta` = hora local en que acaba; `n` cuenta los recibidos para que la escena lo muestre una vez. */
+  sabotaje?: { tipo: TipoSabotaje; hasta: number; n: number };
+  /** Sabotaje que enviaste (solo avisa; `n` cuenta los enviados). */
+  enviado?: { tipo: TipoSabotaje; hasta: number; n: number };
   /** Último veredicto del árbitro, por zona. */
   vistas: Record<number, Vista>;
   /** Hora local (ms) en que se acaba el tiempo de partida. */
@@ -46,6 +56,9 @@ export interface Pantalla {
   /** Última lectura del multímetro (la escena la muestra tras ~1 s; ver multimetro.ts). */
   medida?: Medida;
 }
+
+/** Qué pasó con la racha en el último intento: lo decide el árbitro, la escena solo reacciona. */
+export type EcoTipo = "acierto" | "listo" | "usado" | "perdido" | "fallo" | "sabotaje" | "ataque";
 
 /** La partida ya terminó: no se reconecta y el resultado se conserva. */
 export const terminada = (p: Pantalla) => p.fase === "fin" || p.fase === "carrera" || p.fase === "podio";
@@ -64,6 +77,8 @@ export function inicial(): Pantalla {
     practica: false,
     oleadas: false,
     quemadas: 0,
+    racha: 0,
+    limpios: 0,
     despachando: false,
     rival: null,
     tarjeta: null,
@@ -133,6 +148,9 @@ export function avisoVivo(p: Pantalla, ahora: number): string | null {
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : null;
 }
 
+/** Cuánto se muestra el «Sabotaje enviado». */
+export const ENVIADO_MS = 3000;
+
 export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
   switch (m.t) {
     // Al reconectar en plena partida no se pasa por la Sala: el "start" que sigue repone el taller. En práctica (marcada antes del welcome) tampoco.
@@ -142,7 +160,8 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     case "lobby": return { ...p, jugadores: m.players, fase: p.fase === "cuenta" ? "sala" : p.fase };
     case "countdown": return { ...p, fase: "cuenta", cuenta: m.n };
     case "start": return {
-      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, nivel: m.nivel ?? 1, demo: m.demo ?? false, practica: m.practica ?? false, oleadas: m.oleadas ?? false, quemadas: m.despachados === 0 ? 0 : p.quemadas, pod: m.pod, rival: m.rival,
+      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, nivel: m.nivel ?? 1, demo: m.demo ?? false, practica: m.practica ?? false, oleadas: m.oleadas ?? false, quemadas: m.despachados === 0 ? 0 : p.quemadas, racha: m.racha ?? 0, limpios: m.limpios ?? 0, pod: m.pod, rival: m.rival,
+      sabotaje: m.sabotaje && { tipo: m.sabotaje.tipo, hasta: ahora + m.sabotaje.ms, n: (p.sabotaje?.n ?? 0) + 1 }, enviado: undefined,
       despachando: false, vistas: {}, tarjeta: null, terminaEn: ahora + m.restanteMs, end: undefined,
     };
     case "result": {
@@ -154,8 +173,11 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
       // Falla encadenada: la zona sigue dañada, así que la aguja vuelve a cero y el aviso lo dice.
       const otras = { ...p.vistas };
       delete otras[m.zona];
+      const racha = m.racha ?? p.racha, tipo: EcoTipo | null = m.bono ?? (m.veredicto !== "correcto" ? "fallo" : racha > p.racha ? "acierto" : null);
       return {
-        ...p, despachados: m.despachados, pod: m.pod, esperaHasta: ahora + m.waitMs,
+        ...p, despachados: m.despachados, pod: m.pod, esperaHasta: ahora + m.waitMs, racha, limpios: m.limpios ?? p.limpios,
+        // «Sin pista» se recupera al acertar; el enfriamiento largo se gasta en el siguiente fallo (la quemada no lo gasta).
+        ...(((m.veredicto === "correcto" && p.sabotaje?.tipo === "sin-pista") || (m.veredicto !== "correcto" && m.veredicto !== "se quema" && m.veredicto !== "corto" && p.sabotaje?.tipo === "enfriamiento")) && { sabotaje: undefined }), ...(tipo && { eco: { n: (p.eco?.n ?? 0) + 1, tipo } }),
         quemadas: p.quemadas + Number(!m.escudo && (m.veredicto === "se quema" || m.veredicto === "corto")),
         vistas: m.hayMas ? otras : { ...p.vistas, [m.zona]: vista },
         tarjeta: vista.quemado || vista.cortocircuito ? { zona: m.zona, hasta: ahora + Math.max(BURN_CARD_MS, m.waitMs) } : p.tarjeta,
@@ -164,7 +186,12 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     }
     // El contador sube solo aquí: cuando el árbitro confirma el despacho.
     case "despachado": return {
-      ...p, despachados: m.despachados, pod: m.pod, despachando: false, vistas: {}, tarjeta: null, aviso: "¡Pod despachado!",
+      ...p, despachados: m.despachados, pod: m.pod, despachando: false, vistas: {}, tarjeta: null, limpios: m.limpios ?? p.limpios,
+      aviso: m.enviado ? `¡Pod despachado! ${avisoEnviado(m.enviado)}` : "¡Pod despachado!",
+      ...(m.enviado && { enviado: { tipo: m.enviado, hasta: ahora + ENVIADO_MS, n: (p.enviado?.n ?? 0) + 1 }, eco: { n: (p.eco?.n ?? 0) + 1, tipo: "ataque" as const } }),
+    };
+    case "sabotaje": return {
+      ...p, sabotaje: { tipo: m.tipo, hasta: ahora + m.ms, n: (p.sabotaje?.n ?? 0) + 1 }, aviso: avisoRecibido(m.tipo), eco: { n: (p.eco?.n ?? 0) + 1, tipo: "sabotaje" },
     };
     case "reject": return { ...p, despachando: false, aviso: textoRechazo(m.reason, m.waitMs), esperaHasta: ahora + m.waitMs };
     // Medir no toca avisos ni bloqueos: solo guarda la lectura.

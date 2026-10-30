@@ -199,3 +199,29 @@ describe("falla encadenada (Oleadas)", () => {
     expect(eventosDe(antes, reducir(antes, result(segunda, true), 5))).toEqual(["correcto"]);
   });
 });
+
+describe("racha y bono del árbitro (indicador y aviso)", () => {
+  const pod: PodView = { numero: 1, zonas: [{ zona: 0, nombre: "radar", circuito: "led", volts: 9, opciones: ["a", "b"], reparada: false }] };
+  const res = (veredicto: "correcto" | "poco", racha: number, bono?: "listo" | "usado" | "perdido"): ServerMsg => ({ t: "result", seq: 1, t0: 0, zona: 0, veredicto, waitMs: 0, despachados: 0, pod, racha, ...(bono && { bono }) });
+
+  it("el start repone la racha (reconexión) y sin campo queda en 0", () => {
+    const st = (racha?: number) => ({ t: "start", despachados: 0, total: 5, pod, rival: null, restanteMs: 1, nivel: 1, demo: false, ...(racha !== undefined && { racha }) }) as ServerMsg;
+    expect(reducir(inicial(), st(2), 0).racha).toBe(2);
+    expect(reducir({ ...inicial(), racha: 3 }, st(), 0).racha).toBe(0);
+  });
+  it("cada aviso del árbitro suma un eco: acierto con racha, bono listo, fallo, bono usado y perdido", () => {
+    let p = reducir(inicial(), res("correcto", 1), 0);
+    expect([p.racha, p.eco]).toEqual([1, { n: 1, tipo: "acierto" }]);
+    p = reducir(p, res("correcto", 3, "listo"), 0);
+    expect([p.racha, p.eco]).toEqual([3, { n: 2, tipo: "listo" }]);
+    p = reducir(p, res("poco", 0, "usado"), 0);
+    expect([p.racha, p.eco]).toEqual([0, { n: 3, tipo: "usado" }]);
+    p = reducir(p, res("poco", 0), 0);
+    expect(p.eco).toEqual({ n: 4, tipo: "fallo" });
+    expect(reducir(p, res("poco", 0, "perdido"), 0).eco?.tipo).toBe("perdido");
+  });
+  it("una zona acertada sin subir la racha (falla encadenada) no avisa", () => {
+    const p = reducir(inicial(), res("correcto", 0), 0);
+    expect(p.eco).toBeUndefined();
+  });
+});

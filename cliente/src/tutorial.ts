@@ -10,7 +10,7 @@ import type { Falta } from "./pantalla";
 import type { Aguja } from "./vista";
 
 /** Qué elemento del Taller se resalta en cada paso. */
-export type Objetivo = "gaveta" | "tension" | "pieza" | "carga" | "contador" | "pestanas" | "multimetro" | "check";
+export type Objetivo = "gaveta" | "tension" | "pieza" | "carga" | "contador" | "pestanas" | "multimetro" | "check" | "cadena";
 
 /** Lo que el Taller sabe de la zona del tutorial (la única del pod). */
 export interface EstadoTut {
@@ -28,6 +28,8 @@ export interface EstadoTut {
   /** Veredictos de Probar y lecturas del multímetro recibidos en total; `hecho` los ve RELATIVOS al paso (ver `avanzar`). */
   pruebas: number;
   medidas: number;
+  /** Cadena: ya midió una pieza que NO pasa (la muerta quedó marcada en rojo). */
+  localizada?: boolean;
 }
 
 /** Acción que el paso deja hacer: arrastrar una pieza al hueco (soltar = probar) o CHECK (probar la placa / despachar); lo demás se frena con un aviso. */
@@ -95,23 +97,15 @@ export const MECANICAS: Mecanica[] = [
     CHECK,
     LISTO("Un fusible debe aguantar el consumo normal y cortar la falla."),
   ] },
-  { id: "invertido", nombre: "LED girado", ensena: "El LED solo deja pasar la corriente en un sentido.", nivel: 2, semilla: 52, pod: 3, circuito: "invertido", pasos: [
-    { titulo: "Un solo sentido", objetivo: "gaveta", pide: arrastra("inversa"), hecho: (e) => e.pruebas > 0, texto: "El LED pasa corriente en un sentido. Arrastra «Dejar el LED»." },
-    MODO_CONT("Toca Continuidad: dice si la pieza deja pasar la corriente."),
-    { titulo: "Mide", objetivo: "carga", hecho: MIDE_CONT, texto: "Toca el LED, a la derecha: «No pasa». Su polaridad lo bloquea." },
-    { titulo: "Girar el LED", objetivo: "gaveta", pide: arrastra("directa"), hecho: SIN_FALLA, texto: "Un LED solo conduce de + a −. Arrastra «Girar el LED» para corregirlo." },
+  { id: "cadena", nombre: "Pieza muerta", ensena: "Con Continuidad se halla la pieza abierta de una cadena y se cambia por un repuesto.", nivel: 2, semilla: 224, pod: 3, circuito: "cadena", pasos: [
+    MODO_CONT("Una pieza está muerta por dentro. Toca Continuidad."),
+    { titulo: "Mide una", objetivo: "cadena", hecho: MIDE_CONT, texto: "Toca una pieza: «Pasa» = sana. Medir no gasta intentos." },
+    { titulo: "Halla la muerta", objetivo: "cadena", hecho: (e) => !!e.localizada, texto: "Sigue midiendo: la que dice «No pasa» queda en rojo con «?»." },
+    { titulo: "Cambia la pieza", objetivo: "cadena", pide: arrastra("r470"), hecho: SIN_FALLA, texto: "Conserva su valor impreso: 470 Ω. Arrastra el mismo repuesto al hueco." },
     CHECK,
-    LISTO("Si un LED no enciende, revisa primero hacia dónde mira."),
+    LISTO("Mide cada tramo con Continuidad y cambia solo la pieza que no pasa."),
   ] },
-  { id: "abierto", nombre: "Cable roto", ensena: "Un corte en el cable se encuentra con Continuidad.", nivel: 2, semilla: 2, pod: 3, circuito: "abierto", pasos: [
-    { titulo: "Mira el cable", objetivo: "gaveta", pide: arrastra("dejar"), hecho: elige("dejar"), texto: "Arrastra «Dejar igual»: así medimos el circuito con el corte." },
-    MODO_CONT("Toca Continuidad: avisa si la corriente puede cruzar la pieza."),
-    { titulo: "Mide", objetivo: "pieza", hecho: MIDE_CONT, texto: "Toca la pieza del centro: «No pasa» = el cable está cortado." },
-    { titulo: "Empalmar", objetivo: "gaveta", pide: arrastra("empalmar"), hecho: SIN_FALLA, texto: "El cable está cortado. Arrastra «Empalmar» para cerrar el camino." },
-    CHECK,
-    LISTO("Un circuito abierto no deja pasar corriente: mídelo con Continuidad."),
-  ] },
-  { id: "placa", nombre: "Placa", ensena: "Luces en paralelo: si una falla, la otra sigue.", nivel: 2, semilla: 47, pod: 3, circuito: "luces", pasos: [
+  { id: "placa", nombre: "Placa", ensena: "Luces en paralelo: si una falla, la otra sigue.", nivel: 2, semilla: 28, pod: 3, circuito: "luces", pasos: [
     { titulo: "Piezas", objetivo: "gaveta", hecho: PIEZAS_PUESTAS, texto: "Esta zona usa una placa: arrastra cada pieza a su lugar." },
     { titulo: "Cables", objetivo: "pieza", esquema: true, hecho: CABLEADA, texto: "Une arriba de cada luz al carril +, abajo al carril −." },
     MODO_TENSION("Con la placa lista, toca Tensión: el multímetro mide antes de probar."),
@@ -127,7 +121,7 @@ export const MECANICAS: Mecanica[] = [
     { ...CHECK, objetivo: "check", texto: "En paralelo al motor haría un corto. CHECK despacha." },
     LISTO("El interruptor va en serie con lo que enciende o apaga."),
   ] },
-  { id: "combinar", nombre: "Combinar", ensena: "Dos resistencias en serie suman; en paralelo se reparten.", nivel: 2, semilla: 264, pod: 4, circuito: "combinar", pasos: [
+  { id: "combinar", nombre: "Combinar", ensena: "Dos resistencias en serie suman; en paralelo se reparten.", nivel: 2, semilla: 136, pod: 3, circuito: "combinar", pasos: [
     { titulo: "Una sola", objetivo: "gaveta", pide: arrastra("una"), hecho: QUEMADO, texto: "Dos resistencias de 220 Ω. Arrastra «Una sola»: se quema." },
     MODO_CONT("Toca Continuidad: además de pasar o no, lee los ohmios de la pieza."),
     { titulo: "Mide", objetivo: "pieza", hecho: MIDE_CONT, texto: "Toca la pieza: lee 220 Ω. Falta frenar más." },
@@ -136,7 +130,7 @@ export const MECANICAS: Mecanica[] = [
     CHECK,
     LISTO("Serie suma ohmios; paralelo los reparte y baja el total."),
   ] },
-  { id: "divisor", nombre: "Divisor", ensena: "Dos resistencias en fila se reparten la tensión.", nivel: 2, semilla: 240, pod: 3, circuito: "divisor", pasos: [
+  { id: "divisor", nombre: "Divisor", ensena: "Dos resistencias en fila se reparten la tensión.", nivel: 2, semilla: 487, pod: 3, circuito: "divisor", pasos: [
     { titulo: "R2 = 470 Ω", objetivo: "gaveta", pide: arrastra("470"), hecho: elige("470"), texto: "R1 (220 Ω) viene impresa. Arrastra R2 = 470 Ω al hueco." },
     MODO_TENSION("Toca Tensión para medir el nodo del medio, entre R1 y R2."),
     { titulo: "Mide R2", objetivo: "pieza", hecho: MIDE_TENSION, texto: "Toca R2: la aguja marca la tensión que queda en R2." },
@@ -144,7 +138,7 @@ export const MECANICAS: Mecanica[] = [
     CHECK,
     LISTO("El divisor reparte la tensión según las dos resistencias."),
   ] },
-  { id: "protegido", nombre: "Protegido", ensena: "Diodo, LED y resistencia en serie se reparten la batería.", nivel: 2, semilla: 340, pod: 3, circuito: "protegido", pasos: [
+  { id: "protegido", nombre: "Protegido", ensena: "Diodo, LED y resistencia en serie se reparten la batería.", nivel: 2, semilla: 45, pod: 3, circuito: "protegido", pasos: [
     { titulo: "Poca R", objetivo: "gaveta", pide: arrastra("100"), hecho: QUEMADO, texto: "Arrastra la más pequeña, 100 Ω: pasa de más y se quema." },
     MODO_TENSION("Toca Tensión: la batería se reparte entre diodo, LED y R."),
     { titulo: "Mide", objetivo: "pieza", hecho: MIDE_TENSION, texto: "Toca una pieza: cada una se queda con una parte de la tensión." },

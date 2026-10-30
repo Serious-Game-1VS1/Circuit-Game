@@ -24,9 +24,10 @@ export const PERFILES_BOT: Record<DificultadBot, { lectura: number; min: number;
  * (placa, divisor, combinar… tardan más en leerse y se equivocan más) para que no sea imbatible ni siquiera en Difícil.
  */
 export const COMPLEJIDAD: Record<Circuito, number> = {
-  led: 1, cabina: 1, invertido: 1, abierto: 1, fusible: 1.2, combinar: 1.25, divisor: 1.3, protegido: 1.3, interruptor: 1.4, luces: 1.5,
+  led: 1, cabina: 1, invertido: 1, abierto: 1, fusible: 1.2, combinar: 1.25, divisor: 1.3, protegido: 1.3, interruptor: 1.4, luces: 1.5, cadena: 1.4,
 };
-export const veredicto = (z: ZonaView, p: string) => evaluar({ circuito: z.circuito, volts: z.volts, r1: Number(/R1 (\d+)/.exec(z.fija ?? "")?.[1]) || undefined }, p);
+/** `muerta`: en la cadena, el hueco (1..n) que el bot localizó midiendo continuidad; sin él no se puede evaluar. */
+export const veredicto = (z: ZonaView, p: string, muerta?: number) => evaluar({ circuito: z.circuito, volts: z.volts, r1: Number(/R1 (\d+)/.exec(z.fija ?? "")?.[1]) || undefined, cadena: z.cadena, muerta }, p);
 
 const mulberry32 = (a: number) => () => {
   a = (a + 0x6d2b79f5) | 0;
@@ -57,6 +58,8 @@ export class ContraBotTransport implements Transport {
   private factor = 1; // escala de ritmo del pod actual
   private complejo = 1; // complejidad media de las zonas del pod actual
   private probadas = new Map<number, Set<string>>(); // piezas ya probadas por zona en este pod
+  private muertas = new Map<number, number>(); // cadena: hueco que el bot localizó con continuidad, por zona
+  private medidos = new Map<number, number>(); // cadena: cuántos huecos lleva medidos, por zona
   private proximo = Infinity; // cuándo actúa el bot; Infinity = esperando algo
   private fin = false;
 
@@ -102,14 +105,19 @@ export class ContraBotTransport implements Transport {
   }
 
   private nuevoPod(pod: PodView): void {
-    this.factor = 0.8 + this.rnd() * 0.45; this.probadas.clear();
+    this.factor = 0.8 + this.rnd() * 0.45; this.probadas.clear(); this.muertas.clear(); this.medidos.clear();
     this.complejo = pod.zonas.reduce((a, z) => a + COMPLEJIDAD[z.circuito], 0) / Math.max(1, pod.zonas.length);
   }
 
   private delBot(m: ServerMsg): void {
     if (m.t === "start" || m.t === "despachado") { this.nuevoPod(m.pod); this.pod = m.pod; this.proximo = this.espera(0, this.perfil.lectura * this.complejo); }
     else if (m.t === "result") { if (m.hayMas) this.probadas.delete(m.zona); this.pod = m.pod; this.proximo = this.espera(m.waitMs); }
+    else if (m.t === "medida") { // cadena: «no pasa» = pieza muerta; si las demás pasan, es la última sin medir
+      if (m.pasa === false) this.muertas.set(m.zona, Number(m.punto.slice(1)));
+      this.proximo = this.now() + (1500 + this.rnd() * 1500) * this.factor; // medir es rápido: ~2-3 s por hueco
+    }
     else if (m.t === "reject") this.proximo = this.espera(m.waitMs);
+    else if (m.t === "sabotaje") { if (m.tipo === "humo") this.proximo = Math.max(this.proximo, this.now() + m.ms / 2); } // el humo lo frena la mitad de su duración; los otros dos los aplica el árbitro
     else if (m.t === "end") { this.fin = true; this.proximo = Infinity; }
   }
 
@@ -117,10 +125,19 @@ export class ContraBotTransport implements Transport {
     const z = this.pod?.zonas.find((x) => !x.reparada);
     const base = { seq: ++this.seq, t0: this.now() };
     if (!z) return this.arbiter.handle("bot", { t: "despachar", ...base });
-    const v = new Map(z.opciones.map((p) => [p, veredicto(z, p)]));
-    const mal = z.opciones.filter((p) => v.get(p) !== "correcto");
+    let jugadas = z.opciones;
+    if (z.circuito === "cadena") { // diagnosticar antes de reparar: mide cada hueco con continuidad (sin penalizar), como un jugador
+      const n = z.cadena!.length, m = this.muertas.get(z.zona), hechos = this.medidos.get(z.zona) ?? 0;
+      if (m === undefined && hechos < n - 1) { this.medidos.set(z.zona, hechos + 1); return this.arbiter.handle("bot", { t: "medir", ...base, zone: z.zona, pieza: "ninguna", modo: "continuidad", punto: `t${hechos + 1}` }); }
+      const k = m ?? n; // las n-1 primeras pasan: la muerta es la última
+      this.muertas.set(z.zona, k);
+      jugadas = z.opciones.map((o) => `${k}:${o}`);
+    }
+    const muerta = this.muertas.get(z.zona);
+    const v = new Map(jugadas.map((p) => [p, veredicto(z, p, muerta)]));
+    const mal = jugadas.filter((p) => v.get(p) !== "correcto");
     const quema = mal.filter((p) => v.get(p) === "se quema" || v.get(p) === "corto");
-    const bien = z.opciones.filter((p) => v.get(p) === "correcto");
+    const bien = jugadas.filter((p) => v.get(p) === "correcto");
     const vistas = this.probadas.get(z.zona) ?? new Set<string>();
     const nuevas = (l: string[]) => (l.filter((p) => !vistas.has(p)).length ? l.filter((p) => !vistas.has(p)) : l);
     const suave = mal.filter((p) => !quema.includes(p));

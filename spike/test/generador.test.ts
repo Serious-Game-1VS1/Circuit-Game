@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encadena, generar, generarOleada, mulberry32, oleadaDe, presupuesto, validarPartida, validarPodOleada, validarZona, type Pod } from "../src/engine/generador.js";
-import { evaluar } from "../src/engine/pods.js";
+import { evaluar, jugadas } from "../src/engine/pods.js";
 import type { Nivel } from "../src/protocol.js";
 
 const NIVELES: Nivel[] = [1, 2];
@@ -29,7 +29,7 @@ describe("generador de pods (RF-06)", () => {
     expect(pods.map((p) => p.numero)).toEqual([1, 2, 3, 4, 5]);
     expect(pods.slice(0, 3).every((p) => p.zonas.length === 1)).toBe(true);
     for (const z of pods.flatMap((p) => p.zonas)) {
-      expect(z.opciones.filter((o) => evaluar(z, o) === "correcto")).toEqual([z.solucion]);
+      expect(jugadas(z).filter((o) => evaluar(z, o) === "correcto")).toEqual([z.solucion]);
     }
   });
 
@@ -152,10 +152,10 @@ describe("generador en modo demo de cableado (Cabina y Turbina)", () => {
 
 describe("falla encadenada (solo Oleadas)", () => {
   const h = (x: string) => { let a = 5381; for (const c of x) a = (Math.imul(a, 33) ^ c.charCodeAt(0)) >>> 0; return a; };
-  // Huellas (nivel 2 actualizado al añadir LED invertido, circuito abierto, combinar, divisor y protegido); tomadas antes de añadir la encadenada: el duelo, la práctica normal y las zonas de Oleadas no deben cambiar.
+  // Huellas (nivel 2 actualizado al añadir LED invertido, circuito abierto, combinar, divisor y protegido y, en el bloque 5, al cambiar invertido/abierto por la cadena); tomadas antes de añadir la encadenada: el duelo, la práctica normal y las zonas de Oleadas no deben cambiar.
   const HUELLAS: [Nivel, number, number, number][] = [
     [1, 1, 3303168567, 644005380], [1, 7, 350318067, 1267894063], [1, 42, 210100651, 2322169135], [1, 20261019, 1966667399, 4137727553],
-    [2, 1, 2598769728, 2970486005], [2, 7, 2107403249, 3127677438], [2, 42, 2247608818, 821468661], [2, 20261019, 4205286578, 727355763],
+    [2, 1, 1486293319, 1178405013], [2, 7, 2094413713, 991155616], [2, 42, 821218889, 2076351937], [2, 20261019, 570152580, 552540187],
   ];
   it.each(HUELLAS)("nivel %i, semilla %i: mismos pods que antes (partida y zonas de las 18 primeras oleadas)", (nivel, s, partida, oleada) => {
     expect(h(JSON.stringify(generar(s, nivel)))).toBe(partida);

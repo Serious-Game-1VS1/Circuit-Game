@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PIEZAS } from "../../spike/src/engine/pods";
 import { BATTERY_VOLTS } from "../../spike/src/engine/circuit";
 import type { Circuito, PodView } from "../../spike/src/protocol";
-import { cola, etiquetaCarga, montajeCarga, montajePieza, estadoZona, pestanasArte, podDe, sprite, spriteBateria, spriteCarga, spritePieza, spriteTarjeta, ZONAS } from "../src/sprites";
+import { cola, etiquetaCarga, huecosCadena, spriteCadena, montajeCarga, montajePieza, estadoZona, pestanasArte, podDe, sprite, spriteBateria, spriteCarga, spritePieza, spriteTarjeta, ZONAS } from "../src/sprites";
 import { vistaDeVeredicto } from "../src/vista";
 
 const CIRCUITOS: Circuito[] = ["led", "cabina", "luces", "interruptor", "fusible"];
@@ -106,5 +106,16 @@ describe("sprites del Taller", () => {
     expect(spriteCarga("led", 4)).toBe("led_rojo_quemado");
     expect(spriteCarga("luces", 4)).toBe("foco_fundido");
     expect(spriteBateria(3.7)).toBe("icono_bateria");
+  });
+
+  it("cadena: piezas con sprite del kit (el cable se dibuja) y huecos sin solaparse dentro de los 360 px", () => {
+    expect(["cable", "led", "ledInv", "r220", "r1000"].map((p) => spriteCadena(p, 2))).toEqual([null, "led_rojo_encendido", "led_rojo_encendido", "resistencia_220", "resistencia_1k"]);
+    expect(spriteCadena("led", 0)).toBe("led_rojo_apagado");
+    expect(spriteCarga("cadena", 4)).toBe("led_rojo_quemado");
+    for (const n of [3, 4]) {
+      const hs = huecosCadena(n);
+      expect(hs).toHaveLength(n);
+      hs.forEach((h, i) => { expect(h.x - h.w / 2).toBeGreaterThan(70); expect(h.x + h.w / 2).toBeLessThan(335); if (i) expect(h.x - hs[i - 1]!.x).toBeGreaterThanOrEqual(h.w); });
+    }
   });
 });

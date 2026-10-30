@@ -36,7 +36,7 @@ export const textoPod = (numero: number, total: number) => (total ? `Pod ${Math.
 export const casillas = (n: number, total: number) => Array.from({ length: total }, (_, i) => i < n);
 
 /** Objetivo del pod actual con sus zonas pendientes (sin dar la solución). */
-export const textoObjetivo = (p: Pantalla) => (faltan(p.pod) ? `Objetivo: repara ${faltan(p.pod)}` : "Objetivo: despacha el pod");
+export const textoObjetivo = (p: Pantalla, neutro = false) => (faltan(p.pod) ? (neutro ? "Objetivo: repara el pod" : `Objetivo: repara ${faltan(p.pod)}`) : "Objetivo: despacha el pod");
 
 /** Globo del Taller: reto de la zona abierta y zonas reparadas del pod ("Zonas reparadas: n/m"). */
 export const textoGlobo = (z: ZonaView, pod: PodView) => `${NOMBRE_ZONA[z.nombre]}: ${RETO[z.circuito]}\n${reparadas(pod)}`;

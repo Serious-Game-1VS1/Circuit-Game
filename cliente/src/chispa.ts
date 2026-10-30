@@ -6,6 +6,7 @@
  */
 import * as Phaser from "phaser";
 import { CONSEJOS } from "./vista";
+import type { EcoTipo } from "./pantalla";
 import { letras, marco } from "./arte";
 
 export type Expresion = "normal" | "feliz" | "preocupada" | "senalando";
@@ -45,6 +46,22 @@ export function expresionGuia(texto: string, fin: boolean, e?: { quemado: boolea
   if (e?.quemado) return "preocupada";
   if (e?.reparada) return "feliz";
   return /^(Toca|Pulsa|Arrastra|Elige|Une)\b/.test(texto) ? "senalando" : "normal";
+}
+
+/**
+ * Lo que Chispa dice en partida (bot, 1v1, Oleadas): solo reacciona a lo que decidió el árbitro; nunca da pistas del contenido del pod.
+ * `espera` = segundos de enfriamiento del fallo.
+ */
+export function reaccion(tipo: EcoTipo, racha: number, espera = 0): Mensaje {
+  switch (tipo) {
+    case "acierto": return { texto: `¡Racha ${racha}/3!`, expr: "feliz" };
+    case "listo": return { texto: "¡Bono listo! Tu próximo fallo espera la mitad.", expr: "feliz" };
+    case "usado": return { texto: `¡Bono usado! Esperas solo ${espera} s.`, expr: "normal" };
+    case "perdido": return { texto: "Se perdió el bono. ¡Sigue!", expr: "preocupada" };
+    case "sabotaje": return { texto: "¡Te sabotearon! Tranquilo, se pasa.", expr: "preocupada" };
+    case "ataque": return { texto: "¡Sabotaje enviado! Buen ritmo.", expr: "feliz" };
+    case "fallo": return { texto: espera ? `¡Ánimo! Enfriando ${espera} s.` : "¡Ánimo, tú puedes!", expr: "preocupada" };
+  }
 }
 
 export interface Mensaje { texto: string; expr: Expresion }

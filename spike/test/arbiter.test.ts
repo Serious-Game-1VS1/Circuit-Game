@@ -1,20 +1,20 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { Arbiter, MATCH_LIMIT_MS } from "../src/arbiter/arbiter.js";
 import { encadena, generar, generarOleada } from "../src/engine/generador.js";
-import { evaluar } from "../src/engine/pods.js";
+import { evaluar, jugadas } from "../src/engine/pods.js";
 import type { PodView, ServerMsg } from "../src/protocol.js";
 
 /** Semilla cuyo primer pod (nivel 1) ofrece una pieza correcta, una que se queda corta y una que quema. */
 const SEMILLA = (() => {
   for (let s = 0; ; s++) {
     const z = generar(s, 1)[0]!.zonas[0]!;
-    const v = z.opciones.map((p) => evaluar(z, p));
+    const v = jugadas(z).map((p) => evaluar(z, p));
     if (v.includes("poco") && v.includes("se quema")) return s;
   }
 })();
 const Z1 = generar(SEMILLA, 1)[0]!.zonas[0]!;
 const Z = Z1.zona;
-const pieza = (v: string) => Z1.opciones.find((p) => evaluar(Z1, p) === v)!;
+const pieza = (v: string) => jugadas(Z1).find((p) => evaluar(Z1, p) === v)!;
 const [OK, POCO, QUEMA] = [pieza("correcto"), pieza("poco"), pieza("se quema")];
 
 /**
@@ -49,7 +49,9 @@ const podOf = (peer: string) => sent(peer).flatMap((m) => (m.t === "start" || m.
 const despachar = (peer: string, seq = 1) => arb.handle(peer, { t: "despachar", seq, t0: 0 });
 /** Repara cada zona como un estudiante perfecto: con lo que ve y el motor, no con la solución. */
 const repairPod = (peer: string) => {
-  for (const z of podOf(peer).zonas) test(peer, z.zona, z.opciones.find((p) => evaluar(z, p) === "correcto")!);
+  const pod = podOf(peer);
+  // La cadena no se resuelve con lo visible (hay que medir para hallar la pieza muerta): aquí se usa la zona del árbitro.
+  for (const z of pod.zonas) { const zs = arb.pods[pod.numero - 1]!.zonas.find((x) => x.zona === z.zona)!; test(peer, z.zona, jugadas(zs).find((p) => evaluar(zs, p) === "correcto")!); }
 };
 const solvePod = (peer: string) => { repairPod(peer); despachar(peer); };
 
@@ -126,7 +128,7 @@ describe("reparar pods con penalizaciones (SCRUM-129, SCRUM-90)", () => {
     // Cada zona trae exactamente los campos públicos.
     const zonas = msgs.flatMap((m) => (m.t === "start" || m.t === "result" ? m.pod.zonas : []));
     expect(zonas.length).toBeGreaterThan(2);
-    for (const z of zonas) expect(Object.keys(z).sort()).toEqual(["circuito", "nombre", "opciones", "reparada", "volts", "zona"]);
+    for (const z of zonas) expect(Object.keys(z).sort()).toEqual(["circuito", ...(z.circuito === "cadena" ? ["cadena"] : []), "nombre", "opciones", "reparada", "volts", "zona"]);
   });
 
   it("ambos jugadores reciben la misma secuencia de pods", () => {
@@ -206,11 +208,34 @@ describe("reparar pods con penalizaciones (SCRUM-129, SCRUM-90)", () => {
     expect(varias).toBeGreaterThanOrEqual(0);
     for (let i = 0; i < varias; i++) solvePod("p1");
     const z = podOf("p1").zonas[0]!;
-    test("p1", z.zona, z.opciones.find((p) => evaluar(z, p) === "correcto")!);
+    test("p1", z.zona, jugadas(z).find((p) => evaluar(z, p) === "correcto")!);
     despachar("p1", 5);
     expect(last("p1", "reject")).toMatchObject({ seq: 5, reason: "faltan zonas por reparar" });
     expect(arb.outcome).toBeUndefined();
     expect(last("p2", "rival")).toMatchObject({ despachados: varias });
+  });
+});
+
+describe("racha de despachos y bono (autoridad del árbitro)", () => {
+  beforeEach(play);
+  const racha = (peer: string) => (last(peer, "result") as { racha?: number; bono?: string }) ;
+
+  it("mismas reglas para ambos: 3 zonas completas dan bono «listo»; el siguiente fallo lo usa y reinicia", () => {
+    for (const peer of ["p1", "p2"]) {
+      let n = 0;
+      while (n < 3) { for (const z of podOf(peer).zonas) { if (n >= 3) break; test(peer, z.zona, jugadas(z).find((p) => evaluar(z, p) === "correcto")!); n++; } if (n < 3) despachar(peer); }
+      expect(racha(peer)).toMatchObject({ racha: 3, bono: "listo" });
+      expect(JSON.stringify(sent(peer))).not.toMatch(/solucion/);
+    }
+  });
+  it("el fallo consume el bono: espera reducida y racha 0", () => {
+    let n = 0;
+    while (n < 3) { for (const z of podOf("p1").zonas) { if (n >= 3) break; test("p1", z.zona, jugadas(z).find((p) => evaluar(z, p) === "correcto")!); n++; } if (n < 3) despachar("p1"); }
+    despachar("p1");
+    const z = podOf("p1").zonas[0]!;
+    const mala = jugadas(z).find((p) => evaluar(z, p) === "poco")!;
+    test("p1", z.zona, mala);
+    expect(racha("p1")).toMatchObject({ racha: 0, bono: "usado", waitMs: 1000 });
   });
 });
 
@@ -459,7 +484,7 @@ describe("modo práctica (SCRUM-151)", () => {
       arb.tick();
       expect(arb.phase).toBe("jugando");
       const z = podOf("p1").zonas[0]!;
-      test("p1", z.zona, z.opciones.find((p) => evaluar(z, p) === "se quema") ?? z.opciones.find((p) => evaluar(z, p) !== "correcto")!);
+      test("p1", z.zona, jugadas(z).find((p) => evaluar(z, p) === "se quema") ?? jugadas(z).find((p) => evaluar(z, p) !== "correcto")!);
       for (let i = 0; i < 5; i++) { t += 10_000; solvePod("p1"); }
       expect(arb.phase).toBe("fin");
       expect(last("p1", "end")).toMatchObject({ phase: "fin", reason: "5 pods despachados" });
@@ -489,14 +514,14 @@ describe("práctica: mejoras y modo Oleadas", () => {
   /** Semilla cuyos pods 1 a 3 de Oleadas (nivel 1, una zona) ofrecen una pieza que quema y otra correcta. */
   const SEM_OLEADAS = (() => {
     for (let s = 0; ; s++) {
-      if ([1, 2, 3].every((n) => { const z = generarOleada(s, 1, n).zonas[0]!; const v = z.opciones.map((p) => evaluar(z, p)); return v.includes("se quema") && v.includes("poco"); })) return s;
+      if ([1, 2, 3].every((n) => { const z = generarOleada(s, 1, n).zonas[0]!; const v = jugadas(z).map((p) => evaluar(z, p)); return v.includes("se quema") && v.includes("poco"); })) return s;
     }
   })();
   const nuevo = (oleadas: boolean, semilla = SEM_OLEADAS) => {
     arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla, practica: true, oleadas });
     arb.handle("p1", { t: "hello", alias: "ana" });
   };
-  const con = (z: { opciones: string[] } & Parameters<typeof evaluar>[0], v: string) => z.opciones.find((p) => evaluar(z, p) === v)!;
+  const con = (z: { opciones: string[] } & Parameters<typeof evaluar>[0], v: string) => jugadas(z).find((p) => evaluar(z, p) === v)!;
 
   it("Oleadas: start sin tope de pods, el pod 4 trae 2 zonas y pasar de 5 no termina la partida", () => {
     nuevo(true);
@@ -562,7 +587,7 @@ describe("Oleadas: falla encadenada", () => {
     arb.handle("p1", { t: "hello", alias: "ana" });
     for (let i = 0; i < 6; i++) solvePod("p1"); // las oleadas 1 y 2 no traen segunda falla
   };
-  const reparar = (z: typeof C) => test("p1", z.zona, z.opciones.find((p) => evaluar(z, p) === "correcto")!, 9);
+  const reparar = (z: typeof C) => test("p1", z.zona, jugadas(z).find((p) => evaluar(z, p) === "correcto")!, 9);
   const reparadas = () => podOf("p1").zonas.filter((z) => z.reparada).length;
 
   it("acertar la primera no repara la zona: sale la segunda (otra batería y opciones) y el pod no se despacha", () => {
@@ -583,10 +608,10 @@ describe("Oleadas: falla encadenada", () => {
     abrir();
     for (const z of POD.zonas) if (z.zona !== C.zona) reparar(z);
     test("p1", C.zona, B.solucion, 10);
-    const mala = C.opciones.find((p) => evaluar(C, p) === "poco" || evaluar(C, p) === "demasiado");
+    const mala = jugadas(C).find((p) => evaluar(C, p) === "poco" || evaluar(C, p) === "demasiado");
     if (mala) {
       test("p1", C.zona, mala, 11);
-      expect(last("p1", "result")).toMatchObject({ waitMs: 2000 }); // mismo primer enfriamiento de siempre
+      expect(last("p1", "result")).toMatchObject({ waitMs: 1000 }); // 3 zonas reparadas arman el bono: la mitad de 2 s
       t += 2000;
     }
     arb.handle("p1", { t: "medir", seq: 12, t0: 0, zone: C.zona, pieza: C.solucion, modo: "tension", punto: "pieza" });
@@ -604,7 +629,7 @@ describe("Oleadas: falla encadenada", () => {
     for (const z of POD.zonas) if (z.zona !== C.zona) reparar(z);
     test("p1", C.zona, B.solucion, 10);
     arb.ajustar({ enfriamiento: 0.5, escudo: true });
-    const quema = C.opciones.find((p) => evaluar(C, p) === "se quema");
+    const quema = jugadas(C).find((p) => evaluar(C, p) === "se quema");
     if (quema) {
       test("p1", C.zona, quema, 11);
       expect(last("p1", "result")).toMatchObject({ escudo: true, waitMs: 1000 });

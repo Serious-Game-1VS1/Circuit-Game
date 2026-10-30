@@ -46,6 +46,7 @@ export const CONCEPTO: Record<Circuito, string> = {
   combinar: "La serie suma resistencias, el paralelo las reparte",
   divisor: "El divisor reparte la tensión entre dos resistencias",
   protegido: "Cada componente en serie se come tensión",
+  cadena: "Localizar la pieza abierta con continuidad",
 };
 
 /** Sprite de carrera del pod N (1-5). supuesto: el pod N de la partida usa el chasis N del kit. */

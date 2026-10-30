@@ -20,17 +20,18 @@ export const podDe = (numero: number) => PODS[(((numero - 1) % PODS.length) + PO
 
 export type EstadoZona = "sano" | "averiado" | "quemado" | "reparado";
 /** Zona sin avería = sana; dañada = averiada (quemada si el último veredicto la quemó); reparada al acertar. */
-export function estadoZona(pod: PodView, nombre: ZonaNombre, vistas: Record<number, Vista>): EstadoZona {
+export function estadoZona(pod: PodView, nombre: ZonaNombre, vistas: Record<number, Vista>, neutro = false): EstadoZona {
   const z = pod.zonas.find((x) => x.nombre === nombre);
   if (!z) return "sano";
   if (z.reparada) return "reparado";
-  return vistas[z.zona]?.quemado ? "quemado" : "averiado";
+  return vistas[z.zona]?.quemado ? "quemado" : neutro ? "sano" : "averiado"; // neutro («sin pista»): sin humo en la zona dañada
 }
 
 /** Las 4 pestañas en orden fijo; solo las zonas dañadas se pueden abrir (`zona` = null en las sanas). */
-export const pestanasArte = (pod: PodView, actual: number) => ZONAS.map((nombre) => {
+export const pestanasArte = (pod: PodView, actual: number, neutro = false) => ZONAS.map((nombre) => {
   const z = pod.zonas.find((x) => x.nombre === nombre);
-  const estado = !z ? "inactiva" : z.zona === actual ? "activa" : z.reparada ? "reparada" : "alerta";
+  // neutro («sin pista»): todas se ven iguales (la abierta, activa), sin señal de cuál está dañada o ya reparada
+  const estado = neutro ? (z?.zona === actual ? "activa" : "inactiva") : !z ? "inactiva" : z.zona === actual ? "activa" : z.reparada ? "reparada" : "alerta";
   return { nombre, zona: z?.zona ?? null, sprite: `pestana_${nombre}_${estado}` };
 });
 
@@ -47,7 +48,7 @@ export function spriteCarga(c: Circuito, nivel: number, fija?: string): string {
   if (c === "led" || c === "cabina" || c === "invertido" || c === "abierto") return `led_rojo_${b ?? "quemado"}`;
   if (c === "luces") return `foco_${b ?? "fundido"}`;
   if (c === "fusible") return `calefactor_${b ?? "quemado"}`;
-  if (c === "combinar" || c === "protegido") return `led_rojo_${b ?? "quemado"}`;
+  if (c === "combinar" || c === "protegido" || c === "cadena") return `led_rojo_${b ?? "quemado"}`;
   if (c === "divisor") return RESISTENCIA[/(\d+) ?Ω/.exec(fija ?? "")?.[1] ?? ""] ?? "resistencia_220"; // R1 fija, dibujada según su «R1 470 Ω»
   return "icono_turbina"; // supuesto: el kit no trae motor; el ícono de turbina gira cuando la corriente es correcta
 }
@@ -96,6 +97,11 @@ export function montajeCarga(z: ZonaView, nivel: number, pieza: string | undefin
   }
   return null;
 }
+/** Sprite de una pieza de la cadena según su brillo (el LED); null = el cable se dibuja con Graphics. */
+export const spriteCadena = (id: string, nivel: number): string | null =>
+  id === "cable" ? null : id === "led" || id === "ledInv" ? spriteCarga("cadena", nivel) : RESISTENCIA[id.slice(1)] ?? null;
+/** Huecos (centro y tamaño, en coordenadas del panel) de las `n` piezas en serie de la cadena: ahí se mide al tocar y se suelta el repuesto. */
+export const huecosCadena = (n: number) => Array.from({ length: n }, (_, i) => ({ x: n < 4 ? 110 + i * 80 : 100 + i * 65, y: 40, w: 58, h: 76 }));
 export const cargas = (c: Circuito) => (c === "cabina" || c === "luces" ? 2 : 1);
 
 const RESISTENCIA: Record<string, string> = { "100": "resistencia_100", "220": "resistencia_220", "470": "resistencia_470", "1000": "resistencia_1k" };

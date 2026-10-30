@@ -29,12 +29,14 @@ export const RETO: Record<Circuito, string> = {
   combinar: "Monta las dos resistencias para que el LED reciba entre 10 y 20 mA",
   divisor: "Tu salida va al Arduino: debe quedar entre 4 y 5 V. Mídela con Tensión",
   protegido: "El diodo se come 0,7 V: la resistencia debe ajustarse",
+  cadena: "Una pieza está muerta: hállala con el multímetro y cámbiala",
 };
 
 /** Qué se arrastra desde la gaveta al hueco: pieza o montaje. */
 export const GAVETA: Record<Circuito, string> = {
   led: "Más Ω, más freno", cabina: "Más Ω, más freno", protegido: "Más Ω, más freno", luces: "Arma el montaje", interruptor: "Arma el montaje",
   fusible: "A = lo que aguanta", invertido: "Gira o deja el LED", abierto: "Empalma o deja el corte", combinar: "Una, en serie o en paralelo", divisor: "R2: la de abajo",
+  cadena: "Repuestos: arrastra uno a la pieza muerta",
 };
 
 /** Nombre estable de cada resistencia por valor (textos.js, gaveta.res): más Ω, más freno. */
@@ -56,7 +58,7 @@ const MONTAJE: Record<string, string> = { serie: "Serie", paralelo: "Paralelo", 
 
 /** Hueco rojo con «?» donde falta la pieza: igual en todas las mecánicas de gaveta (la placa tiene su propia gaveta de piezas). */
 export const conHueco = (c: Circuito, elegida: string | undefined, reparada: boolean): boolean =>
-  !elegida && !reparada && c !== "luces" && c !== "interruptor";
+  !elegida && !reparada && c !== "luces" && c !== "interruptor" && c !== "cadena"; // la cadena marca su propio hueco rojo en la pieza que localizas
 
 /** Leyenda de los iconos de las pestañas de zona (rojo = alerta, verde = reparada, cian = la que ves). */
 export const LEYENDA_ZONAS = "Rojo: falla  Verde: lista  Cian: aquí";
@@ -71,7 +73,11 @@ export const aPixel = (t: string) => t.replace(/º/g, "").replace(/[•—−]/g
 export const CARTEL = { reparadoMs: 350, averiaRetraso: 700, avisoDespachoMs: 450, puntosMs: 550 } as const;
 
 /** Etiqueta de la pieza tal como viene impresa ("470 Ω", "0,5 A") o el nombre del montaje. */
+/** Nombre de un repuesto o pieza de la cadena: "cable", "led", "ledInv", "r220". */
+export const textoPiezaCadena = (id: string) => id === "cable" ? "Cable" : id === "led" ? "LED" : id === "ledInv" ? "LED giro" : `${id.slice(1)} Ω`;
+
 export function textoOpcion(pieza: string, circuito: Circuito): string {
+  if (circuito === "cadena") return textoPiezaCadena(pieza.slice(pieza.indexOf(":") + 1)); // «hueco:repuesto» → el repuesto
   if (circuito === "combinar") return COMBINAR[pieza] ?? pieza;
   if (circuito === "led" || circuito === "cabina" || circuito === "divisor" || circuito === "protegido") return `${pieza} Ω`;
   if (circuito === "fusible") return `${pieza.replace(".", ",")} A`;
@@ -90,6 +96,8 @@ const CARGA: Record<Circuito, { poco: string; demasiado: string; quema: string }
   combinar: { poco: "El LED casi no brilla: llega poca corriente. Prueba otro montaje que frene menos.", demasiado: "El LED sufre: llega demasiada corriente. Prueba otro montaje que frene más.", quema: "¡El LED se quemó! Frenaste muy poco. Espera y prueba un montaje que frene más." },
   divisor: { poco: "Al Arduino le llega muy poca tensión. Mide R2 con Tensión y prueba otra.", demasiado: "Al Arduino le llega más tensión de la que le gusta. Prueba otra R2.", quema: "¡Se quemó el pin del Arduino! Le llegó demasiada tensión. Espera y prueba otra R2." },
   protegido: { poco: "El LED casi no brilla: el diodo y la resistencia se comen mucha tensión. Prueba una que frene menos.", demasiado: "El LED sufre: llega demasiada corriente. Prueba una que frene más.", quema: "¡El LED se quemó! Frenaste muy poco. Espera y prueba una que frene más." },
+  // Sin decir cuál pieza ni por qué: ni qué falla ni si el repuesto o el hueco son los equivocados.
+  cadena: { poco: "El LED no enciende. Mide las piezas con el multímetro y revisa qué repuesto pusiste y dónde.", demasiado: "El LED sufre: llega demasiada corriente. Revisa el repuesto que pusiste.", quema: "¡El LED se quemó! Espera y revisa el repuesto que pusiste." },
   fusible: { poco: "El fusible corta aunque no hay falla: es demasiado fino. Prueba otro.", demasiado: "El calefactor sufre: el fusible deja pasar demasiado. Prueba uno que corte antes.", quema: "El fusible no cortó a tiempo y el calefactor se quemó. Prueba uno que corte antes." },
 };
 

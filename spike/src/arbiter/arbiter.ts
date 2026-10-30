@@ -1,8 +1,8 @@
-import { generar, generarOleada, nivelDePod, type Demo, type Perfil, type Pod, type ZonaPod } from "../engine/generador.js";
+import { generar, generarOleada, mulberry32, nivelDePod, type Demo, type Perfil, type Pod, type ZonaPod } from "../engine/generador.js";
 import { medir } from "../engine/medir.js";
-import { evaluar } from "../engine/pods.js";
+import { evaluar, piezaValida } from "../engine/pods.js";
 import {
-  validAlias, type Carril, type End, type Phase, type PodView, type RivalView, type ServerMsg, type Station,
+  validAlias, type Carril, type End, type Phase, type PodView, type RivalView, type ServerMsg, type Station, type TipoSabotaje,
 } from "../protocol.js";
 import { BURN_BLOCK_MS, csvField, PenaltyTracker, QUEMADAS_OLEADAS } from "./penalties.js";
 
@@ -11,6 +11,16 @@ export const PODS_TO_WIN = 5;
 export const MATCH_LIMIT_MS = 12 * 60_000;
 export const RECONNECT_MS = 30_000;
 export const COUNTDOWN_MS = 3_000;
+/**
+ * Sabotajes (bloque 4): al 3.er pod limpio seguido (despachado sin ningún fallo) el árbitro aplica UN sabotaje al rival
+ * (1v1 o bot; no en práctica). Mismas reglas para todos: máx. 1 por pod y 3 por partida recibidos, inmunidad de 20 s,
+ * nada si el rival va 2 o más pods por detrás o está bloqueado/penalizado. El tipo sale de la semilla del árbitro.
+ */
+export const SABOTAJE_LIMPIOS = 3;
+export const SABOTAJE_MAX_PARTIDA = 3;
+export const SABOTAJE_INMUNE_MS = 20_000;
+export const SABOTAJE_MS: Record<TipoSabotaje, number> = { humo: 6000, enfriamiento: 8000, "sin-pista": 8000 };
+const TIPOS_SABOTAJE: TipoSabotaje[] = ["humo", "enfriamiento", "sin-pista"];
 export const CSV_HEADER = "jugador;intento;zona;piezas;resultado;tiempo_ms;quemada;pod;tiempo_pod_ms;nivel;zona_nombre;pieza_correcta";
 
 export interface ArbiterOptions {
@@ -65,6 +75,13 @@ interface Seat {
   intentoZona: ZonaPod[];
   /** Oleadas: ya salió la segunda falla (encadenada) del pod actual. */
   revelada: boolean;
+  /** Pods limpios seguidos (0-3); un fallo lo pone en 0, conceder un sabotaje también. */
+  limpios: number;
+  /** Sabotajes recibidos (partida), pods (índice de despachados) en los que ya recibió uno, fin de la inmunidad y el sabotaje en curso. */
+  sabRecibidos: number;
+  sabPods: Set<number>;
+  inmuneHasta: number;
+  sab: { tipo: TipoSabotaje; hasta: number; de: Station } | null;
 }
 
 /**
@@ -86,6 +103,8 @@ export class Arbiter {
   private readonly limitMs: number;
   private readonly reconnectMs: number;
   private readonly azar: () => number;
+  /** Azar de los sabotajes: derivado de la semilla, así que la secuencia de tipos es reproducible. */
+  private readonly sabAzar: () => number;
   readonly semilla: number;
   readonly nivel: Perfil;
   readonly demo: Demo;
@@ -103,6 +122,7 @@ export class Arbiter {
     this.reconnectMs = opts.reconnectMs ?? RECONNECT_MS;
     this.azar = opts.azar ?? Math.random;
     this.semilla = opts.semilla ?? Math.floor(Math.random() * 2 ** 32);
+    this.sabAzar = mulberry32((this.semilla ^ 0x5ab07a6e) >>> 0);
     this.nivel = opts.nivel ?? 1;
     this.demo = opts.demo ?? false;
     this.practica = opts.practica ?? false;
@@ -246,6 +266,7 @@ export class Arbiter {
       station, alias: name, peer, goneAt: 0, ready: false, penalties: new PenaltyTracker(this.now),
       despachados: 0, repaired: new Set(), lastPieza: new Map(), penalUntil: 0, lastRival: "",
       podInicio: 0, podMs: [], podFallos: 0, llamas: 0, intentoPod: [], intentoZona: [], revelada: false,
+      limpios: 0, sabRecibidos: 0, sabPods: new Set(), inmuneHasta: 0, sab: null,
     });
     this.seats.sort((a, b) => a.station.localeCompare(b.station));
     this.phase = this.seats.length === 2 ? "listo" : "esperando";
@@ -287,7 +308,7 @@ export class Arbiter {
     const pod = this.podAt(s.despachados);
     const z = this.zonaDe(s, pod, zone);
     if (!z || s.repaired.has(z.zona)) return reject("zona no válida");
-    if (pieza === null || !z.opciones.includes(pieza)) return reject("pieza no válida");
+    if (pieza === null || !piezaValida(z, pieza)) return reject("pieza no válida");
 
     const check = s.penalties.canTest(z.zona, s.lastPieza.get(z.zona) !== pieza);
     if (!check.ok) return reject(check.reason, check.waitMs);
@@ -297,10 +318,11 @@ export class Arbiter {
     const pieces = [["led", "cabina", "protegido"].includes(z.circuito) ? `R=${pieza}` : z.circuito === "divisor" ? `R2=${pieza}` : `${z.circuito}=${pieza}`];
     let waitMs = 0, escudo = false, hayMas = false;
     if (v === "correcto") {
-      s.penalties.registerSuccess(z.zona, pieces);
       // Falla encadenada: acertar la primera no repara la zona; sale la segunda y se vuelve a elegir pieza (sin castigo extra).
       hayMas = pod.encadenada?.zona === z.zona && !s.revelada;
+      s.penalties.registerSuccess(z.zona, pieces, !hayMas);
       if (hayMas) { s.revelada = true; s.lastPieza.delete(z.zona); } else s.repaired.add(z.zona);
+      if (s.sab?.tipo === "sin-pista") s.sab = null; // «sin pista» se recupera al acertar
     } else if (v === "se quema" || v === "corto") {
       // supuesto: un cortocircuito penaliza igual que una pieza quemada.
       if (this.escudo) {
@@ -317,9 +339,9 @@ export class Arbiter {
     }
     s.intentoPod.push(s.despachados + 1);
     s.intentoZona.push(z);
-    if (v !== "correcto") s.podFallos++;
+    if (v !== "correcto") { s.podFallos++; s.limpios = 0; }
     s.penalUntil = Math.max(s.penalUntil, this.now() + waitMs);
-    this.send(s.peer!, { t: "result", seq, t0, zona: z.zona, veredicto: v, waitMs, despachados: s.despachados, pod: this.podView(s), ...(escudo && { escudo }), ...(hayMas && { hayMas }) });
+    this.send(s.peer!, { t: "result", seq, t0, zona: z.zona, veredicto: v, waitMs, despachados: s.despachados, pod: this.podView(s), ...(escudo && { escudo }), ...(hayMas && { hayMas }), racha: s.penalties.racha, ...(!this.practica && { limpios: s.limpios }), ...(s.penalties.bonoEvento && { bono: s.penalties.bonoEvento }) });
     this.syncRival(s, t0);
     if (this.oleadas && burned(s) >= QUEMADAS_OLEADAS) this.finish(`${QUEMADAS_OLEADAS} piezas quemadas`, s.station);
   }
@@ -334,7 +356,7 @@ export class Arbiter {
     if (this.phase !== "jugando") return reject("la partida no está en juego");
     const z = this.zonaDe(s, this.podAt(s.despachados), m.zone);
     const { pieza, modo, punto } = m;
-    if (!z || typeof pieza !== "string" || !z.opciones.includes(pieza) || (modo !== "continuidad" && modo !== "tension") || typeof punto !== "string") {
+    if (!z || typeof pieza !== "string" || !piezaValida(z, pieza) || (modo !== "continuidad" && modo !== "tension") || typeof punto !== "string") {
       return reject("medida no válida");
     }
     const lectura = medir(z, pieza, modo, punto);
@@ -347,6 +369,7 @@ export class Arbiter {
     const reject = (reason: string) => this.send(s.peer!, { t: "reject", seq, t0, reason, waitMs: 0 });
     if (this.phase !== "jugando") return reject("la partida no está en juego");
     if (s.repaired.size < this.podAt(s.despachados).zonas.length) return reject("faltan zonas por reparar");
+    const limpio = s.podFallos === 0;
     s.despachados++;
     s.podMs.push(this.now() - s.podInicio);
     s.podInicio = this.now();
@@ -356,10 +379,26 @@ export class Arbiter {
     s.revelada = false;
     s.lastPieza.clear();
     s.penalties.newPod();
-    this.send(s.peer!, { t: "despachado", seq, t0, despachados: s.despachados, pod: this.podView(s) });
+    if (limpio) s.limpios = Math.min(SABOTAJE_LIMPIOS, s.limpios + 1);
+    const enviado = limpio && s.limpios >= SABOTAJE_LIMPIOS && (this.oleadas || s.despachados < this.pods.length) ? this.sabotear(s) : undefined;
+    if (enviado) s.limpios = 0;
+    this.send(s.peer!, { t: "despachado", seq, t0, despachados: s.despachados, pod: this.podView(s), ...(!this.practica && { limpios: s.limpios }), ...(enviado && { enviado }) });
     this.syncRival(s, t0);
     // Despachos casi simultáneos: gana el primero que llega aquí (el árbitro procesa en orden de llegada).
     if (!this.oleadas && s.despachados >= this.pods.length) this.finish("5 pods despachados", s.station);
+  }
+
+  /** Concede el sabotaje de `s` a su rival si las reglas de justicia lo permiten; devuelve el tipo aplicado. */
+  private sabotear(s: Seat): TipoSabotaje | undefined {
+    const r = this.seats.find((x) => x !== s), t = this.now();
+    if (this.practica || !r?.peer || r.sabRecibidos >= SABOTAJE_MAX_PARTIDA || r.sabPods.has(r.despachados) || t < r.inmuneHasta
+      || s.despachados - r.despachados >= 2 || t < r.penalUntil) return undefined;
+    const tipo = TIPOS_SABOTAJE[Math.floor(this.sabAzar() * TIPOS_SABOTAJE.length)]!, ms = SABOTAJE_MS[tipo];
+    r.sabRecibidos++; r.sabPods.add(r.despachados); r.inmuneHasta = t + SABOTAJE_INMUNE_MS;
+    r.sab = { tipo, hasta: t + ms, de: s.station };
+    if (tipo === "enfriamiento") r.penalties.largoHasta = t + ms;
+    this.send(r.peer, { t: "sabotaje", tipo, ms, de: s.station });
+    return tipo;
   }
 
   private finish(reason: string, winner?: Station): void {
@@ -405,8 +444,8 @@ export class Arbiter {
       numero: s.despachados + 1,
       nivel: nivelDePod(this.nivel, this.oleadas ? 0 : Math.min(s.despachados, this.pods.length - 1)),
       zonas: pod.zonas.map((z) => {
-        const { zona, nombre, circuito, volts, opciones, r1 } = this.zonaDe(s, pod, z.zona)!;
-        return { zona, nombre, circuito, volts, opciones: [...opciones], reparada: s.repaired.has(zona), ...(r1 && { fija: `R1 ${r1} Ω` }) };
+        const { zona, nombre, circuito, volts, opciones, r1, cadena } = this.zonaDe(s, pod, z.zona)!;
+        return { zona, nombre, circuito, volts, opciones: [...opciones], reparada: s.repaired.has(zona), ...(r1 && { fija: `R1 ${r1} Ω` }), ...(cadena && { cadena: [...cadena] }) };
       }),
     };
   }
@@ -421,6 +460,9 @@ export class Arbiter {
     return {
       t: "start", restanteMs: this.practica ? 0 : this.limitMs - (this.now() - this.startAt), despachados: s.despachados,
       total: this.oleadas ? 0 : this.pods.length, nivel: nivelDePod(this.nivel, 0), demo: this.demo !== false, pod: this.podView(s), rival: other ? this.rivalView(other) : null,
+      racha: s.penalties.racha,
+      ...(!this.practica && { limpios: s.limpios }),
+      ...(s.sab && this.now() < s.sab.hasta && (s.sab.tipo !== "enfriamiento" || s.penalties.largoHasta > 0) && { sabotaje: { tipo: s.sab.tipo, ms: s.sab.hasta - this.now(), de: s.sab.de } }),
       ...(this.practica && { practica: true }), ...(this.oleadas && { oleadas: true }),
     };
   }

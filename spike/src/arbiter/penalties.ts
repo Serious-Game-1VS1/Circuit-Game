@@ -5,6 +5,14 @@
 
 /** Enfriamiento por zona tras fallos consecutivos; del tercero en adelante queda en 8 s. */
 export const COOLDOWNS_MS = [2000, 4000, 8000] as const;
+/**
+ * Racha (autoridad del árbitro): tras RACHA_BONO «despachos» seguidos sin fallar (un despacho = el CHECK que
+ * completa una zona; el de un pod de una zona también completa el pod) el jugador gana UN bono: su próximo
+ * fallo espera la mitad del enfriamiento (8→4, 4→2, 2→1; mínimo 1 s). No se acumula; se gasta o se pierde al fallar.
+ */
+export const RACHA_BONO = 3;
+/** Sabotaje «enfriamiento largo»: el próximo fallo del rival suma esto; el resultado final queda entre 1 s y 10 s. */
+export const LARGO_EXTRA_MS = 2000;
 export const BURN_BLOCK_MS = 4000;
 export const BURN_CARD_MS = 3000;
 /** Modo Oleadas (práctica sin fin): la partida termina al acumular estas piezas quemadas. */
@@ -31,6 +39,14 @@ export class PenaltyTracker {
   private readonly log: Attempt[] = [];
   /** Mejora «Enfriamiento corto» (solo práctica): multiplica los 2/4/8 s; 1 = sin cambio. */
   cooldownFactor = 1;
+  /** Despachos (zonas completadas) seguidos sin fallar; se queda en RACHA_BONO mientras el bono espera. */
+  racha = 0;
+  /** Bono de «enfriamiento reducido» listo para el próximo fallo. */
+  bono = false;
+  /** Sabotaje «enfriamiento largo» armado hasta esta hora (reloj del árbitro); una sola carga. */
+  largoHasta = 0;
+  /** Lo que pasó con el bono en la última llamada (para avisar al cliente). */
+  bonoEvento: "listo" | "usado" | "perdido" | null = null;
 
   constructor(private readonly now: () => number) {
     this.t0 = now();
@@ -48,16 +64,28 @@ export class PenaltyTracker {
   }
 
   /** Prueba superada: se registra y se reinicia la racha de fallos de la zona. */
-  registerSuccess(zone: number, pieces: string[]): void {
+  registerSuccess(zone: number, pieces: string[], completa = true): void {
+    this.bonoEvento = null;
     this.fails.delete(zone);
+    if (completa && !this.bono && ++this.racha >= RACHA_BONO) { this.bono = true; this.bonoEvento = "listo"; }
     this.record(zone, pieces, true, false);
   }
 
   /** Prueba fallida: enfriamiento 2 → 4 → 8 → 8 s en la zona. Devuelve los ms de espera. */
   registerFailure(zone: number, pieces: string[]): number {
+    this.bonoEvento = null;
     const n = (this.fails.get(zone) ?? 0) + 1;
     this.fails.set(zone, n);
-    const ms = (COOLDOWNS_MS[Math.min(n, COOLDOWNS_MS.length) - 1] ?? 8000) * this.cooldownFactor;
+    // Primero la mejora de enfriamiento corto, luego la mitad del bono con piso de 1 s (nunca sube lo ya menor).
+    let ms = COOLDOWNS_MS[Math.min(n, COOLDOWNS_MS.length) - 1]! * this.cooldownFactor;
+    if (this.bono) ms = Math.min(ms, Math.max(1000, ms / 2));
+    if (this.bono) this.bonoEvento = "usado";
+    // Orden: base × mejora de enfriamiento corto, mitad del bono de racha (piso 1 s), luego +2 s del sabotaje; todo acotado a 1-10 s.
+    if (this.now() < this.largoHasta) ms += LARGO_EXTRA_MS;
+    this.largoHasta = 0;
+    ms = Math.min(10000, Math.max(1000, ms));
+    this.bono = false;
+    this.racha = 0;
     this.cooldownUntil.set(zone, this.now() + ms);
     this.record(zone, pieces, false, false);
     return ms;
@@ -65,6 +93,10 @@ export class PenaltyTracker {
 
   /** Pieza quemada: prueba fallida que bloquea "Probar" 4 s en todo el pod y muestra tarjeta ≥ 3 s. */
   registerBurn(zone: number, pieces: string[]): void {
+    this.bonoEvento = null;
+    if (this.bono) this.bonoEvento = "perdido";
+    this.racha = 0;
+    this.bono = false; // la quemada no tiene enfriamiento que reducir: pierde la racha y el bono
     this.burnAt = this.now();
     this.record(zone, pieces, false, true);
   }

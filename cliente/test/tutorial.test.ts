@@ -11,8 +11,8 @@ const SEMILLAS: Record<string, { circuito: string; volts?: number; r1?: number; 
   resistencia: { circuito: "led", volts: 9, solucion: "470", opciones: ["100", "470", "1000"] },
   multimetro: { circuito: "led", volts: 9, solucion: "470", opciones: ["220", "470", "1000"] },
   fusible: { circuito: "fusible", solucion: "1", opciones: ["0.5", "1", "3"] },
-  invertido: { circuito: "invertido", solucion: "directa", opciones: ["directa", "inversa"] },
-  abierto: { circuito: "abierto", solucion: "empalmar", opciones: ["dejar", "empalmar"] },
+  // Cadena a 9 V: cable, LED, resistencia, cable; la muerta es la resistencia (hueco 3), que se cambia por el repuesto de 470 Ω.
+  cadena: { circuito: "cadena", volts: 9, solucion: "3:r470", opciones: ["r100", "r470", "cable", "r220"] },
   placa: { circuito: "luces", solucion: "paralelo", opciones: ["paralelo", "puente", "serie"] },
   turbina: { circuito: "interruptor", solucion: "serie", opciones: ["paralelo", "serie"] },
   combinar: { circuito: "combinar", volts: 9, solucion: "serie", opciones: ["paralelo", "serie", "una"] },
@@ -25,8 +25,7 @@ const ESTADOS: Record<string, EstadoTut[]> = {
   resistencia: [e({ elegida: "1000" }), e({ elegida: "1000", aguja: "poco" }), e({ elegida: "100", quemado: true }), e({ elegida: "100", quemado: true }), e({ elegida: "470", reparada: true }), e({ despachados: 1 })],
   multimetro: [e({ elegida: "1000" }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "470", reparada: true }), e({ despachados: 1 })],
   fusible: [e({ elegida: "3", quemado: true }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ elegida: "1", reparada: true }), e({ despachados: 1 })],
-  invertido: [e({ elegida: "inversa", pruebas: 1 }), e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "directa", reparada: true }), e({ despachados: 1 })],
-  abierto: [e({ elegida: "dejar" }), e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "empalmar", reparada: true }), e({ despachados: 1 })],
+  cadena: [e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ modo: "continuidad", medidas: 2, localizada: true }), e({ elegida: "3:r470", reparada: true }), e({ despachados: 1 })],
   placa: [e({ falta: "cablear" }), e({ falta: null }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ falta: null, reparada: true }), e({ despachados: 1 })],
   turbina: [e({ falta: "cablear" }), e({ falta: null }), e({ falta: null, reparada: true }), e({ despachados: 1 })],
   combinar: [e({ elegida: "una", quemado: true }), e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "paralelo", quemado: true, pruebas: 1 }), e({ elegida: "serie", reparada: true }), e({ despachados: 1 })],
@@ -35,9 +34,9 @@ const ESTADOS: Record<string, EstadoTut[]> = {
 };
 
 describe("mini-tutoriales por mecánica", () => {
-  it("son 10, en orden, con ids únicos y datos válidos", () => {
-    expect(MECANICAS.map((m) => m.id)).toEqual(["resistencia", "multimetro", "fusible", "invertido", "abierto", "placa", "turbina", "combinar", "divisor", "protegido"]);
-    expect(new Set(MECANICAS.map((m) => m.id)).size).toBe(10);
+  it("son 9, en orden, con ids únicos y datos válidos", () => {
+    expect(MECANICAS.map((m) => m.id)).toEqual(["resistencia", "multimetro", "fusible", "cadena", "placa", "turbina", "combinar", "divisor", "protegido"]);
+    expect(new Set(MECANICAS.map((m) => m.id)).size).toBe(9);
     for (const m of MECANICAS) {
       expect(m.nombre.length, m.id).toBeLessThanOrEqual(12);
       expect(m.ensena, m.id).not.toBe("");
@@ -59,7 +58,7 @@ describe("mini-tutoriales por mecánica", () => {
     }
   });
 
-  it("siguiente() encadena los 10 y el último no tiene siguiente", () => {
+  it("siguiente() encadena los 9 y el último no tiene siguiente", () => {
     const orden: string[] = [];
     for (let id: string | null = MECANICAS[0]!.id; id; id = siguiente(id)) orden.push(id);
     expect(orden).toEqual(MECANICAS.map((m) => m.id));
@@ -208,9 +207,9 @@ describe("mecánica del tutorial", () => {
   });
 
   it("la continuidad exige medir DESPUÉS de elegir el modo (una lectura vieja no vale)", () => {
-    const i = iniciar("abierto").pasos.findIndex((p) => p.titulo === "Mide");
-    const s = e({ elegida: "dejar", modo: "continuidad", medidas: 1 });
-    const t = avanzar({ ...iniciar("abierto"), i: i - 1, desde: 0 }, s, 5000);
+    const i = iniciar("cadena").pasos.findIndex((p) => p.titulo === "Mide una");
+    const s = e({ modo: "continuidad", medidas: 1 });
+    const t = avanzar({ ...iniciar("cadena"), i: i - 1, desde: 0 }, s, 5000);
     expect(avanzar(t, s, 9000)).toBe(t);
     expect(avanzar(t, { ...s, medidas: 2 }, 9000).i).toBe(i + 1);
   });

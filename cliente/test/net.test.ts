@@ -187,7 +187,7 @@ describe("cliente conectado al árbitro", () => {
       }
       reparar(ana);
     }
-    expect([...vistos].sort()).toEqual(expect.arrayContaining(["fusible", "invertido", "abierto", "led", "luces"]));
+    expect([...vistos].sort()).toEqual(expect.arrayContaining(["fusible", "cadena", "led", "luces"]));
     expect(ana.estado.fin?.titulo).toBe("¡Ganaste!");
   });
 

@@ -26,10 +26,23 @@ export const PIEZAS: Record<Circuito, readonly string[]> = {
   combinar: ["una", "serie", "paralelo"],
   divisor: ["100", "220", "470", "1000"],
   protegido: ["100", "220", "470", "1000"],
+  // nivel 2: repuestos de la gaveta para la pieza muerta de una cadena (cable, LED bien o girado, resistencias).
+  cadena: ["cable", "led", "ledInv", "r100", "r220", "r470", "r1000"],
 };
 
+/** Todas las jugadas que se pueden probar en una zona: sus opciones o, en la cadena, «hueco:repuesto» de cada hueco con cada repuesto. */
+export const jugadas = (z: { opciones: readonly string[]; cadena?: readonly string[] }): string[] =>
+  z.cadena ? z.cadena.flatMap((_, k) => z.opciones.map((o) => `${k + 1}:${o}`)) : [...z.opciones];
+
 /** Zona tal como la ven montar/evaluar/medir; `r1` es la resistencia fija del divisor (Ω). */
-export interface ZonaCircuito { circuito: Circuito; volts: number; r1?: number }
+export interface ZonaCircuito { circuito: Circuito; volts: number; r1?: number;
+  /** Cadena: piezas en serie desde el + ("cable", "led" o "r220"…) y cuál (1..n) está muerta por dentro. */
+  cadena?: readonly string[]; muerta?: number }
+
+/** Pieza que el jugador puede mandar: de la gaveta, o en la cadena «hueco:repuesto» («2:led») o «ninguna» (nada puesto, para medir). */
+export const piezaValida = (z: { circuito: Circuito; opciones: readonly string[]; cadena?: readonly string[] }, p: string): boolean =>
+  z.circuito !== "cadena" ? z.opciones.includes(p)
+    : p === "ninguna" || (/^[1-9]:/.test(p) && Number(p[0]) <= (z.cadena?.length ?? 0) && z.opciones.includes(p.slice(2)));
 /** Divisor del Reactor: la tensión del nodo medio entra a un pin de Arduino (máx. 5 V). */
 export const DIVISOR_V = { poco: 4, correcto: 5, quema: 5.5 } as const;
 
@@ -68,6 +81,15 @@ export function montar(z: ZonaCircuito, pieza: string, calefactorOhms: number = 
         parts: [bat, pieza === "empalmar" ? { kind: "wire", a: 1, b: 2 } : { kind: "resistor", a: 1, b: 2, ohms: 1e9 }, { kind: "resistor", a: 2, b: 3, ohms: 470 }, { kind: "led", a: 3, b: 0 }],
         puntos: { pieza: 1, carga1: 3 },
       };
+    case "cadena": { // batería → n piezas en serie → masa; la muerta es un corte (1e9 Ω); el repuesto entra en el hueco `k`. puntos t1..tn = cada pieza.
+      const cad = z.cadena!, [k, rep] = pieza === "ninguna" ? [0, ""] : [Number(pieza[0]), pieza.slice(2)];
+      const parts: Part[] = [bat, ...cad.map((tipo, i): Part => {
+        const a = i + 1, b = i + 1 === cad.length ? 0 : i + 2, id = i + 1 === k ? rep : i + 1 === z.muerta ? "muerta" : tipo;
+        return id === "cable" ? { kind: "wire", a, b } : id === "led" ? { kind: "led", a, b } : id === "ledInv" ? { kind: "led", a: b, b: a }
+          : { kind: "resistor", a, b, ohms: id === "muerta" ? 1e9 : Number(id.slice(1)) };
+      })];
+      return { parts, puntos: Object.fromEntries(cad.map((_, i) => [`t${i + 1}`, i + 1])) };
+    }
     case "luces": {
       const lamps: Part[] = pieza === "serie"
         ? [{ kind: "lamp", a: 1, b: 2 }, { kind: "lamp", a: 2, b: 0 }]
@@ -109,6 +131,10 @@ export function evaluar(z: ZonaCircuito, pieza: string): Verdict {
     case "protegido": {
       const r = solve(montar(z, pieza).parts);
       return r.short ? "corto" : r.parts.at(-1)!.label!;
+    }
+    case "cadena": { // correcto = el LED enciende bien; sin LED (o con el corte aún abierto) no enciende
+      const { parts } = montar(z, pieza), r = solve(parts), i = parts.findIndex((p) => p.kind === "led");
+      return r.short ? "corto" : i < 0 ? "poco" : r.parts[i]!.label!;
     }
     case "luces": {
       // Meta: paralelo, para que si una luz se funde la otra siga encendida (RF-04: se quita cada carga por turno).

@@ -1,9 +1,9 @@
 {
-  "_nota": "Familias de falla por zona (orden: radar, cabina, turbina, reactor). Cada zona sortea una de su lista. supuesto: la Tabla 25 no esta en el texto del anteproyecto; nivel 2 suma LED invertido (Radar) y circuito abierto (Turbina) en los pods 4 y 5.",
+  "_nota": "Familias de falla por zona (orden: radar, cabina, turbina, reactor). Cada zona sortea una de su lista. supuesto: la Tabla 25 no esta en el texto del anteproyecto; nivel 2 suma la cadena de la pieza muerta (Radar y Turbina) en los pods 4 y 5; invertido/abierto siguen en el motor pero ya no se sortean.",
   "zonas": {
     "1": { "sinCables": [["led"], ["cabina"], ["led"], ["led"]], "conCables": [["led"], ["cabina"], ["led"], ["led"]] },
-    "2": { "sinCables": [["led"], ["cabina"], ["led"], ["fusible"]], "conCables": [["led", "invertido", "combinar"], ["luces"], ["interruptor", "abierto", "protegido"], ["fusible", "divisor"]] }
+    "2": { "sinCables": [["led"], ["cabina"], ["led"], ["fusible"]], "conCables": [["led", "cadena", "combinar"], ["luces"], ["interruptor", "cadena", "protegido"], ["fusible", "divisor"]] }
   },
-  "cobertura": { "1": ["led", "cabina"], "2": ["luces", "fusible", "invertido", "abierto"] },
-  "dificultad": { "led": 1, "cabina": 1, "luces": 2, "interruptor": 2, "fusible": 2, "invertido": 1, "abierto": 1, "combinar": 1, "divisor": 2, "protegido": 2 }
+  "cobertura": { "1": ["led", "cabina"], "2": ["luces", "fusible", "cadena"] },
+  "dificultad": { "led": 1, "cabina": 1, "luces": 2, "interruptor": 2, "fusible": 2, "invertido": 1, "abierto": 1, "cadena": 1, "combinar": 1, "divisor": 2, "protegido": 2 }
 }

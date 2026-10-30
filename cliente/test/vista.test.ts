@@ -86,11 +86,19 @@ describe("retrasoCola", () => {
 
 describe("hueco rojo con «?»", () => {
   it("sale en toda mecánica de gaveta mientras falta la pieza, igual en todos los modos", () => {
-    for (const c of ["led", "cabina", "fusible", "invertido", "abierto", "combinar", "divisor", "protegido"] as const) {
+    for (const c of ["led", "cabina", "fusible", "combinar", "divisor", "protegido"] as const) {
       expect(conHueco(c, undefined, false), c).toBe(true);
       expect(conHueco(c, "1", false), c).toBe(false); // ya colocada
       expect(conHueco(c, undefined, true), c).toBe(false); // zona reparada
     }
+  });
+  it("la cadena marca su propio hueco en la pieza localizada, no el hueco global de la gaveta", () => {
+    expect(conHueco("cadena", undefined, false)).toBe(false);
+  });
+  it("la cadena: textos del repuesto y del veredicto sin revelar cuál pieza ni por qué", () => {
+    expect(["cable", "led", "ledInv", "r220", "3:r470", "1:led"].map((p) => textoOpcion(p, "cadena"))).toEqual(["Cable", "LED", "LED giro", "220 Ω", "470 Ω", "LED"]);
+    for (const l of ["poco", "demasiado", "se quema"] as const) expect(vistaDeVeredicto(l, "cadena").mensaje).not.toMatch(/muert|corta|abiert|al revés|giro|resistencia|cable/i);
+    expect(RETO.cadena).not.toMatch(/resistencia|LED está al revés|cable roto/i);
   });
   it("la placa (luces, interruptor) tiene su propia gaveta de piezas", () => {
     expect(conHueco("luces", undefined, false)).toBe(false);

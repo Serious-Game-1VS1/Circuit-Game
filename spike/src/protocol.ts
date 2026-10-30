@@ -20,6 +20,10 @@
  * Nivel 2, tres familias nuevas: "combinar" (Radar: gaveta una|serie|paralelo de dos resistencias de 220 Ω), "divisor" (Reactor: R2 contra la R1 fija
  *  que llega en `ZonaView.fija`) y "protegido" (Turbina: resistencia en serie con un diodo de protección). `fija` es opcional.
  *
+ * Nivel 2, «cadena» (cambiar la pieza muerta; sustituye a invertido/abierto en los sorteos, que siguen en el motor): ZonaView suma `cadena`
+ *  (aditivo). `opciones` son los repuestos de la gaveta ("cable", "led", "ledInv", "r220"…). TestMsg/MedirMsg.pieza es «hueco:repuesto»
+ *  (hueco 1..n, p. ej. "2:led") o, solo para medir, "ninguna"; los puntos de medida son "t1".."tn". Misma validación, mismas penalizaciones.
+ *
  * Despacho explícito (anteproyecto, RF-03). NO compatible con el cliente anterior:
  *  - Reparar la última zona ya no despacha: el Result trae el pod con todas sus zonas `reparada` y
  *    `despachados` sin cambiar. El jugador manda Dispatch ("despachar") y solo entonces cuenta el pod.
@@ -54,10 +58,14 @@ import type { Label } from "./engine/circuit.js";
 export type Station = "A" | "B";
 export type Phase = "esperando" | "listo" | "cuenta" | "jugando" | "fin" | "anulada";
 export type RivalStatus = "reparando" | "penalizado" | "sin-conexion";
-export type Circuito = "led" | "cabina" | "luces" | "interruptor" | "fusible" | "invertido" | "abierto" | "combinar" | "divisor" | "protegido";
+export type Circuito = "led" | "cabina" | "luces" | "interruptor" | "fusible" | "invertido" | "abierto" | "combinar" | "divisor" | "protegido" | "cadena";
 export type ZonaNombre = "radar" | "cabina" | "turbina" | "reactor";
 export type Nivel = 1 | 2;
 export type Verdict = Label | "corto";
+
+/** Sabotajes (bloque 4): los concede y aplica el árbitro al rival; ningún mensaje cliente->árbitro los dispara. */
+export type TipoSabotaje = "humo" | "enfriamiento" | "sin-pista";
+export interface Sabotaje { t: "sabotaje"; tipo: TipoSabotaje; ms: number; de: Station }
 
 export interface Hello { t: "hello"; alias: string }
 export interface Ready { t: "ready" }
@@ -70,7 +78,9 @@ export type ClientMsg = Hello | Ready | TestMsg | Dispatch | MedirMsg;
 /** Lo que el jugador ve de una zona dañada: nunca cuál de las opciones es la correcta. */
 export interface ZonaView { zona: number; nombre: ZonaNombre; circuito: Circuito; volts: number; opciones: string[]; reparada: boolean;
   /** Dato fijo del circuito que se imprime en la placa, p. ej. «R1 470 Ω» (divisor). Nunca revela la solución. */
-  fija?: string }
+  fija?: string;
+  /** Cadena (nivel 2): las piezas en serie desde el + ("cable", "led", "r220"…), todas con su valor impreso; cuál está muerta por dentro no viaja. */
+  cadena?: string[] }
 export interface PodView { numero: number; nivel?: Nivel; zonas: ZonaView[] }
 export interface RivalView { alias: string; despachados: number; estado: RivalStatus }
 
@@ -78,15 +88,16 @@ export interface Welcome { t: "welcome"; station: Station; alias: string }
 export interface Full { t: "full"; reason: string }
 export interface Lobby { t: "lobby"; phase: Phase; players: { station: Station; alias: string; ready: boolean }[] }
 export interface Countdown { t: "countdown"; n: number }
-/** Inicio de partida o estado completo al reconectar. */
-export interface Snapshot { t: "start"; restanteMs: number; despachados: number; total: number; nivel: Nivel; demo: boolean; practica?: boolean; oleadas?: boolean; pod: PodView; rival: RivalView | null }
+/** Inicio de partida o estado completo al reconectar. `limpios`: pods limpios seguidos (0-3); `sabotaje`: el que sigue activo contra ti (`ms` restantes). */
+export interface Snapshot { t: "start"; limpios?: number; sabotaje?: { tipo: TipoSabotaje; ms: number; de: Station }; restanteMs: number; despachados: number; total: number; nivel: Nivel; demo: boolean; practica?: boolean; oleadas?: boolean; /** Racha de despachos del jugador (0-3); con 3 el bono de enfriamiento reducido está listo. */ racha?: number; pod: PodView; rival: RivalView | null }
 /**
  * `escudo`: la mejora «Escudo» (solo práctica) absorbió la quemada: sin bloqueo de 4 s ni quemada contada.
  * `hayMas`: falla encadenada (solo Oleadas): el veredicto es «correcto» pero la zona sigue sin reparar; `pod` ya trae su segunda falla (otra batería y opciones).
  */
-export interface Result { t: "result"; seq: number; t0: number; zona: number; veredicto: Verdict; waitMs: number; despachados: number; pod: PodView; escudo?: boolean; hayMas?: boolean }
+export interface Result { t: "result"; seq: number; t0: number; zona: number; veredicto: Verdict; waitMs: number; despachados: number; pod: PodView; escudo?: boolean; hayMas?: boolean;
+  /** Racha tras este intento (0-3). `bono`: «listo» al ganarlo, «usado» cuando el fallo lo consumió (waitMs ya viene reducido), «perdido» si una quemada lo borró. */ racha?: number; bono?: "listo" | "usado" | "perdido"; /** Pods limpios seguidos (0-3) tras este intento: un fallo lo pone en 0. */ limpios?: number }
 /** Despacho aceptado: `despachados` ya incluye este pod y `pod` es el siguiente. */
-export interface Dispatched { t: "despachado"; seq: number; t0: number; despachados: number; pod: PodView }
+export interface Dispatched { t: "despachado"; seq: number; t0: number; despachados: number; pod: PodView; limpios?: number; /** Sabotaje que ganaste con este despacho y ya se aplicó al rival. */ enviado?: TipoSabotaje }
 export interface Reject { t: "reject"; seq: number; t0: number; reason: string; waitMs: number }
 export type Tramo = "nada" | "parte" | "toda";
 export interface Medida { t: "medida"; seq: number; t0: number; zona: number; modo: ModoMedir; punto: string; pasa?: boolean; tension?: Tramo; fraccion?: number; /** V entre los bornes (2 decimales) y Ω de una resistencia: solo lo que mostraría el aparato. */ voltios?: number; ohmios?: number }
@@ -107,6 +118,6 @@ export interface Carril {
 }
 /** `carrera` solo viene con phase "fin" (carrera final y podio, propuesta A+D). */
 export interface End { t: "end"; phase: "fin" | "anulada"; winner: Station | null; reason: string; score: Partial<Record<Station, Score>>; carrera?: Partial<Record<Station, Carril>> }
-export type ServerMsg = Welcome | Full | Lobby | Countdown | Snapshot | Result | Dispatched | Reject | Rival | End | Medida;
+export type ServerMsg = Welcome | Full | Lobby | Countdown | Snapshot | Result | Dispatched | Reject | Rival | End | Medida | Sabotaje;
 
 export const validAlias = (a: unknown): a is string => typeof a === "string" && a.trim().length >= 1 && a.trim().length <= 12;
