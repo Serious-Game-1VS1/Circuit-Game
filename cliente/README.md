@@ -2,6 +2,8 @@
 
 Cliente Phaser (Vite + TypeScript) del duelo 1 contra 1. El árbitro corre en Node (`spike/`) y es la única fuente de verdad; el cliente solo envía "Probar" y pinta lo que el árbitro decide.
 
+URL pública del juego: https://juego.circuitsyncjuego.com
+
 ## Transporte
 
 | Modo | Árbitro | Red |

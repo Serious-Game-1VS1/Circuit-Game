@@ -1,0 +1,13 @@
+{
+  "routes": [
+    { "route": "/assets/*", "headers": { "Cache-Control": "public, max-age=31536000, immutable" } }
+  ],
+  "navigationFallback": { "rewrite": "/index.html", "exclude": ["/assets/*", "/arte/*"] },
+  "globalHeaders": {
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self'; connect-src 'self' wss://ns.photonengine.io wss://*.photonengine.io wss://*.exitgames.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'",
+    "X-Frame-Options": "DENY",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+    "Cross-Origin-Opener-Policy": "same-origin"
+  }
+}

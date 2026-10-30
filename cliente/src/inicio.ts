@@ -20,6 +20,14 @@ const W = 360, D = 1900; // el panel de recompensas/logros va a 2000: queda enci
 const AMBAR = 0xe0a43c, CIAN = 0x7fe0ff, GRIS = 0x9ab0c8, ROJO = 0xff6b6b, VERDE = 0x8fe3a0;
 const CAMPO = `width:100%;box-sizing:border-box;height:44px;font:700 22px "Courier New",monospace;letter-spacing:2px;color:#e8f6ff;background:#10141e;border:3px solid ${"#7fe0ff"};border-radius:0;padding:0 10px;outline:none`;
 
+/** Aviso de privacidad (S-02, LOPDP de Ecuador). Páginas cortas para que quepan en 360x640 sin scroll. */
+export const TEXTO_PRIVACIDAD = [
+  "1/4 FINALIDAD Y DATOS\n\nCircuitSync es un juego educativo y se usa para evaluar la tesis que lo desarrolla (UDLA).\n\nDatos que se tratan: tu alias (apodo de hasta 12 caracteres), tu ID de alumno si lo escribes (opcional) y los resultados de tus partidas (código de sala, fecha, pods despachados, errores).\n\nNo pedimos contraseñas, correo ni datos de pago. No uses tu nombre real como alias.",
+  "2/4 BASE LEGAL Y TERCEROS\n\nBase legal: tu consentimiento, conforme a la Ley Orgánica de Protección de Datos Personales del Ecuador. Al jugar lo aceptas; si eres menor de edad, necesitas la autorización de tu institución o representante.\n\nPhoton (Exit Games), un tercero, procesa el tráfico de conexión de la partida. El servidor del juego está en Microsoft Azure (EE. UU.). No usamos tus datos para publicidad ni los vendemos.",
+  "3/4 CONSERVACIÓN\n\nTu progreso, insignias y volumen se guardan solo en tu navegador; se borran al limpiar los datos del sitio.\n\nLos resultados guardados por el servidor se conservan como máximo 12 meses; se eliminan automáticamente al vencer ese plazo y antes si lo pides por correo.",
+  "4/4 TUS DERECHOS\n\nResponsable: Ricardo Quintana (UDLA).\n\nTienes derecho de acceso, rectificación, eliminación y oposición sobre tus datos. Para ejercerlos escribe a ricardo.quintana.maldonado@udla.edu.ec indicando tu alias y, si lo usaste, tu ID de alumno.",
+];
+
 export function menu(s: Phaser.Scene, net: Net) {
   const reducido = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   const sono = (fn: () => void) => () => { desbloquear(); sonar("clic"); fn(); };
@@ -86,6 +94,9 @@ export function menu(s: Phaser.Scene, net: Net) {
   boton(W / 2, 481, 328, 56, "JUGAR DUELO", true, () => abrir(duelo));
   boton(W / 2 - 84, 541, 160, 48, "APRENDER", false, () => abrir(aprender));
   boton(W / 2 + 84, 541, 160, 48, "LOGROS", false, () => panelLogros(s, refrescar()));
+  // Privacidad (S-02): enlace pequeño abajo a la derecha; abre un panel con el aviso.
+  letras(s, W - 20, 626, "PRIVACIDAD", 1.5, GRIS).setOrigin(1, 0);
+  s.add.zone(W - 56, 634, 90, 28).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => abrir(privacidad)));
   const aviso = letras(s, W / 2, 574, "", 2, ROJO).setOrigin(0.5, 0).setMaxWidth(328).setCenterAlign().setDepth(D + 200);
 
   // --- Chispa: esquina inferior; su bocadillo rota (tiempo real) entre el primer pod, el consejo del día y la felicitación ---
@@ -117,9 +128,13 @@ export function menu(s: Phaser.Scene, net: Net) {
   };
 
   // Duelo: código de sala + alias. Los campos HTML son uno por entrada, sobre el canvas.
-  const campoDom = (y: number, nombre: string, extra: string) =>
-    s.add.dom(W / 2, y).createFromHTML(`<div style="width:296px"><input name="${nombre}" autocomplete="off" ${extra}
-      onfocus="this.style.borderColor='#e0a43c'" onblur="this.style.borderColor='#7fe0ff'" style="${CAMPO}"></div>`).setVisible(false);
+  const campoDom = (y: number, nombre: string, extra: string) => {
+    const d = s.add.dom(W / 2, y).createFromHTML(`<div style="width:296px"><input name="${nombre}" autocomplete="off" ${extra} style="${CAMPO}"></div>`).setVisible(false);
+    const i = d.node.querySelector("input")!; // sin onfocus/onblur en línea: la CSP (script-src 'self') los bloquea
+    i.addEventListener("focus", () => { i.style.borderColor = "#e0a43c"; });
+    i.addEventListener("blur", () => { i.style.borderColor = "#7fe0ff"; });
+    return d;
+  };
   const aliasDom = campoDom(104, "alias", `maxlength="12" placeholder="Tu alias" aria-label="Alias"`);
   const codigoDom = campoDom(166, "codigo", `maxlength="6" placeholder="ABC123" aria-label="Código de sala"`);
   const campo = (d: Phaser.GameObjects.DOMElement) => d.node.querySelector("input")!;
@@ -217,6 +232,13 @@ export function menu(s: Phaser.Scene, net: Net) {
   pintarDif();
   duelo.add(boton(W / 2, 552, 296, 48, "JUGAR SOLO", true, () => { if (alias()) recordarAlias(alias()); void net.jugarSolo(alias() || ultimoAlias(), nivelElegido(pf, 1), dif); }));
   duelo.add(boton(W / 2, 604, 296, 40, "CANCELAR", false, () => abrir(null), 2.5));
+
+  const privacidad = panel(30, 560, "PRIVACIDAD");
+  let pag = 0;
+  const txtPriv = s.add.text(W / 2, 80, TEXTO_PRIVACIDAD[0]!, { fontFamily: "Courier New, monospace", fontSize: "12px", color: "#dde8f2", wordWrap: { width: 296 }, lineSpacing: 4 }).setOrigin(0.5, 0);
+  privacidad.add(txtPriv);
+  privacidad.add(boton(W / 2, 500, 296, 44, "SIGUIENTE", true, () => { pag = (pag + 1) % TEXTO_PRIVACIDAD.length; txtPriv.setText(TEXTO_PRIVACIDAD[pag]!); }, 2.5));
+  privacidad.add(boton(W / 2, 556, 296, 44, "VOLVER", false, () => abrir(null), 2.5));
 
   // Aprender: MECÁNICAS (tarjetas por mecánica), PRÁCTICA con selector de nivel (en duelo el nivel lo fija el servidor) y VOLVER.
   let sel: Nivel = 1, pf = cargarPerfil(alias() || "Aprendiz");
