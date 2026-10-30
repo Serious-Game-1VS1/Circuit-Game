@@ -1,11 +1,11 @@
 /// <reference types="vite/client" />
 import * as Phaser from "phaser";
-import { crearTransporte, Net, type Config } from "./net";
+import { crearTransporte, Net, textoCompartir, type Config } from "./net";
 import type { Transport } from "../../spike/src/transport/transport";
 import { Carrera, Podio } from "./carrera";
 import type { Fase, Pantalla } from "./pantalla";
 import { Taller } from "./taller";
-import { cargarArte } from "./arte";
+import { cargarArte, letras, marco } from "./arte";
 import { desbloquear, desbloquearEnGestos, eventosDe, sonar } from "./audio";
 import { ponerMusica } from "./musica";
 import { inicial } from "./pantalla";
@@ -63,8 +63,25 @@ class Sala extends Base {
   constructor() { super("Sala"); }
   create() {
     texto(this, W / 2, 60, "Sala", 28);
-    texto(this, W / 2, 100, `Código: ${net.codigo}`, 18, "#9ab"); // para compartirlo con el rival
-    this.lista = texto(this, W / 2, 140, "", 20);
+    // Tarjeta con el código grande para pasárselo a un amigo (copiar / compartir; el enlace lleva solo ?sala=).
+    marco(this, W / 2, 180, "panel_oscuro", 328, 160, 2);
+    letras(this, W / 2, 112, "Comparte este código con un amigo", 1.5, 0x9ab0c8).setOrigin(0.5, 0).setMaxWidth(296).setCenterAlign();
+    letras(this, W / 2, 140, net.codigo, 5, 0xe0a43c).setOrigin(0.5, 0);
+    const compartible = typeof navigator !== "undefined" && typeof navigator.share === "function";
+    const btn = (x: number, w: number, t: string, primario: boolean, fn: (l: ReturnType<typeof letras>) => void) => {
+      marco(this, x, 230, primario ? "boton_primario" : "boton_secundario", w, 44, 4);
+      const l = letras(this, x, 230, t, 2.5).setOrigin(0.5);
+      this.add.zone(x, 230, w, 44).setInteractive({ useHandCursor: true }).on("pointerdown", () => { desbloquear(); sonar("clic"); fn(l); });
+    };
+    btn(compartible ? W / 2 - 80 : W / 2, compartible ? 148 : 296, "COPIAR", true, (l) => {
+      const aviso = (t: string) => { l.setText(t); this.time.delayedCall(1500, () => l.setText("COPIAR")); };
+      if (!navigator.clipboard?.writeText) return aviso("Cópialo a mano");
+      navigator.clipboard.writeText(net.codigo).then(() => aviso("¡Copiado!"), () => aviso("Cópialo a mano"));
+    });
+    if (compartible) btn(W / 2 + 80, 148, "COMPARTIR", false, () => {
+      try { void navigator.share({ text: textoCompartir(location.href, net.codigo) }).catch(() => {}); } catch { /* sin compartir */ }
+    });
+    this.lista = texto(this, W / 2, 290, "", 20);
     this.listo = boton(this, W / 2, 520, "Listo", W - 32, "#3bb273", () => { net.listo(); this.listo.setText("Esperando al rival…").disableInteractive().setBackgroundColor("#232a44"); });
     boton(this, W / 2, 594, "Salir", W - 32, "#3a4466", () => void net.salir());
     // Precarga el arte del Taller (~244 PNG): «Listo» espera a que termine, así la cuenta 3-2-1 (y el reloj) no

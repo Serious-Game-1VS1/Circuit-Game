@@ -1,11 +1,11 @@
-/**
+﻿/**
  * Menú de inicio «Hangar de reparación» (escena Entrar): fondo con scroll lento, título, la mejor nave del
  * jugador sobre la bahía, placa de perfil y acciones (duelo, aprender, logros). Solo dibuja: la entrada y la
  * práctica llaman a `net` como siempre. Textos de perfil en perfil.ts (bienvenida, textoNivel).
  */
 import * as Phaser from "phaser";
 import type { Nivel } from "../../spike/src/protocol";
-import { salasAbiertas, textoSala, type Net, type SalaInfo } from "./net";
+import { elegirSalaRapida, salaDeUrl, salasAbiertas, textoSala, type Net, type SalaInfo } from "./net";
 import type { DificultadBot } from "./contraBot";
 import { anim, letras, marco } from "./arte";
 import { alternarSilencio, desbloquear, silenciado, sonar } from "./audio";
@@ -111,7 +111,7 @@ export function menu(s: Phaser.Scene, net: Net) {
     abierto = c;
     c?.setVisible(true);
     for (const f of [codigoDom, aliasDom]) f.setVisible(c === duelo);
-    aviso.setY(c === duelo ? 426 : 574);
+    aviso.setY(c === duelo ? 414 : 574);
     if (c === duelo) void consultar();
     if (c !== duelo) aviso.setText(""); // el error del duelo no sigue visible en otros paneles
   };
@@ -137,17 +137,35 @@ export function menu(s: Phaser.Scene, net: Net) {
   for (const i of [codigoIn, aliasIn]) i.addEventListener("keydown", (e) => { if (e.key === "Enter") entrar(); });
   aliasIn.addEventListener("input", () => refrescar());
 
-  // Salas abiertas: hasta 4 tarjetas, «MAS» pasa de página; se consultan cada 4 s mientras el duelo está abierto.
-  etiqueta(duelo, 34, 250, "SALAS ABIERTAS");
+  // Partida rápida: entra sola a la sala «esperando» más llena; si se llenó o falló, una segunda consulta y luego el error de siempre.
+  let ocupado = false;
+  const rapida = async () => {
+    if (ocupado) return;
+    if (!alias()) { aviso.setText("Escribe tu alias para entrar"); aliasIn.focus(); return; }
+    ocupado = true; recordarAlias(alias()); aviso.setText("");
+    try {
+      for (let intento = 0; intento < 2; intento++) {
+        const sala = elegirSalaRapida((await net.listarSalas(8000)).salas);
+        if (!sala) { aviso.setText("No hay salas abiertas ahora. Intenta de nuevo en unos segundos"); return; }
+        await net.entrar(sala.codigo, aliasIn.value);
+        if (net.codigo === sala.codigo) return; // entró; si falló, entrar() ya dejó el aviso legible
+      }
+    } finally { ocupado = false; }
+  };
+  duelo.add(boton(W / 2, 268, 296, 40, "PARTIDA RAPIDA", true, () => void rapida(), 2.5));
+
+  // Salas abiertas: hasta 3 tarjetas, «MAS» pasa de página; se consultan cada 4 s mientras el duelo está abierto.
+  const PAG = 3;
+  etiqueta(duelo, 34, 296, "SALAS ABIERTAS");
   let salas: SalaInfo[] = [], pagina = 0, motivo: string | undefined, consulta = 0, buscando = true; // buscando: hasta la primera respuesta
-  const vacio = letras(s, W / 2, 322, "", 2, GRIS).setOrigin(0.5).setMaxWidth(296).setCenterAlign();
+  const vacio = letras(s, W / 2, 360, "", 2, GRIS).setOrigin(0.5).setMaxWidth(296).setCenterAlign();
   duelo.add(vacio);
-  const filas = [0, 1, 2, 3].map((k) => {
-    const y = 284 + 38 * k;
-    const m = marco(s, W / 2, y, "boton_secundario", 296, 34, 4);
-    const l = letras(s, 50, y, "", 2).setOrigin(0, 0.5);
-    const z = s.add.zone(W / 2, y, 296, 34).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => {
-      const sala = salasAbiertas(salas)[pagina * 4 + k];
+  const filas = [0, 1, 2].map((k) => {
+    const y = 326 + 34 * k;
+    const m = marco(s, W / 2, y, "boton_secundario", 296, 32, 4);
+    const l = letras(s, 50, y, "", 2, 0x140f1f).setOrigin(0, 0.5); // oscuro sobre la tarjeta clara
+    const z = s.add.zone(W / 2, y, 296, 32).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => {
+      const sala = salasAbiertas(salas)[pagina * PAG + k];
       if (!sala) return;
       codigoIn.value = sala.codigo;
       if (alias()) entrar();
@@ -156,18 +174,18 @@ export function menu(s: Phaser.Scene, net: Net) {
     duelo.add([m, l, z]);
     return { m, l, z };
   });
-  const mas = letras(s, W - 34, 250, "", 2, CIAN).setOrigin(1, 0);
+  const mas = letras(s, W - 34, 296, "", 2, CIAN).setOrigin(1, 0);
   duelo.add(mas);
-  duelo.add(s.add.zone(W - 60, 258, 60, 28).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { pagina++; pintarSalas(); })));
+  duelo.add(s.add.zone(W - 60, 304, 60, 28).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { pagina++; pintarSalas(); })));
   function pintarSalas() {
     const ab = salasAbiertas(salas);
-    if (pagina * 4 >= ab.length) pagina = 0;
+    if (pagina * PAG >= ab.length) pagina = 0;
     filas.forEach((f, k) => {
-      const sala = ab[pagina * 4 + k];
+      const sala = ab[pagina * PAG + k];
       f.m.setVisible(!!sala); f.l.setVisible(!!sala); f.z.input!.enabled = !!sala && abierto === duelo;
       if (sala) f.l.setText(textoSala(sala));
     });
-    mas.setText(ab.length > 4 ? `MAS ${pagina + 1}/${Math.ceil(ab.length / 4)}` : "");
+    mas.setText(ab.length > PAG ? `MAS ${pagina + 1}/${Math.ceil(ab.length / PAG)}` : "");
     vacio.setText(buscando ? "Buscando salas…" : motivo ? "Sin conexión a salas" : ab.length ? "" : "No hay salas abiertas. Crea una o juega solo.");
   }
   const consultar = async () => {
@@ -269,6 +287,14 @@ export function menu(s: Phaser.Scene, net: Net) {
     return pf;
   }
   refrescar();
+
+  // Enlace compartido (?sala=CODIGO): abre el duelo con el código puesto y el foco en el alias.
+  const compartida = salaDeUrl(location.search);
+  if (compartida) {
+    codigoIn.value = compartida;
+    abrir(duelo);
+    s.time.addEvent({ delay: 200, repeat: 9, callback: () => { if (document.activeElement !== aliasIn) aliasIn.focus(); } }); // el campo HTML aparece en el primer fotograma visible
+  }
 
   return {
     refrescar,

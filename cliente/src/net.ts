@@ -317,3 +317,23 @@ export function salasAbiertas(salas: SalaInfo[]): SalaInfo[] {
   return salas.filter((s) => s.estado === "esperando").sort((a, b) => b.jugadores - a.jugadores || a.codigo.localeCompare(b.codigo));
 }
 export const textoSala = (s: SalaInfo) => `${s.codigo}  NIVEL ${s.nivel}  ${s.jugadores}/${s.max}`;
+
+/** Partida rápida: la sala «esperando» con más jugadores (empate: código menor). El nivel lo fija el servidor, no cuenta. */
+export const elegirSalaRapida = (salas: SalaInfo[]): SalaInfo | null => salasAbiertas(salas)[0] ?? null;
+
+/** Solo A-Z0-9, mayúsculas, máximo 6. */
+export const sanearCodigo = (c: string) => c.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+
+/** Código de `?sala=` de la URL, o "" si no son 6 caracteres válidos. */
+export function salaDeUrl(search: string): string {
+  const c = sanearCodigo(new URLSearchParams(search).get("sala") ?? "");
+  return c.length === 6 ? c : "";
+}
+
+/** Enlace para compartir: solo origen, ruta y `?sala=`; nunca alias ni otros parámetros. */
+export function urlDeSala(href: string, codigo: string): string {
+  const u = new URL(href);
+  return `${u.origin}${u.pathname}?sala=${sanearCodigo(codigo)}`;
+}
+
+export const textoCompartir = (href: string, codigo: string) => `Juega CircuitSync conmigo: ${urlDeSala(href, codigo)}`;

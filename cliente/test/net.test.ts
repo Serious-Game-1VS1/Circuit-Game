@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Arbiter } from "../../spike/src/arbiter/arbiter";
 import type { Transport } from "../../spike/src/transport/transport";
 import { PracticaTransport } from "../src/practica";
-import { crearTransporte, elegirTransporte, Net, salasAbiertas, textoSala } from "../src/net";
+import { crearTransporte, elegirSalaRapida, elegirTransporte, Net, salaDeUrl, salasAbiertas, sanearCodigo, textoCompartir, textoSala } from "../src/net";
 import { evaluar } from "../../spike/src/engine/pods";
 import { despachable, reloj } from "../src/pantalla";
 import { DIAGNOSTICO } from "../src/progreso";
@@ -347,6 +347,24 @@ describe("cliente conectado al árbitro", () => {
     const r = salasAbiertas([s("ZZZ222", 0, "esperando"), s("AAA111", 2, "llena"), s("BBB333", 1, "esperando"), s("CCC444", 1, "jugando"), s("AAA999", 0, "esperando")]);
     expect(r.map((x) => x.codigo)).toEqual(["BBB333", "AAA999", "ZZZ222"]);
     expect(textoSala(r[0]!)).toBe("BBB333  NIVEL 1  1/2");
+  });
+
+  it("partida rápida: la más llena, empate por código, null si no hay a qué entrar", () => {
+    const s = (codigo: string, jugadores: number, estado: "esperando" | "llena" | "jugando", nivel: 1 | 2 = 1) => ({ codigo, nivel, jugadores, max: 2 as const, estado });
+    expect(elegirSalaRapida([])).toBeNull();
+    expect(elegirSalaRapida([s("AAA111", 2, "llena"), s("BBB222", 1, "jugando")])).toBeNull();
+    expect(elegirSalaRapida([s("ZZZ222", 0, "esperando"), s("MMM333", 1, "esperando", 2), s("CCC444", 1, "esperando")])?.codigo).toBe("CCC444");
+    expect(elegirSalaRapida([s("BBB222", 0, "esperando"), s("AAA111", 0, "esperando", 2)])?.codigo).toBe("AAA111");
+  });
+
+  it("enlace ?sala=: lee y sanea el código; el texto a compartir no lleva alias ni otros parámetros", () => {
+    expect(salaDeUrl("?sala=abc234&intro=0")).toBe("ABC234");
+    expect(salaDeUrl("?sala=ab-c2 3 4xyz")).toBe("ABC234");
+    expect(salaDeUrl("?sala=ABC")).toBe("");
+    expect(salaDeUrl("")).toBe("");
+    expect(sanearCodigo("<b>x1</b>")).toBe("BX1B");
+    const t = textoCompartir("https://x.azurestaticapps.net/juego/?alias=Ana&intro=0#h", "abc234");
+    expect(t).toBe("Juega CircuitSync conmigo: https://x.azurestaticapps.net/juego/?sala=ABC234");
   });
 
   it("Tutorial por mecánica: práctica de un solo pod con su id", async () => {
