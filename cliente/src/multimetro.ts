@@ -60,3 +60,10 @@ export const textoModo = (modo: ModoMedir, circuito?: string) =>
 export interface Midiendo { seq: number; desde: number; punto: string }
 export const lecturaLista = (m: Midiendo, medida: Medida | undefined, ahora: number, medirMs = MEDIR_MS) =>
   ahora - m.desde >= medirMs && medida?.seq === m.seq ? medida : null;
+
+/** Validación (mecánica 1): verde = correcto, ámbar = poco/demasiado, rojo = se quema; null = apagado (aún no se colocó la pieza). */
+export type Luz = "verde" | "ambar" | "rojo";
+export const luzValidacion = (v?: { aguja: string | null; quemado: boolean } | null): Luz | null =>
+  !v?.aguja ? null : v.quemado ? "rojo" : v.aguja === "correcto" ? "verde" : "ambar";
+export const COLOR_LUZ: Record<Luz, number> = { verde: 0x6ee7a0, ambar: 0xffc23f, rojo: 0xff5a4a };
+export const TEXTO_LUZ: Record<Luz, string> = { verde: "Verde", ambar: "Ámbar", rojo: "Rojo" };

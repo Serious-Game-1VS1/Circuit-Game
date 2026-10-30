@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluar, PIEZAS } from "../../spike/src/engine/pods";
 import type { Circuito, Verdict } from "../../spike/src/protocol";
-import { aPixel, botonesGaveta, GAVETA, pestanas, CARTEL, LEYENDA_ZONAS, probarActivo, reparadas, retrasoCola, textoProbarEspera, RETO, textoOpcion, textoVolts, vistaDeVeredicto } from "../src/vista";
+import { aPixel, botonesGaveta, conValidacion, GAVETA, pestanas, CARTEL, LEYENDA_ZONAS, probarActivo, reparadas, retrasoCola, textoProbarEspera, RETO, textoOpcion, textoVolts, vistaDeVeredicto } from "../src/vista";
 
 const CIRCUITOS: Circuito[] = ["led", "cabina", "luces", "interruptor", "fusible"];
 const VEREDICTOS: Verdict[] = ["poco", "correcto", "demasiado", "se quema", "corto"];
@@ -96,5 +96,21 @@ describe("retrasoCola", () => {
   it("escalona 250 ms al iniciar y luego entra de inmediato", () => {
     expect([0, 1, 3].map((i) => retrasoCola(i, true))).toEqual([0, 250, 750]);
     expect(retrasoCola(3, false)).toBe(0);
+  });
+});
+
+describe("validación de la mecánica 1", () => {
+  const prac = { tutorial: null, practica: true, nivel: 1, oleadas: false };
+  it("solo el tutorial «resistencia» y las zonas led/cabina de la práctica de nivel 1", () => {
+    expect(conValidacion({ ...prac, tutorial: "resistencia" }, "led")).toBe(true);
+    expect(conValidacion({ ...prac, tutorial: "multimetro" }, "led")).toBe(false);
+    expect(conValidacion(prac, "led")).toBe(true);
+    expect(conValidacion(prac, "cabina")).toBe(true);
+    for (const c of ["fusible", "luces", "divisor", "combinar", "protegido", "invertido"] as const) expect(conValidacion(prac, c), c).toBe(false);
+  });
+  it("el duelo, el nivel 2 y las oleadas siguen con Probar", () => {
+    expect(conValidacion({ ...prac, practica: false }, "led")).toBe(false);
+    expect(conValidacion({ ...prac, nivel: 2 }, "led")).toBe(false);
+    expect(conValidacion({ ...prac, oleadas: true }, "led")).toBe(false);
   });
 });

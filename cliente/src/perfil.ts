@@ -33,7 +33,9 @@ export interface Perfil { alias: string; xp: number; partidas: number; ganadas: 
   /** Mejor tiempo total (ms) de una práctica de 5 pods, por nivel (la carrera contra tu récord). */
   totales: Record<string, number>;
   /** Firma del último fin de duelo aplicado: si el árbitro reenvía el mismo End tras recargar, no se suma dos veces. */
-  ultimoEnd?: string }
+  ultimoEnd?: string;
+  /** Id opaco del alumno (lista del docente) si entró con `?alumno=`; opcional: los perfiles viejos no lo traen. */
+  alumnoId?: string }
 
 /** Lo que dejó una partida. En práctica no hay carrera: `limpios` es 0 (y no se gana). */
 export interface Resultado { puntos: number; pods: number; total: number; quemadas: number; limpios: number; gano: boolean; nivel: Nivel;
@@ -183,9 +185,24 @@ export function cargarPerfil(alias: string, almacen: Almacen | null = disco()): 
       oleadas: Object.fromEntries(Object.entries(o.oleadas && typeof o.oleadas === "object" ? o.oleadas : {}).filter(([, v]) => num(v) > 0) as [string, number][]),
       totales: Object.fromEntries(Object.entries(o.totales && typeof o.totales === "object" ? o.totales : {}).filter(([, v]) => num(v) > 0) as [string, number][]),
       ultimoEnd: typeof o.ultimoEnd === "string" ? o.ultimoEnd : undefined,
+      alumnoId: typeof o.alumnoId === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(o.alumnoId) ? o.alumnoId : undefined,
     };
   } catch { return perfilNuevo(alias.trim()); }
 }
+
+/** Alias válido (1 a 12) a partir del alumno: su alias si cabe; si no, el nombre, abreviado tipo «Ana P.» si es largo. */
+export function aliasDeAlumno(a: { nombre: string; alias?: string }): string {
+  const limpio = (t: string) => t.replace(/[\u0000-\u001f\u007f]/g, "").trim().replace(/\s+/g, " ");
+  const alias = limpio(a.alias ?? ""), nombre = limpio(a.nombre);
+  if (alias && alias.length <= 12) return alias;
+  if (nombre.length <= 12) return nombre || "Jugador";
+  const [primero = "", segundo] = nombre.split(" ");
+  const corto = segundo ? `${[...primero].slice(0, 9).join("")} ${[...segundo][0]}.` : [...primero].slice(0, 12).join("");
+  return corto;
+}
+
+/** Aplica el alumno al perfil: guarda `alumnoId` y propone el alias. Ojo: el perfil se guarda por alias; quien llama debe cargarPerfil(aliasDeAlumno(a)) y luego aplicarAlumno. */
+export const aplicarAlumno = (perfil: Perfil, a: { id: string; nombre: string; alias?: string }): Perfil => ({ ...perfil, alumnoId: a.id, alias: aliasDeAlumno(a) });
 
 /** Último alias usado en este dispositivo: el menú lo rellena (sin cuentas; solo localStorage, o memoria si falla). */
 export function ultimoAlias(almacen: Almacen | null = disco()): string {

@@ -10,7 +10,7 @@ import type { Falta } from "./pantalla";
 import type { Aguja } from "./vista";
 
 /** Qué elemento del Taller se resalta en cada paso. */
-export type Objetivo = "gaveta" | "probar" | "tension" | "pieza" | "carga" | "despachar" | "contador" | "pestanas";
+export type Objetivo = "gaveta" | "probar" | "tension" | "pieza" | "carga" | "despachar" | "contador" | "pestanas" | "multimetro" | "check";
 
 /** Lo que el Taller sabe de la zona del tutorial (la única del pod). */
 export interface EstadoTut {
@@ -31,7 +31,7 @@ export interface EstadoTut {
 }
 
 /** Acción que el paso deja hacer en la gaveta o en Probar; lo demás se frena con un aviso. */
-export type Accion = { elegir: string } | "probar" | "despachar";
+export type Accion = { elegir: string } | { arrastrar: string } | "probar" | "despachar" | "check";
 
 /** `libre`: el paso deja tocar todo; `fin`: último paso con los botones de salida . */
 export interface Paso { titulo: string; texto: string; objetivo: Objetivo; pide?: Accion; libre?: boolean; /** Dibuja el esquema «paralelo» junto al texto. */ esquema?: boolean; fin?: boolean; hecho: (e: EstadoTut) => boolean }
@@ -39,6 +39,8 @@ export interface Paso { titulo: string; texto: string; objetivo: Objetivo; pide?
 /** Datos de cada mini-tutorial: ids de piezas de la gaveta y estados que el Taller confirma. */
 const elige = (x: string) => (e: EstadoTut) => e.elegida === x;
 const pide = (x: string): Accion => ({ elegir: x });
+/** Mecánica 1 (validación): se arrastra la resistencia al hueco rojo y el multímetro valida; CHECK reemplaza a Despachar. */
+const arrastra = (x: string): Accion => ({ arrastrar: x });
 const SIN_FALLA = (e: EstadoTut) => e.reparada;
 const QUEMADO = (e: EstadoTut) => e.quemado;
 const DESPACHADO = (e: EstadoTut) => e.despachados > 0;
@@ -70,12 +72,12 @@ export interface Mecanica {
 
 export const MECANICAS: Mecanica[] = [
   { id: "resistencia", nombre: "Resistencia", ensena: "La resistencia frena la corriente: ni mucha ni poca.", nivel: 1, semilla: 11, pod: 0, circuito: "led", pasos: [
-    { titulo: "Frena la corriente", objetivo: "gaveta", pide: pide("1000"), hecho: elige("1000"), texto: "La resistencia frena: más ohmios (Ω), menos corriente. Elige 1000 Ω." },
-    { titulo: "Prueba", objetivo: "probar", pide: "probar", hecho: (e) => e.aguja === "poco", texto: "1000 Ω frena mucho. Pulsa Probar y mira la aguja." },
-    { titulo: "Frena poco", objetivo: "gaveta", pide: pide("100"), hecho: elige("100"), texto: "Marcó «poco»: casi no brilla. Elige 100 Ω, que frena poco." },
-    { titulo: "Demasiada corriente", objetivo: "probar", pide: "probar", hecho: QUEMADO, texto: "Un LED se quema si le pasa demasiada corriente. Pulsa Probar." },
-    { titulo: "La buena", objetivo: "gaveta", pide: pide("470"), hecho: elige("470"), texto: "Probar espera unos segundos. Elige 470 Ω: ni mucho ni poco." },
-    PROBAR_OK, DESPACHA,
+    { titulo: "Falta la resistencia", objetivo: "gaveta", pide: arrastra("1000"), hecho: elige("1000"), texto: "El hueco rojo pide resistencia. Arrastra 1000 Ω hasta él." },
+    { titulo: "Multímetro", objetivo: "multimetro", hecho: (e) => e.aguja === "poco", texto: "Multímetro encendido: ámbar = frena mucho. Sin verde no hay check." },
+    { titulo: "Frena poco", objetivo: "gaveta", pide: arrastra("100"), hecho: QUEMADO, texto: "Arrastra 100 Ω (frena poco). Si pide esperar, espera unos segundos." },
+    { titulo: "Rojo", objetivo: "multimetro", hecho: QUEMADO, texto: "Rojo: demasiada corriente, el LED se quema. Frena a medias." },
+    { titulo: "La buena", objetivo: "gaveta", pide: arrastra("470"), hecho: SIN_FALLA, texto: "Arrastra 470 Ω: ni mucho ni poco. Espera si hace falta." },
+    { titulo: "Check", objetivo: "check", pide: "check", hecho: DESPACHADO, texto: "Multímetro en verde: pulsa CHECK para pasar al siguiente." },
     LISTO("El valor justo depende de la batería y del LED."),
   ] },
   { id: "multimetro", nombre: "Multímetro", ensena: "Medir tensión y continuidad sin gastar intentos.", nivel: 1, semilla: 12, pod: 0, circuito: "led", pasos: [
@@ -195,11 +197,11 @@ export function avanzar(t: Tutorial, e: EstadoTut, ahora = t.desde + MIN_PASO_MS
  */
 const cumple = (t: Tutorial, e: EstadoTut) => {
   const p = actual(t);
-  return ((e.reparada || e.despachados > 0) && !p.fin && p.pide !== "despachar") || p.hecho(rel(t, e));
+  return ((e.reparada || e.despachados > 0) && !p.fin && p.pide !== "despachar" && p.pide !== "check") || p.hecho(rel(t, e));
 };
 /** El estado que ve `hecho`: pruebas y medidas contadas desde que se cumplió el paso anterior (una acción hecha antes no avanza este paso). */
 const rel = (t: Tutorial, e: EstadoTut): EstadoTut => ({ ...e, pruebas: e.pruebas - t.p0, medidas: e.medidas - t.m0 });
-const coincide = (pide: Accion | undefined, a: Accion) => typeof a === "string" ? pide === a : typeof pide === "object" && pide.elegir === a.elegir;
+const coincide = (pide: Accion | undefined, a: Accion) => JSON.stringify(pide) === JSON.stringify(a);
 /**
  * null si el paso deja hacer `a`; si no, el aviso. Fuera del tutorial (o tras «Saltar») todo vale.
  * Con `e`, si el paso actual ya se cumple también vale la acción del siguiente (un jugador rápido no espera los 1,4 s de `avanzar`; nunca más de un paso adelante).

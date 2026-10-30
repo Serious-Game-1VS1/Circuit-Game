@@ -61,6 +61,14 @@ export function probarActivo(eleccion: string | undefined, ultima: string | unde
   return !!eleccion && eleccion !== ultima && !reparada && !espera;
 }
 
+/**
+ * Mecánica 1 (validación): la resistencia se ARRASTRA al hueco rojo, el multímetro valida y CHECK reemplaza a Despachar.
+ * Solo en el tutorial «resistencia» y en las zonas led/cabina de la práctica de nivel 1; el resto y el duelo siguen con Probar.
+ */
+export const conValidacion = (c: { tutorial: string | null; practica: boolean; nivel: number; oleadas?: boolean }, circuito: Circuito): boolean =>
+  c.tutorial !== null ? c.tutorial === "resistencia" && circuito === "led"
+    : c.practica && !c.oleadas && c.nivel === 1 && (circuito === "led" || circuito === "cabina");
+
 /** Leyenda de los iconos de las pestañas de zona (rojo = alerta, verde = reparada, cian = la que ves). */
 export const LEYENDA_ZONAS = "Rojo: falla  Verde: lista  Cian: aquí";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Medida } from "../../spike/src/protocol";
-import { anguloTension, lecturaLista, MEDIR_MS, textoMedida, textoModo } from "../src/multimetro";
+import { anguloTension, luzValidacion, lecturaLista, MEDIR_MS, textoMedida, textoModo } from "../src/multimetro";
 
 const tension = (fraccion: number, t: Medida["tension"]): Medida => ({ t: "medida", seq: 3, t0: 0, zona: 1, modo: "tension", punto: "carga1", tension: t, fraccion });
 
@@ -33,5 +33,16 @@ describe("multímetro del Taller", () => {
     expect(textoModo("tension", "fusible")).toMatch(/No mide amperios/);
     expect(textoMedida(cont(true), "fusible")).toMatch(/fusible está sano/);
     expect(textoMedida({ ...cont(true), punto: "carga1" }, "fusible")).toMatch(/^Pasa: la corriente/);
+  });
+});
+
+describe("luz de validación", () => {
+  it("apagado sin veredicto; verde correcto; ámbar poco/demasiado; rojo si se quema", () => {
+    expect(luzValidacion(undefined)).toBeNull();
+    expect(luzValidacion({ aguja: null, quemado: false })).toBeNull();
+    expect(luzValidacion({ aguja: "correcto", quemado: false })).toBe("verde");
+    expect(luzValidacion({ aguja: "poco", quemado: false })).toBe("ambar");
+    expect(luzValidacion({ aguja: "demasiado", quemado: false })).toBe("ambar");
+    expect(luzValidacion({ aguja: "demasiado", quemado: true })).toBe("rojo");
   });
 });

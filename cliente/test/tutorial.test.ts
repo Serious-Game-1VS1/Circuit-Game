@@ -22,7 +22,7 @@ const SEMILLAS: Record<string, { circuito: string; volts?: number; r1?: number; 
 
 /** Un estado por paso (menos el último): el que confirma ese paso, con los contadores como los lleva el Taller. */
 const ESTADOS: Record<string, EstadoTut[]> = {
-  resistencia: [e({ elegida: "1000" }), e({ elegida: "1000", aguja: "poco" }), e({ elegida: "100" }), e({ elegida: "100", quemado: true }), e({ elegida: "470" }), e({ elegida: "470", reparada: true }), e({ despachados: 1 })],
+  resistencia: [e({ elegida: "1000" }), e({ elegida: "1000", aguja: "poco" }), e({ elegida: "100", quemado: true }), e({ elegida: "100", quemado: true }), e({ elegida: "470", reparada: true }), e({ despachados: 1 })],
   multimetro: [e({ elegida: "1000" }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "470" }), e({ reparada: true }), e({ despachados: 1 })],
   fusible: [e({ elegida: "3" }), e({ elegida: "3", quemado: true }), e({ elegida: "1" }), e({ elegida: "1", reparada: true }), e({ despachados: 1 })],
   invertido: [e({ elegida: "inversa" }), e({ pruebas: 1 }), e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "directa" }), e({ reparada: true }), e({ despachados: 1 })],
@@ -93,9 +93,10 @@ describe("mini-tutoriales por mecánica", () => {
     it("elegir y probar casi a la vez: el pod ya reparado lleva a Despacha y, despachado, al cierre", () => {
       const sol = SEMILLAS[id]!.solucion, rep = e({ elegida: sol, reparada: true, falta: null });
       let t = iniciar(id), ms = 0;
-      for (let n = 0; n < 20 && actual(t).pide !== "despachar" && !esFin(t); n++) t = avanzar(t, rep, (ms += 1500));
-      expect(actual(t).pide, `${id} no llegó a Despacha`).toBe("despachar");
-      expect(permite(iniciar(id), "despachar", rep), `${id} deja despachar desde el paso 1`).not.toBeNull();
+      const ultima = id === "resistencia" ? "check" : "despachar"; // la mecánica 1 cierra con CHECK en vez de Despachar
+      for (let n = 0; n < 20 && actual(t).pide !== ultima && !esFin(t); n++) t = avanzar(t, rep, (ms += 1500));
+      expect(actual(t).pide, `${id} no llegó a Despacha`).toBe(ultima);
+      expect(permite(iniciar(id), ultima, rep), `${id} deja despachar desde el paso 1`).not.toBeNull();
       for (let n = 0; n < 5 && !esFin(t); n++) t = avanzar(t, e({ despachados: 1, reparada: true }), (ms += 1500));
       expect(esFin(t), `${id} sin cierre`).toBe(true);
     });
@@ -134,21 +135,39 @@ describe("mecánica del tutorial", () => {
   });
 
   it("solo deja elegir la pieza del paso y Probar en los pasos de Probar", () => {
-    const t = iniciar("resistencia");
-    expect(permite(t, { elegir: "1000" })).toBeNull();
-    expect(permite(t, { elegir: "470" })).toBe("Ahora toca: Frena la corriente");
+    const t = iniciar("fusible");
+    expect(permite(t, { elegir: "3" })).toBeNull();
+    expect(permite(t, { elegir: "1" })).toBe("Ahora toca: Fusible grueso");
     expect(permite(t, "probar")).not.toBeNull();
-    const t2 = avanzar(t, e({ elegida: "1000" }));
+    const t2 = avanzar(t, e({ elegida: "3" }));
     expect(permite(t2, "probar")).toBeNull();
-    expect(permite(t2, { elegir: "100" })).not.toBeNull();
+    expect(permite(t2, { elegir: "1" })).not.toBeNull();
+  });
+
+  it("resistencia: arrastrar solo la pieza del paso; elegir, Probar y Despachar no valen; CHECK solo en su paso", () => {
+    const t = iniciar("resistencia");
+    expect(permite(t, { arrastrar: "1000" })).toBeNull();
+    expect(permite(t, { arrastrar: "470" })).toBe("Ahora toca: Falta la resistencia");
+    for (const a of [{ elegir: "1000" }, "probar", "despachar", "check"] as const) expect(permite(t, a), String(a)).not.toBeNull();
+    const ck = { ...t, i: t.pasos.findIndex((p) => p.pide === "check") };
+    expect(permite(ck, "check")).toBeNull();
+    expect(permite(ck, "despachar")).not.toBeNull();
+    expect(permite({ ...ck, i: ck.i - 1 }, "check", e({ reparada: true }))).toBeNull(); // jugador rápido: ya en verde, pulsa CHECK antes de 1,4 s
+    expect(permite({ ...ck, i: ck.i - 1 }, "check", base)).not.toBeNull();
+  });
+
+  it("CHECK solo termina con el pod despachado; reparada no basta para saltar su paso", () => {
+    const t = { ...iniciar("resistencia"), i: iniciar("resistencia").pasos.findIndex((p) => p.pide === "check"), desde: 0 };
+    expect(avanzar(t, e({ reparada: true }), 5000)).toBe(t);
+    expect(avanzar(t, e({ despachados: 1 }), 5000).i).toBe(t.i + 1);
   });
 
   it("jugador rápido: con el paso cumplido acepta la acción del siguiente (<1,4 s), pero no la de dos pasos más allá", () => {
-    const t = avanzar(iniciar("resistencia"), base, 0);
-    const elegida = e({ elegida: "1000" });
+    const t = avanzar(iniciar("fusible"), base, 0);
+    const elegida = e({ elegida: "3" });
     expect(permite(t, "probar", elegida)).toBeNull();
     expect(permite(t, "probar", base)).not.toBeNull();
-    expect(permite(t, { elegir: "100" }, elegida)).not.toBeNull();
+    expect(permite(t, { elegir: "1" }, elegida)).not.toBeNull();
     expect(avanzar(t, elegida, 100)).toBe(t);
   });
 
@@ -169,8 +188,8 @@ describe("mecánica del tutorial", () => {
   it("saltar lo desactiva, libera todo y no pierde el paso", () => {
     const t = saltar(avanzar(iniciar("resistencia"), e({ elegida: "1000" })));
     expect(t.activo).toBe(false);
-    expect(actual(t).titulo).toBe("Prueba");
-    expect(permite(t, { elegir: "470" })).toBeNull();
+    expect(actual(t).titulo).toBe("Multímetro");
+    expect(permite(t, { arrastrar: "470" })).toBeNull();
     expect(permite(null, "probar")).toBeNull();
   });
 

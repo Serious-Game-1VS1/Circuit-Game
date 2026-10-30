@@ -13,6 +13,7 @@ import { bienvenida, cambiarNivel, cargarPerfil, INSIGNIAS, mejorNave, nivelEleg
 import type { Pantalla } from "./pantalla";
 import { MECANICAS } from "./tutorial";
 import { chasis } from "./podio";
+import { crearChispa, mensajesMenu, type Mensaje } from "./chispa";
 import { panelLogros } from "./recompensas";
 
 const W = 360, D = 1900; // el panel de recompensas/logros va a 2000: queda encima
@@ -86,6 +87,13 @@ export function menu(s: Phaser.Scene, net: Net) {
   boton(W / 2 - 84, 541, 160, 48, "APRENDER", false, () => abrir(aprender));
   boton(W / 2 + 84, 541, 160, 48, "LOGROS", false, () => panelLogros(s, refrescar()));
   const aviso = letras(s, W / 2, 574, "", 2, ROJO).setOrigin(0.5, 0).setMaxWidth(328).setCenterAlign().setDepth(D + 200);
+
+  // --- Chispa: esquina inferior; su bocadillo rota (tiempo real) entre el primer pod, el consejo del día y la felicitación ---
+  const chispa = crearChispa(s, 30, 634, 3, "normal", { ancho: 250 });
+  let msgs: Mensaje[] = [], mi = 0, clave = "";
+  const hablar = () => { const m = msgs[mi % msgs.length]; if (!m) return; chispa.poner(m.expr); chispa.decir(m.texto); if (m.expr === "feliz") chispa.animar(); };
+  const rota = window.setInterval(() => { if (!chispa.cont.active) return; mi++; hablar(); }, 6000);
+  s.events.once("shutdown", () => { clearInterval(rota); chispa.destruir(); });
 
   // --- Paneles emergentes (se crean ocultos; los campos HTML se esconden con ellos) ---
   const panel = (y: number, h: number, t: string) => {
@@ -235,6 +243,8 @@ export function menu(s: Phaser.Scene, net: Net) {
     const r = progresoRango(pf.xp);
     sel = nivelElegido(pf, sel);
     bien.setText(bienvenida(pf));
+    const nuevos = mensajesMenu(pf, MECANICAS.length, Math.floor(Date.now() / 864e5));
+    if (JSON.stringify(nuevos) !== clave) { clave = JSON.stringify(nuevos); msgs = nuevos; mi = 0; hablar(); }
     rango.setText(r.actual.toUpperCase());
     xp.setText(r.siguiente ? `${r.n}/${r.m} XP` : `${pf.xp} XP`);
     barra.width = Math.max(2, 292 * (r.siguiente ? r.n / r.m : 1));

@@ -6,6 +6,7 @@
 import * as Phaser from "phaser";
 import { anim, cargarArte, img, letras, toque } from "./arte";
 import { desbloquear, sonar } from "./audio";
+import { crearChispa } from "./chispa";
 
 const W = 360, H = 640;
 const CLAVE = "circuitsync.intro";
@@ -61,11 +62,13 @@ export class Intro extends Phaser.Scene {
     const nave = img(this, W / 2, 350, "pod1_cometa_reparado_0", 3);
     const cartel = anim(this, W / 2, 130, "cartel_averia", 4);
     if (reducido) cartel.stop(); else this.tweens.add({ targets: nave, y: { from: 200, to: 350 }, duration: 900, ease: "Cubic.Out", paused: false });
-    viñetas.push([bahia, nave, cartel, pie("Llega al taller.")]);
+    const ch2 = crearChispa(this, 290, 470, 3, "normal", { lado: "izq", ancho: 150 }); ch2.decir("¡Otro pod!");
+    viñetas.push([bahia, nave, cartel, ch2.cont, pie("Llega al taller.")]);
 
     // 3) Reparar y entender
     const pieza = [img(this, W / 2 - 70, 320, "resistencia_220", 5), img(this, W / 2, 320, "led_rojo_encendido", 5), img(this, W / 2 + 70, 320, "icono_bateria", 5)];
-    viñetas.push([...pieza, pie("Repara el circuito. Entiéndelo.", CIAN)]);
+    const ch3 = crearChispa(this, 60, 470, 3, "senalando", { ancho: 200 }); ch3.decir("Esta frena la corriente.");
+    viñetas.push([...pieza, ch3.cont, pie("Repara el circuito. Entiéndelo.", CIAN)]);
 
     // 4) Logo
     const banda = this.add.rectangle(0, 250, W, 140, 0x10141e, 0.85).setOrigin(0);
@@ -73,7 +76,8 @@ export class Intro extends Phaser.Scene {
     const led = this.add.image(W / 2, 346, "led_rojo_encendido").setScale(4);
     const toca = pie("Toca para empezar", AMBAR);
     if (!reducido) this.tweens.add({ targets: toca, alpha: 0.5, duration: 700, yoyo: true, repeat: -1 }); // suave, sin parpadeo duro
-    viñetas.push([banda, logo, led, toca]);
+    const ch4 = crearChispa(this, 290, 470, 3, "feliz", { lado: "izq", ancho: 150 }); ch4.decir("¡Hola, soy Chispa!");
+    viñetas.push([banda, logo, led, ch4.cont, toca]);
 
     viñetas.forEach((v, i) => v.forEach((o) => (o as Phaser.GameObjects.Image).setVisible(false).setAlpha(0)));
     const ver = (i: number) => {
