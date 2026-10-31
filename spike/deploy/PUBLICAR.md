@@ -274,3 +274,11 @@ Restaurar:
 - Cliente: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v3`; sin `arte/`). Alternativa: reconstruir desde `79fb2af` y `swa deploy`.
 
 Segundo despliegue v4, solo cliente (31-oct-2026, commit `4ad2a17`): la ayuda del multímetro aclara que medir toma tiempo (bundle `index-Bdug4yaC.js`, antes `index-Dt-0JLwn.js`; `version.json` con `4ad2a17`). El árbitro no cambió. Respaldo del cliente anterior en el scratchpad (`dist-v4`, sin `arte/`). Restaurar: reconstruir desde `8a0621b` y `swa deploy`.
+
+## Despliegue v5 (31-oct-2026, commit a8e9ec0)
+
+Cliente primero (SWA `circuitsync-juego`, bundle `index-Qq8fi6jD.js`, antes `index-Bdug4yaC.js`; `dist/version.json` con commit `a8e9ec0` y protocolo 2) y luego árbitro (`src/` y `deploy/` reemplazados, `instalar.sh` ejecutado; endurecimiento 1,3 OK, `/var/lib/circuitsync/docente` escribible, log con «Photon (us) · sala nueva» y «retención»). Cambio: el transporte de Photon (`spike/src/transport/photon.ts`, usado por cliente y árbitro) ya no cierra conexiones que aún se están abriendo, lo que evita los errores 3001/3004 «WebSocket closed before established». CI verde (Spike y Cliente).
+
+Restaurar:
+- Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v5 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
+- Cliente: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v5`; sin `arte/`). Alternativa: reconstruir desde `4ad2a17` y `swa deploy`.

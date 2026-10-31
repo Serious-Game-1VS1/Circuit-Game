@@ -23,3 +23,17 @@ Se agregó `"Strict-Transport-Security": "max-age=31536000; includeSubDomains; p
 ## Qué no se midió
 
 SSL Labs: solo se leyó el JSON de la API (no se guardó captura de su web). No se probó TLS por IP secundaria (el JSON listó un solo endpoint). Las notas cambian con el tiempo: repetir antes de la defensa.
+
+## Repetición del 31-oct-2026 (UTC ~21:47 a 21:55, versión a8e9ec0, protocolo 2)
+
+Hecha por curl/API, sin navegador. `version.json` del sitio: commit a8e9ec0. Cabeceras crudas iguales a las de la sección anterior (HSTS `max-age=31536000; includeSubDomains; preload`, CSP enforce, X-Frame-Options DENY, Permissions-Policy, COOP same-origin, nosniff, Referrer-Policy).
+
+| Herramienta | Nota | Cambio frente al 30-oct |
+|---|---|---|
+| MDN HTTP Observatory (API v2, algoritmo v6, `POST /api/v2/scan?host=...`) | **A+, 120/100**, 12 de 12 pruebas pasadas, 0 fallidas | Igual (tras el HSTS de un año) |
+| Qualys SSL Labs (API v3, `publish=off`, `startNew=on`) | **A+** (IP 20.72.253.180, `isExceptional`: true, sin advertencias) | **Subió de A a A+** (consistente con el HSTS de un año; la nota anterior se tomó con HSTS de 126 días) |
+| securityheaders.com | **No se pudo obtener** | La consulta HTTP devuelve 403 con un desafío de Cloudflare (sin cabecera `x-grade`); superarlo sería saltarse una verificación anti-bot, así que no se intentó. Última nota conocida: A+ (30-oct). Repetir a mano en el navegador antes de la defensa. |
+
+Hallazgos nuevos: ninguno. Ninguna nota bajó. Siguen los informativos de la sección anterior (`'unsafe-inline'` en `style-src`, sin SRI, sin COEP/CORP).
+
+No se midió: TLS por IP secundaria, ni la captura web de SSL Labs (solo el JSON de la API).
