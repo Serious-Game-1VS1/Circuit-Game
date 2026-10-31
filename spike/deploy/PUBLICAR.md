@@ -256,3 +256,11 @@ Publicado en este orden: cliente (SWA `circuitsyncjuego`, bundle `index-BSXHzftr
 Restaurar:
 - Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v2 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
 - Cliente: copia del `index.html` y del bundle anterior en el scratchpad de la sesión (`dist-anterior`; no incluye `arte/`). Alternativa: reconstruir desde el commit anterior (`1ef0fd4` o `eeef2eb`) y `swa deploy`.
+
+## Despliegue v3 (31-oct-2026, commit 79fb2af)
+
+Cliente primero (SWA `circuitsyncjuego`, bundle `index-1op_NFEn.js`, antes `index-BSXHzftr.js`; `dist/version.json` con commit `79fb2af` y protocolo 2) y luego árbitro (`src/` y `deploy/` reemplazados, `instalar.sh` ejecutado; endurecimiento 1,3 OK, `/var/lib/circuitsync/docente` escribible, log con «Photon (us) · sala nueva» y «retención»). Cambios: solapes y selección de piezas en la placa, y la lista de salas muestra el nivel real. CI verde (Spike y Cliente).
+
+Restaurar:
+- Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v3 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
+- Cliente: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v2`; sin `arte/`). Alternativa: reconstruir desde `d685599` y `swa deploy`.
