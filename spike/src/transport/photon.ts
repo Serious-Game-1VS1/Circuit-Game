@@ -19,6 +19,21 @@ function Only443(uri: string, prot: string) {
 Photon.PhotonPeer.setWebSocketImpl(Only443);
 
 /**
+ * Cierra un cliente del SDK sin cortar un socket que aún se está abriendo: eso lo registran el navegador y el SDK como
+ * 3001/3004 «WebSocket closed before established». Si el cliente sigue conectando, espera a que termine esa fase y entonces lo cierra.
+ */
+function cerrar(lbc: InstanceType<typeof LBC>) {
+  const S = LBC.State;
+  const conectando = (s: number) => s === S.ConnectingToNameServer || s === S.ConnectingToMasterserver || s === S.ConnectingToGameserver;
+  if (!conectando(lbc.state())) { lbc.disconnect(); return; }
+  lbc.onStateChange = (s: number) => {
+    if (conectando(s)) return;
+    lbc.onStateChange = () => {};
+    setTimeout(() => lbc.disconnect(), 0); // después de que el SDK termine de atender este cambio (p. ej. la autenticación)
+  };
+}
+
+/**
  * S-03: el anfitrión (árbitro) acepta eventos de cualquiera, pero un cliente solo los del anfitrión de la sala.
  * Photon entrega `actorNr` verdadero (lo pone el servidor); el contenido JSON, en cambio, lo escribe el remitente.
  */
@@ -94,7 +109,7 @@ export class PhotonTransport implements Transport {
     return (this.readyForRooms ??= this.step(() => {
       const old = this.lbc;
       this.lbc = this.build();
-      old?.disconnect();
+      if (old) cerrar(old);
       return this.lbc.connectToRegionMaster(this.region);
     }));
   }
@@ -106,7 +121,7 @@ export class PhotonTransport implements Transport {
     this.lbc = undefined; // los callbacks del cliente viejo ya no cuentan (ver mine)
     this.readyForRooms = undefined; this.listaLista = false; this.alLista = undefined;
     this.settle(new Error("lobby cerrado"));
-    lbc.disconnect();
+    cerrar(lbc);
   }
 
   async create(code: string) {
@@ -156,6 +171,6 @@ export class PhotonTransport implements Transport {
     this.pending = undefined;
     this.inRoom = false; this.ocupado = false; this.listaLista = false; // cierre propio: no es una pérdida de conexión
     this.readyForRooms = undefined;
-    this.lbc?.disconnect();
+    if (this.lbc) cerrar(this.lbc);
   }
 }

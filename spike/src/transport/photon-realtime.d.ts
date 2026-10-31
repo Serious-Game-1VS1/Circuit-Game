@@ -11,7 +11,8 @@ declare module "photon-realtime" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- se usa vía `typeof` en Photon.LoadBalancing
   class LoadBalancingClient {
     constructor(protocol: number, appId: string, appVersion: string);
-    static State: Record<"Error" | "JoinedLobby" | "Joined" | "Disconnected", number>;
+    static State: Record<"Error" | "ConnectingToNameServer" | "ConnectingToMasterserver" | "ConnectingToGameserver" | "JoinedLobby" | "Joined" | "Disconnected", number>;
+    state(): number;
     static StateToName(state: number): string;
     setLogLevel(level: number): void;
     setNameServerAddress(address: string): void;
