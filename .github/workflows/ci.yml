@@ -29,8 +29,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: cliente/package-lock.json
+          cache-dependency-path: |
+            cliente/package-lock.json
+            spike/package-lock.json
       - run: npm ci
+      - name: Instalar dependencias de spike (photon-realtime, usado por cliente)
+        working-directory: spike
+        run: npm ci
       - run: npx tsc --noEmit
       - run: npm test
       - run: npm run build
