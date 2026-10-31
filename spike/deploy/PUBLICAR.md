@@ -264,3 +264,11 @@ Cliente primero (SWA `circuitsyncjuego`, bundle `index-1op_NFEn.js`, antes `inde
 Restaurar:
 - Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v3 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
 - Cliente: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v2`; sin `arte/`). Alternativa: reconstruir desde `d685599` y `swa deploy`.
+
+## Despliegue v4 (31-oct-2026, commit 8a0621b)
+
+Cliente primero (SWA `circuitsync-juego`, bundle `index-Dt-0JLwn.js`, antes `index-1op_NFEn.js`; `dist/version.json` con commit `8a0621b` y protocolo 2) y luego árbitro (`src/` y `deploy/` reemplazados, `instalar.sh` ejecutado; endurecimiento 1,3 OK, `/var/lib/circuitsync/docente` escribible). Cambio: el coste de medir crece al repetir la zona (escala [1, 1,25, 1,5]; el multímetro muestra «próx. 3,75 s», luego «próx. 4,5 s»). CI verde (Spike y Cliente).
+
+Restaurar:
+- Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v4 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
+- Cliente: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v3`; sin `arte/`). Alternativa: reconstruir desde `79fb2af` y `swa deploy`.
