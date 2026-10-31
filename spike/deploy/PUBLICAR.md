@@ -248,3 +248,11 @@ backend = systemd
 **Parches.** `unattended-upgrades` activo (seguridad diaria); se aplicó `apt upgrade` el 30-oct sin necesidad de reinicio.
 
 > **Retención (S-11):** `src/docente/retencion.ts` (purga a los 12 meses de partidas y sesiones al arrancar y cada 24 h) está **ACTIVA en producción** desde el 30-oct-2026 (desplegada con el procedimiento 2.3 opción B + `instalar.sh`; el log de arranque muestra «retención: N registros eliminados»; respaldo previo en `/opt/circuitsync/spike.bak-retencion`). Escribe solo en `DOCENTE_DATA` (`/var/lib/circuitsync/docente`), dentro de `ReadWritePaths`.
+
+## Despliegue v2 (30/31-oct-2026, commit d685599)
+
+Publicado en este orden: cliente (SWA `circuitsyncjuego`, bundle `index-BSXHzftr.js`, antes `index-DDwWp4pU.js`; `dist/version.json` con commit y protocolo 2, no se versiona) y luego árbitro (protocolo 2). Al árbitro se subieron `src/`, `deploy/`, `package*.json` y `tsconfig.json` (se reemplazaron `src` y `deploy`) y se corrió `instalar.sh`; el drop-in de endurecimiento sigue activo (1,3 OK) y `/var/lib/circuitsync/docente` es escribible. Verificado: la Sala no muestra el aviso de versión y lista la sala nueva.
+
+Restaurar:
+- Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v2 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
+- Cliente: copia del `index.html` y del bundle anterior en el scratchpad de la sesión (`dist-anterior`; no incluye `arte/`). Alternativa: reconstruir desde el commit anterior (`1ef0fd4` o `eeef2eb`) y `swa deploy`.
