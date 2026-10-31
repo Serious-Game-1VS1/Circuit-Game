@@ -60,6 +60,7 @@ class Entrar extends Base {
 class Sala extends Base {
   private lista!: Phaser.GameObjects.Text;
   private listo!: Phaser.GameObjects.Text;
+  private version!: Phaser.GameObjects.Text;
   constructor() { super("Sala"); }
   create() {
     texto(this, W / 2, 60, "Sala", 28);
@@ -83,6 +84,7 @@ class Sala extends Base {
     });
     this.lista = texto(this, W / 2, 290, "", 20);
     this.listo = boton(this, W / 2, 520, "Listo", W - 32, "#3bb273", () => { net.listo(); this.listo.setText("Esperando al rival…").disableInteractive().setBackgroundColor("#232a44"); });
+    this.version = this.add.text(W / 2, 550, "", { fontSize: "12px", color: "#e0a43c", align: "center", wordWrap: { width: W - 32 } }).setOrigin(0.5, 0);
     boton(this, W / 2, 594, "Salir", W - 32, "#3a4466", () => void net.salir());
     // Precarga el arte del Taller (~244 PNG): «Listo» espera a que termine, así la cuenta 3-2-1 (y el reloj) no
     // arranca con este equipo aún cargando ni deja la pantalla en negro tras la cuenta.
@@ -95,6 +97,7 @@ class Sala extends Base {
     const filas = p.jugadores.map((j) => `${j.alias}${j.station === p.station ? " (tú)" : ""}  ${j.ready ? "✔ listo" : "…"}`);
     this.lista.setText([...filas, ...(p.jugadores.length < 2 ? ["Esperando al rival…"] : [])].join("\n\n"));
     // El botón sigue al árbitro: si te desmarca (el rival se fue o reconectaste) vuelve a «Listo».
+    this.version.setText(p.versionAviso ?? "");
     const yo = p.jugadores.find((j) => j.station === p.station);
     if (yo?.ready) this.listo.setText("Esperando al rival…").disableInteractive();
     else if (this.load.isLoading()) this.listo.setText("Cargando…").disableInteractive();

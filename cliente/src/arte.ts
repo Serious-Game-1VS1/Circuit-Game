@@ -3,6 +3,8 @@
  * Escala entera: 1 px de sprite = `k` px de pantalla (4 en taller y UI, según arte/README.md).
  */
 import * as Phaser from "phaser";
+import { colorDe } from "./colores";
+import { infoFusible } from "./colores";
 import { ANIMACIONES, type Montaje, sprite, SPRITES } from "./sprites";
 import { aPixel, CONSEJOS } from "./vista"; // glifos que la fuente no trae
 
@@ -30,12 +32,20 @@ export function cargarArte(s: Phaser.Scene, y = 320) {
   // Consejo de electrónica bajo el porcentaje, cambia cada ~3 s (setInterval: el reloj de la escena no corre durante el preload).
   let n = Math.floor(Math.random() * CONSEJOS.length);
   const consejo = aviso ? s.add.text(180, y + 30, CONSEJOS[n]!, { fontSize: "14px", color: "#e0a43c", align: "center", wordWrap: { width: 300 } }).setOrigin(0.5, 0) : null;
+  // Multímetro dibujado con una flecha: para qué sirve (≤ 8 palabras); lo dibujado se destruye al terminar la carga.
+  const mm = aviso ? s.add.graphics() : null;
+  mm?.fillStyle(0x232a42, 1).fillRoundedRect(150, y + 96, 60, 38, 6).lineStyle(2, 0xd9a21b, 1).strokeRoundedRect(150, y + 96, 60, 38, 6)
+    .lineStyle(2, 0xf4f7ff, 1).beginPath().arc(180, y + 124, 14, Math.PI * 1.15, Math.PI * 1.85).strokePath().lineStyle(2, 0xff4a4a, 1).lineBetween(180, y + 124, 188, y + 111)
+    .fillStyle(0xff4a4a, 1).fillCircle(165, y + 130, 3).fillStyle(0x0b0d14, 1).fillCircle(195, y + 130, 3).lineStyle(2, 0xf4f7ff, 1).strokeCircle(195, y + 130, 3)
+    .fillStyle(0xffd23f, 1).fillTriangle(180, y + 142, 172, y + 154, 188, y + 154);
+  const uso = aviso ? s.add.text(180, y + 160, "Mide con el multímetro, luego valida", { fontSize: "14px", color: "#ffd23f", align: "center", wordWrap: { width: 300 } }).setOrigin(0.5, 0) : null;
   const rota = consejo && window.setInterval(() => consejo.setText(CONSEJOS[++n % CONSEJOS.length]!), 3000);
   s.load.on("progress", progreso);
+  if (rota) s.events.once("shutdown", () => clearInterval(rota)); // escena parada en pleno preload: "complete" no llega
   s.load.once("complete", () => {
     s.load.off("progress", progreso);
     aviso?.destroy();
-    consejo?.destroy();
+    consejo?.destroy(); mm?.destroy(); uso?.destroy();
     if (rota) clearInterval(rota);
     for (const k of [...SPRITES.map((x) => x.nombre), FUENTE]) s.textures.get(k).setFilter(Phaser.Textures.FilterMode.NEAREST);
     for (const x of ANIMACIONES) {
@@ -85,11 +95,40 @@ export function diodo(s: Phaser.Scene, x: number, y: number, k = 3, giro = false
   return g;
 }
 
+/** Nivel 3: resistencia con sus 4 bandas (nombres de color) en pixel art, 18×8 px de sprite a escala `k`. Centrada en (x, y). */
+export function resistenciaBandas(s: Phaser.Scene, x: number, y: number, k: number, nombres: readonly string[]) {
+  const g = s.add.graphics(), px = (c: number, f: number, w: number, h: number, color: number) => g.fillStyle(color).fillRect(x + (c - 9) * k, y + (f - 4) * k, w * k, h * k);
+  px(0, 3, 18, 2, 0x8a94a6); // patillas
+  px(2, 0, 14, 8, 0xd8b890); px(1, 1, 1, 6, 0xd8b890); px(16, 1, 1, 6, 0xd8b890); // cuerpo con extremos redondeados
+  nombres.forEach((n, i) => px([3, 6, 9, 13][i]!, 0, 2, 8, colorDe(n).hex));
+  return g;
+}
+
+/** Nivel 3: fusible por su aspecto. Vidrio 5x20 (corto) o 6,3x32 (largo) con hilo recto (F, rápido) o en zigzag (T, lento); cuchilla de coche del color de sus amperios. Centrado en (x, y). */
+export function fusibleGraf(s: Phaser.Scene, x: number, y: number, k: number, id: string) {
+  const f = infoFusible(id), g = s.add.graphics();
+  if (!f) return g;
+  const px = (c: number, r: number, w: number, h: number, color: number, alpha = 1) => g.fillStyle(color, alpha).fillRect(x + c * k, y + r * k, w * k, h * k);
+  if (f.tipo === "cuchilla") { // 14×16 px: cuerpo de color, ventana con el hilo y dos patas
+    px(-7, -8, 14, 11, f.color!.hex); px(-4, -6, 8, 4, 0xffffff, 0.55); px(-3, -4, 6, 1, 0x4a4a52); px(-3, -4, 1, 3, 0x4a4a52); px(2, -4, 1, 3, 0x4a4a52);
+    px(-5, 3, 3, 5, 0xb0b0b8); px(2, 3, 3, 5, 0xb0b0b8);
+    return g;
+  }
+  const w = f.grande ? 28 : 18, h = f.grande ? 9 : 7, x0 = -w / 2, y0 = -Math.floor(h / 2);
+  px(x0, y0, w, h, 0x7fc4e8); // vidrio
+  px(x0, y0, w, 1, 0xe8f4ff); px(x0, y0 + h - 1, w, 1, 0xe8f4ff);
+  px(x0, y0, 3, h, 0x9aa4c0); px(x0 + w - 3, y0, 3, h, 0x9aa4c0); // tapas
+  const ancho = w - 6, cy = y0 + Math.floor(h / 2);
+  if (f.letra === "F") px(x0 + 3, cy, ancho, 1, 0x4a4a52); // hilo recto: se funde al instante
+  else for (let i = 0; i < ancho; i++) px(x0 + 3 + i, cy + (i % 4 < 2 ? -1 : 1), 1, 1, 0x4a4a52); // hilo en zigzag (resorte): aguanta el arranque
+  return g;
+}
+
 /** Pinta un montaje (sprites, diodo y cables) centrado en (x, y); devuelve los objetos para meterlos en un contenedor. */
 export function pintarMontaje(s: Phaser.Scene, m: Montaje, x: number, y: number) {
   const g = s.add.graphics().lineStyle(4, 0x8a94a6);
   for (const [a, b, c, d] of m.cables) g.lineBetween(x + a, y + b, x + c, y + d);
   for (const [a, b] of m.puntos ?? []) g.fillStyle(0xe0a43c).fillCircle(x + a, y + b, 5);
-  return [g, ...m.elementos.map((e) => (e.diodo ? diodo(s, x + e.x, y + e.y, e.k, e.giro) : img(s, x + e.x, y + e.y, e.sprite!, e.k))),
+  return [g, ...m.elementos.map((e) => (e.diodo ? diodo(s, x + e.x, y + e.y, e.k, e.giro) : e.bandas ? resistenciaBandas(s, x + e.x, y + e.y, e.k, e.bandas) : e.fusible ? fusibleGraf(s, x + e.x, y + e.y, e.k, e.fusible) : img(s, x + e.x, y + e.y, e.sprite!, e.k))),
     ...(m.textos ?? []).map((t) => letras(s, x + t.x, y + t.y, t.t, t.k ?? 2).setOrigin(0.5, 0))];
 }

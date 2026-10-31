@@ -21,7 +21,7 @@ export const RANGOS = [
 export const UMBRALES_MEDALLA = { oro: 1, plata: 1.25, bronce: 1.5 } as const;
 export type Medalla = keyof typeof UMBRALES_MEDALLA;
 
-export interface Perfil { alias: string; xp: number; partidas: number; ganadas: number; pods: number; limpios: number; nivelDesbloqueado: 1 | 2; insignias: string[];
+export interface Perfil { alias: string; xp: number; partidas: number; ganadas: number; pods: number; limpios: number; nivelDesbloqueado: 1 | 2 | 3; insignias: string[];
   /** Ids de mini-tutoriales completados (ver marcarTutorial). */
   tutoriales: string[];
   /** Aciertos y fallos por concepto (ver dominio.ts). */
@@ -52,25 +52,33 @@ export const INSIGNIAS: readonly Insignia[] = [
   { id: "ganador", nombre: "Ganador", descripcion: "Gana un duelo", cumple: (_, r) => r.gano },
   { id: "constante", nombre: "Constante", descripcion: "Juega 5 partidas", cumple: (p) => p.partidas >= 5 },
   { id: "dominio", nombre: "Dominio", descripcion: "3 estrellas en un concepto", cumple: (p) => Object.values(p.dominio).some((c) => habilidad(c).estrellas === 3) },
-  { id: "nivel-2", nombre: "Nivel 2 abierto", descripcion: "Despacha todos los pods del nivel 1", cumple: (p) => p.nivelDesbloqueado === 2 },
+  { id: "nivel-2", nombre: "Nivel 2 abierto", descripcion: "Despacha todos los pods del nivel 1", cumple: (p) => p.nivelDesbloqueado >= 2 },
 ];
 
 /** Criterio de desbloqueo (SCRUM-166): una partida de nivel 1, práctica o duelo, que despacha todos sus pods (sin Oleadas, donde total es Infinity). */
 export const completoNivel1 = (r: Resultado) => r.nivel === 1 && r.pods >= r.total;
 
-/** Selector de nivel de la práctica: el 2 sale con candado hasta desbloquearlo. El duelo no lo usa (el servidor fija el nivel con --nivel/NIVEL). */
-export const textoNivel = (p: Perfil, sel: Nivel) => p.nivelDesbloqueado === 2 ? `Nivel de práctica: ${sel} (toca para cambiar)` : "Nivel de práctica: 1\nNivel 2: bloqueado. Completa el nivel 1 para abrirlo";
-export const nivelElegido = (p: Perfil, sel: Nivel): Nivel => (p.nivelDesbloqueado === 2 ? sel : 1);
-/** Nivel de «Jugar solo»: 1, 2 o mixto (el del duelo). El 2 y el mixto traen fallas de nivel 2: siguen bloqueados hasta abrirlo. */
-export type NivelBot = "1" | "2" | "mixto";
-export const nivelBotElegido = (p: Perfil, sel: NivelBot): 1 | 2 | "mixto" => (p.nivelDesbloqueado === 2 ? (sel === "mixto" ? "mixto" : sel === "2" ? 2 : 1) : 1);
-export const cambiarNivel = (p: Perfil, sel: Nivel): Nivel => (p.nivelDesbloqueado === 2 && sel === 1 ? 2 : 1);
+/** Criterio del nivel 3 «Experto»: completar una partida de nivel 2 (con el nivel 2 ya abierto), con las mismas reglas que el nivel 1. */
+export const completoNivel2 = (r: Resultado) => r.nivel === 2 && r.pods >= r.total;
+/** Etiqueta del nivel en menús, salas y práctica: «NIVEL 1», «NIVEL 2» o «EXPERTO». */
+export const etiquetaNivel = (n: Nivel) => (n === 3 ? "EXPERTO" : `NIVEL ${n}`);
+
+/** Selector de nivel de la práctica: el 2 y el 3 salen con candado hasta desbloquearlos. El duelo no lo usa (el servidor fija el nivel con --nivel/NIVEL). */
+export const textoNivel = (p: Perfil, sel: Nivel) => p.nivelDesbloqueado === 1 ? "Nivel de práctica: 1\nNivel 2: bloqueado. Completa el nivel 1 para abrirlo"
+  : `Nivel de práctica: ${sel === 3 ? "3 EXPERTO" : sel} (toca para cambiar)${p.nivelDesbloqueado === 2 ? "\nExperto: completa el nivel 2" : ""}`;
+export const nivelElegido = (p: Perfil, sel: Nivel): Nivel => Math.min(sel, p.nivelDesbloqueado) as Nivel;
+/** Nivel de «Jugar solo»: 1, 2, mixto (el del duelo) o 3 (Experto). El 2 y el mixto traen fallas de nivel 2 y el 3 pide haber completado el 2: siguen bloqueados hasta abrirlos. */
+export type NivelBot = "1" | "2" | "mixto" | "3";
+export const nivelBotElegido = (p: Perfil, sel: NivelBot): 1 | 2 | 3 | "mixto" =>
+  p.nivelDesbloqueado === 1 ? 1 : sel === "mixto" ? "mixto" : sel === "3" ? (p.nivelDesbloqueado === 3 ? 3 : 2) : sel === "2" ? 2 : 1;
+/** Siguiente nivel abierto (da la vuelta al 1). */
+export const cambiarNivel = (p: Perfil, sel: Nivel): Nivel => (sel < p.nivelDesbloqueado ? sel + 1 : 1) as Nivel;
 
 /** Saludo del menú (ajusta al ancho): primer uso, XP que falta para el siguiente rango y aviso del nivel 2. */
 export function bienvenida(p: Perfil): string {
   if (!p.partidas && !p.xp) return "Bienvenido al taller. Tu primer pod te espera.";
   const r = progresoRango(p.xp);
-  return `Hola, ${p.alias}. Rango ${r.actual}. ${r.siguiente ? `Te faltan ${r.m - r.n} XP para ${r.siguiente}.` : "Eres de lo mejor del taller."}${p.nivelDesbloqueado === 2 ? " Nivel 2 abierto." : ""}`;
+  return `Hola, ${p.alias}. Rango ${r.actual}. ${r.siguiente ? `Te faltan ${r.m - r.n} XP para ${r.siguiente}.` : "Eres de lo mejor del taller."}${p.nivelDesbloqueado === 3 ? " Experto abierto." : p.nivelDesbloqueado === 2 ? " Nivel 2 abierto." : ""}`;
 }
 
 /** PROVISIONAL: naves por número de pod (sprites del kit; se cambiarán por los propios). Rangos 1-4 abren las naves 1-4; la 5 pide todas las insignias. */
@@ -91,7 +99,7 @@ export const mejorNave = (p: Perfil) => Math.max(...navesDesbloqueadas(p));
 
 /** Resumen de Oleadas (lo añade main.ts): pods despachados, mejor racha de llamas, récord y diagnósticos premiados (falla encadenada). */
 export interface ResumenOleada { pods: number; racha: number; record: number; nuevo: boolean; diag?: number }
-export interface Eventos { oleada?: ResumenOleada; xp: number; insignias: Insignia[]; rango: string | null; habilidades: Cambio[]; naves: string[]; nivel2?: boolean }
+export interface Eventos { oleada?: ResumenOleada; xp: number; insignias: Insignia[]; rango: string | null; habilidades: Cambio[]; naves: string[]; nivel2?: boolean; nivel3?: boolean }
 
 export const perfilNuevo = (alias: string): Perfil => ({ alias, xp: 0, partidas: 0, ganadas: 0, pods: 0, limpios: 0, nivelDesbloqueado: 1, insignias: [], tutoriales: [], dominio: {}, records: {}, oleadas: {}, totales: {} });
 
@@ -139,14 +147,14 @@ export function aplicarPartida(perfil: Perfil, r: Resultado, firma?: string): { 
   const p: Perfil = {
     ...perfil, xp: perfil.xp + r.puntos, partidas: perfil.partidas + 1, ganadas: perfil.ganadas + Number(r.gano),
     pods: perfil.pods + r.pods, limpios: perfil.limpios + r.limpios,
-    nivelDesbloqueado: perfil.nivelDesbloqueado === 2 || completoNivel1(r) ? 2 : 1,
+    nivelDesbloqueado: Math.max(perfil.nivelDesbloqueado, completoNivel1(r) ? 2 : 1, perfil.nivelDesbloqueado >= 2 && completoNivel2(r) ? 3 : 1) as 1 | 2 | 3,
     ultimoEnd: firma ?? perfil.ultimoEnd, dominio: unir(perfil.dominio, r.dominio ?? {}),
   };
   const nuevas = INSIGNIAS.filter((i) => !perfil.insignias.includes(i.id) && i.cumple(p, r));
   p.insignias = [...perfil.insignias, ...nuevas.map((i) => i.id)];
   const antes = rangoDe(perfil.xp).nombre, ahora = rangoDe(p.xp).nombre;
   const antesN = navesDesbloqueadas(perfil), naves = navesDesbloqueadas(p).filter((n) => !antesN.includes(n)).map((n) => NAVES[n - 1]!.nombre);
-  return { perfil: p, eventos: { xp: r.puntos, insignias: nuevas, rango: ahora !== antes ? ahora : null, habilidades: cambios(perfil.dominio, p.dominio), naves, nivel2: p.nivelDesbloqueado > perfil.nivelDesbloqueado } };
+  return { perfil: p, eventos: { xp: r.puntos, insignias: nuevas, rango: ahora !== antes ? ahora : null, habilidades: cambios(perfil.dominio, p.dominio), naves, nivel2: p.nivelDesbloqueado === 2 && perfil.nivelDesbloqueado === 1, nivel3: p.nivelDesbloqueado === 3 && perfil.nivelDesbloqueado < 3 } };
 }
 
 /**
@@ -181,7 +189,7 @@ export function cargarPerfil(alias: string, almacen: Almacen | null = disco()): 
     const o = JSON.parse(raw ?? "{}") as Partial<Perfil>;
     return {
       alias: alias.trim(), xp: num(o.xp), partidas: num(o.partidas), ganadas: num(o.ganadas), pods: num(o.pods), limpios: num(o.limpios),
-      nivelDesbloqueado: o.nivelDesbloqueado === 2 ? 2 : 1, insignias: Array.isArray(o.insignias) ? o.insignias.filter((x) => typeof x === "string") : [],
+      nivelDesbloqueado: o.nivelDesbloqueado === 3 ? 3 : o.nivelDesbloqueado === 2 ? 2 : 1, insignias: Array.isArray(o.insignias) ? o.insignias.filter((x) => typeof x === "string") : [],
       tutoriales: Array.isArray(o.tutoriales) ? Array.from(new Set(o.tutoriales.filter((x): x is string => typeof x === "string" && x.trim() !== ""))) : [],
       dominio: limpiarDominio(o.dominio),
       records: Object.fromEntries(Object.entries(o.records && typeof o.records === "object" ? o.records : {}).filter(([, v]) => num(v) > 0) as [string, number][]),

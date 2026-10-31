@@ -30,6 +30,8 @@ export const RETO: Record<Circuito, string> = {
   divisor: "Tu salida va al Arduino: debe quedar entre 4 y 5 V. Mídela con Tensión",
   protegido: "El diodo se come 0,7 V: la resistencia debe ajustarse",
   cadena: "Una pieza está muerta: hállala con el multímetro y cámbiala",
+  fusible3: "Elige el fusible: aguanta el consumo normal y corta la falla",
+  placa3: "Resuelve el problema en la placa", // el globo muestra el enunciado del pod
 };
 
 /** Qué se arrastra desde la gaveta al hueco: pieza o montaje. */
@@ -37,7 +39,20 @@ export const GAVETA: Record<Circuito, string> = {
   led: "Más Ω, más freno", cabina: "Más Ω, más freno", protegido: "Más Ω, más freno", luces: "Arma el montaje", interruptor: "Arma el montaje",
   fusible: "A = lo que aguanta", invertido: "Gira o deja el LED", abierto: "Empalma o deja el corte", combinar: "Una, en serie o en paralelo", divisor: "R2: la de abajo",
   cadena: "Repuestos: arrastra uno a la pieza muerta",
+  fusible3: "Lee su tamaño, marca y color",
+  placa3: "Usa solo lo que pide el problema",
 };
+
+/**
+ * Ajustes de la gaveta. `ocultarValor` (nivel 3 «Experto»): sin el texto del valor ni el nombre («470 Ω», «Frena medio»);
+ * la pieza se lee solo por sus bandas de color. Ver textoRotulo().
+ */
+export const AJUSTES_GAVETA = { ocultarValor: false };
+/** Nivel 3: las resistencias se leen por sus bandas (el Taller activa `ocultarValor` solo ahí). El fusible de nivel 3 nunca lleva texto de amperios. */
+export const esResistencia = (c: Circuito) => c === "led" || c === "cabina" || c === "protegido" || c === "divisor";
+export const ocultaValor = (nivel: number | undefined, c: Circuito) => nivel === 3 && esResistencia(c);
+/** Rótulo bajo la pieza de la gaveta: su valor impreso, o nada si el nivel lo oculta (solo bandas). */
+export const textoRotulo = (pieza: string, circuito: Circuito, ocultar = AJUSTES_GAVETA.ocultarValor) => (ocultar ? "" : textoOpcion(pieza, circuito));
 
 /** Nombre estable de cada resistencia por valor (textos.js, gaveta.res): más Ω, más freno. */
 export const FRENA: Record<string, string> = { "100": "Frena poco", "220": "Frena algo", "470": "Frena medio", "1000": "Frena mucho" };
@@ -58,7 +73,7 @@ const MONTAJE: Record<string, string> = { serie: "Serie", paralelo: "Paralelo", 
 
 /** Hueco rojo con «?» donde falta la pieza: igual en todas las mecánicas de gaveta (la placa tiene su propia gaveta de piezas). */
 export const conHueco = (c: Circuito, elegida: string | undefined, reparada: boolean): boolean =>
-  !elegida && !reparada && c !== "luces" && c !== "interruptor" && c !== "cadena"; // la cadena marca su propio hueco rojo en la pieza que localizas
+  !elegida && !reparada && c !== "luces" && c !== "interruptor" && c !== "cadena" && c !== "placa3"; // la placa experta tiene sus gavetas; la cadena marca su propio hueco rojo en la pieza que localizas
 
 /** Leyenda de los iconos de las pestañas de zona (rojo = alerta, verde = reparada, cian = la que ves). */
 export const LEYENDA_ZONAS = "Rojo: falla  Verde: lista  Cian: aquí";
@@ -81,6 +96,7 @@ export function textoOpcion(pieza: string, circuito: Circuito): string {
   if (circuito === "combinar") return COMBINAR[pieza] ?? pieza;
   if (circuito === "led" || circuito === "cabina" || circuito === "divisor" || circuito === "protegido") return `${pieza} Ω`;
   if (circuito === "fusible") return `${pieza.replace(".", ",")} A`;
+  if (circuito === "fusible3") return ""; // nivel 3: se reconoce por tamaño, marca y color, no por «1 A»
   return MONTAJE[pieza] ?? pieza;
 }
 
@@ -98,6 +114,8 @@ const CARGA: Record<Circuito, { poco: string; demasiado: string; quema: string }
   protegido: { poco: "El LED casi no brilla: el diodo y la resistencia se comen mucha tensión. Prueba una que frene menos.", demasiado: "El LED sufre: llega demasiada corriente. Prueba una que frene más.", quema: "¡El LED se quemó! Frenaste muy poco. Espera y prueba una que frene más." },
   // Sin decir cuál pieza ni por qué: ni qué falla ni si el repuesto o el hueco son los equivocados.
   cadena: { poco: "El LED no enciende. Mide las piezas con el multímetro y revisa qué repuesto pusiste y dónde.", demasiado: "El LED sufre: llega demasiada corriente. Revisa el repuesto que pusiste.", quema: "¡El LED se quemó! Espera y revisa el repuesto que pusiste." },
+  fusible3: { poco: "El fusible corta aunque no hay falla: es muy fino o muy rápido para esta carga. Prueba otro.", demasiado: "El calefactor sufre: el fusible deja pasar demasiado. Prueba uno que corte antes.", quema: "El fusible no cortó a tiempo y el calefactor se quemó. Prueba uno que corte antes." },
+  placa3: { poco: "El LED casi no brilla: llega poca corriente. Mide y revisa las resistencias.", demasiado: "El LED sufre: llega demasiada corriente. Revisa las resistencias.", quema: "¡Un LED se quemó! Le llegó demasiada corriente. Espera y revisa el montaje." },
   fusible: { poco: "El fusible corta aunque no hay falla: es demasiado fino. Prueba otro.", demasiado: "El calefactor sufre: el fusible deja pasar demasiado. Prueba uno que corte antes.", quema: "El fusible no cortó a tiempo y el calefactor se quemó. Prueba uno que corte antes." },
 };
 
@@ -106,6 +124,8 @@ export function vistaDeVeredicto(label: Verdict, circuito: Circuito = "led"): Vi
   if (label === "corto") return { aguja: null, quemado: false, cortocircuito: true, mensaje: "¡Cortocircuito! La corriente tiene un atajo sin carga. Revisa los cables." };
   const t = CARGA[circuito];
   if (label === "se quema") return { aguja: "demasiado", quemado: true, cortocircuito: false, mensaje: t.quema };
+  // placa3: no cumple el problema; no se dice qué conexión falla (luz ámbar, penaliza como «poco»)
+  if (label === "mal") return { aguja: "poco", quemado: false, cortocircuito: false, mensaje: "Mal conectado: el montaje no cumple el problema. Mide y revisa las conexiones." };
   return { aguja: label, quemado: false, cortocircuito: false, mensaje: label === "correcto" ? "¡Correcto!" : t[label] };
 }
 

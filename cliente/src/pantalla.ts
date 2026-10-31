@@ -3,7 +3,7 @@
  * los mensajes del árbitro. La prueba vive en test/pantalla.test.ts.
  */
 import { BURN_CARD_MS } from "../../spike/src/arbiter/penalties";
-import { validAlias, type End, type Medida, type Nivel, type PodView, type RivalView, type ServerMsg, type Station, type TipoSabotaje } from "../../spike/src/protocol";
+import { PROTOCOL_VERSION, validAlias, type End, type Medida, type Nivel, type PodView, type RivalView, type ServerMsg, type Station, type TipoSabotaje } from "../../spike/src/protocol";
 import { avisoEnviado, avisoRecibido } from "./sabotaje";
 import { NOMBRE_ZONA, vistaDeVeredicto, type Vista } from "./vista";
 
@@ -14,6 +14,8 @@ export interface Pantalla {
   fase: Fase;
   /** Aviso para el jugador (error de entrada, rechazo del árbitro). */
   aviso: string | null;
+  /** Aviso discreto (Sala) si el árbitro habla otra versión del protocolo; la partida sigue. */
+  versionAviso?: string;
   station?: Station;
   alias?: string;
   jugadores: { station: Station; alias: string; ready: boolean }[];
@@ -140,6 +142,9 @@ export const reloj = (p: Pantalla, ahora: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
+/** Rótulo del botón CHECK: «ESPERA 2», «ESPERA 1» durante el enfriamiento y «CHECK» después. */
+export const textoCheck = (esperaHasta: number, ahora: number) => (esperaHasta > ahora ? `ESPERA ${segundos(esperaHasta - ahora)}` : "CHECK");
+
 /** El aviso con el "espera N s" descontando en vivo; al acabar el bloqueo se quita la espera. */
 export function avisoVivo(p: Pantalla, ahora: number): string | null {
   const s = segundos(p.esperaHasta - ahora);
@@ -148,13 +153,16 @@ export function avisoVivo(p: Pantalla, ahora: number): string | null {
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : null;
 }
 
+/** Versión del árbitro distinta de la del cliente (o ausente: árbitro anterior a la v2): pide recargar; null si coincide. */
+export const avisoVersion = (v: number | undefined): string | null => v === PROTOCOL_VERSION ? null : "Versión distinta del servidor: recarga la página";
+
 /** Cuánto se muestra el «Sabotaje enviado». */
 export const ENVIADO_MS = 3000;
 
 export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
   switch (m.t) {
     // Al reconectar en plena partida no se pasa por la Sala: el "start" que sigue repone el taller. En práctica (marcada antes del welcome) tampoco.
-    case "welcome": return { ...p, fase: p.fase === "entrar" && !p.practica ? "sala" : p.fase, aviso: null, station: m.station, alias: m.alias };
+    case "welcome": return { ...p, fase: p.fase === "entrar" && !p.practica ? "sala" : p.fase, aviso: null, versionAviso: avisoVersion(m.version) ?? undefined, station: m.station, alias: m.alias };
     case "full": return { ...p, aviso: m.reason.charAt(0).toUpperCase() + m.reason.slice(1) };
     // Si alguien se va durante la cuenta, el árbitro vuelve a la sala.
     case "lobby": return { ...p, jugadores: m.players, fase: p.fase === "cuenta" ? "sala" : p.fase };
@@ -193,7 +201,8 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     case "sabotaje": return {
       ...p, sabotaje: { tipo: m.tipo, hasta: ahora + m.ms, n: (p.sabotaje?.n ?? 0) + 1 }, aviso: avisoRecibido(m.tipo), eco: { n: (p.eco?.n ?? 0) + 1, tipo: "sabotaje" },
     };
-    case "reject": return { ...p, despachando: false, aviso: textoRechazo(m.reason, m.waitMs), esperaHasta: ahora + m.waitMs };
+    // Un rechazo sin espera (medir ocupado, medida no válida) no borra el enfriamiento que ya corre.
+    case "reject": return { ...p, despachando: false, aviso: textoRechazo(m.reason, m.waitMs), esperaHasta: m.waitMs > 0 ? ahora + m.waitMs : p.esperaHasta };
     // Medir no toca avisos ni bloqueos: solo guarda la lectura.
     case "medida": return { ...p, medida: m };
     case "rival": return { ...p, rival: { alias: m.alias, despachados: m.despachados, estado: m.estado },

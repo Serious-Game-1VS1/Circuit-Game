@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { generar, type Perfil } from "../../spike/src/engine/generador";
 import { evaluar } from "../../spike/src/engine/pods";
 import type { End, PodView, ServerMsg } from "../../spike/src/protocol";
-import { ContraBotTransport, COMPLEJIDAD, veredicto, type DificultadBot } from "../src/contraBot";
+import { ContraBotTransport, COMPLEJIDAD, jugadasBot, veredicto, type DificultadBot } from "../src/contraBot";
+import { ENUNCIADOS, type Plantilla } from "../../spike/src/engine/placa3";
 
 /** Jugador perfecto (acierta siempre) que actúa cada `cadaMs` en un reloj virtual; devuelve el log y el desenlace. */
 async function partida(dif: DificultadBot, semilla: number, cadaMs = 2500) {
@@ -113,10 +114,16 @@ describe("ContraBotTransport", () => {
 
   it("decide como un jugador: el veredicto con lo que ve el jugador (circuito, volts, fija) coincide con la solución del árbitro en todas las familias", () => {
     const vistas = new Set<string>();
-    for (const nivel of [1, 2, "mixto"] as Perfil[]) {
+    for (const nivel of [1, 2, 3, "mixto"] as Perfil[]) {
       for (let s = 1; s <= 60; s++) {
         for (const pod of generar(s, nivel)) for (const z of pod.zonas) {
-          const vista = { zona: z.zona, nombre: z.nombre, circuito: z.circuito, volts: z.volts, opciones: z.opciones, reparada: false, ...(z.r1 && { fija: `R1 ${z.r1} Ω` }), ...(z.cadena && { cadena: z.cadena }) };
+          const vista = { zona: z.zona, nombre: z.nombre, circuito: z.circuito, volts: z.volts, opciones: z.opciones, reparada: false, ...(z.r1 && { fija: `R1 ${z.r1} Ω` }), ...(z.consumo && { fija: `${z.arranque ? "Motor" : "Consumo"} ${String(z.consumo).replace(".", ",")} A` }), ...(z.cadena && { cadena: z.cadena }), ...(z.plantilla && { enunciado: ENUNCIADOS[z.plantilla as Plantilla] }) };
+          if (z.circuito === "placa3") { // placa experta: varias soluciones valen; el bot halla al menos una con lo visible y la referencia también vale
+            expect(jugadasBot(vista).some((j) => veredicto(vista, j) === "correcto"), `${nivel}/${s}/placa3`).toBe(true);
+            expect(veredicto(vista, z.solucion)).toBe("correcto");
+            vistas.add(z.circuito);
+            continue;
+          }
           // Cadena: el bot primero localiza el hueco muerto midiendo continuidad (aquí se le da); luego evalúa «hueco:repuesto».
           const jugadas = z.cadena ? vista.opciones.map((o) => `${z.muerta}:${o}`) : vista.opciones;
           expect(jugadas.filter((o) => veredicto(vista, o, z.muerta) === "correcto"), `${nivel}/${s}/${z.circuito}`).toEqual([z.solucion]);
@@ -124,13 +131,13 @@ describe("ContraBotTransport", () => {
         }
       }
     }
-    expect([...vistas].sort()).toEqual(Object.keys(COMPLEJIDAD).filter((c) => c !== "invertido" && c !== "abierto").sort()); // las 9 familias que se sortean (invertido/abierto ya no)
+    expect([...vistas].sort()).toEqual(Object.keys(COMPLEJIDAD).filter((c) => c !== "invertido" && c !== "abierto").sort()); // las 10 familias que se sortean (invertido/abierto ya no; fusible3 es del nivel 3)
   });
 
-  it("completa 5 pods en nivel 1, nivel 2 y mixto con cada perfil, en tiempo razonable, sin atascarse (todas las familias de nivel 2 aparecen)", async () => {
+  it("completa 5 pods en nivel 1, nivel 2, nivel 3 y mixto con cada perfil, en tiempo razonable, sin atascarse (todas las familias de nivel 2 aparecen)", async () => {
     const tope = { facil: 65, normal: 42, dificil: 28 } as const; // s/pod medios
     const vistas = new Set<string>();
-    for (const nivel of [1, 2, "mixto"] as Perfil[]) {
+    for (const nivel of [1, 2, 3, "mixto"] as Perfil[]) {
       for (const dif of ["facil", "normal", "dificil"] as const) {
         let suma = 0;
         for (let s = 1; s <= 8; s++) {
@@ -142,7 +149,9 @@ describe("ContraBotTransport", () => {
         expect(suma / 8, `${nivel} ${dif}`).toBeLessThanOrEqual(tope[dif]);
       }
     }
-    expect(vistas.size).toBe(9);
+    expect(vistas.size).toBe(11);
+    expect(vistas.has("placa3")).toBe(true); // el bot resuelve la placa experta buscando con el solver
+    expect(vistas.has("fusible3")).toBe(true);
     expect(vistas.has("cadena")).toBe(true); // el bot la resuelve midiendo continuidad
   }, 120_000);
 

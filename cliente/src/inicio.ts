@@ -9,9 +9,10 @@ import { elegirSalaRapida, salaDeUrl, salasAbiertas, textoSala, type Net, type S
 import type { DificultadBot } from "./contraBot";
 import { anim, letras, marco } from "./arte";
 import { alternarSilencio, desbloquear, silenciado, sonar } from "./audio";
-import { type NivelBot, bienvenida, cambiarNivel, cargarPerfil, INSIGNIAS, mejorNave, nivelBotElegido, nivelElegido, progresoRango, recordarAlias, textoNivel, tutorialCompletado, ultimoAlias } from "./perfil";
+import { type NivelBot, bienvenida, cambiarNivel, cargarPerfil, etiquetaNivel, INSIGNIAS, mejorNave, nivelBotElegido, nivelElegido, progresoRango, recordarAlias, textoNivel, tutorialCompletado, ultimoAlias } from "./perfil";
 import type { Pantalla } from "./pantalla";
 import { MECANICAS } from "./tutorial";
+import { COLORES, CUCHILLAS, ORO } from "./colores";
 import { chasis } from "./podio";
 import { crearChispa, mensajesMenu, type Mensaje } from "./chispa";
 import { panelLogros } from "./recompensas";
@@ -97,7 +98,7 @@ export function menu(s: Phaser.Scene, net: Net) {
   // Privacidad (S-02): enlace pequeño abajo a la derecha; abre un panel con el aviso.
   letras(s, W - 20, 626, "PRIVACIDAD", 1.5, GRIS).setOrigin(1, 0);
   s.add.zone(W - 56, 634, 90, 28).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => abrir(privacidad)));
-  const aviso = letras(s, W / 2, 574, "", 2, ROJO).setOrigin(0.5, 0).setMaxWidth(328).setCenterAlign().setDepth(D + 200);
+  const aviso = letras(s, W / 2, 568, "", 2, ROJO).setOrigin(0.5, 0).setMaxWidth(328).setCenterAlign().setDepth(D + 200);
 
   // --- Chispa: esquina inferior; su bocadillo rota (tiempo real) entre el primer pod, el consejo del día y la felicitación ---
   const chispa = crearChispa(s, 30, 634, 3, "normal", { ancho: 250 });
@@ -122,7 +123,7 @@ export function menu(s: Phaser.Scene, net: Net) {
     abierto = c;
     c?.setVisible(true);
     for (const f of [codigoDom, aliasDom]) f.setVisible(c === duelo);
-    aviso.setY(c === duelo ? 414 : 574);
+    aviso.setY(c === duelo ? 414 : 568); // 568: entre los botones (hasta 565) y el bocadillo de Chispa (desde ~586)
     if (c === duelo) void consultar();
     if (c !== duelo) aviso.setText(""); // el error del duelo no sigue visible en otros paneles
   };
@@ -215,29 +216,29 @@ export function menu(s: Phaser.Scene, net: Net) {
 
   // Jugar solo: mismo juego que el duelo (mismos pods y fallas) contra un bot; el jugador elige nivel y dificultad, ambos recordados.
   const DIFS: [DificultadBot, string][] = [["facil", "FACIL"], ["normal", "NORMAL"], ["dificil", "DIFICIL"]];
-  const NIVS: [NivelBot, string][] = [["1", "NIVEL 1"], ["2", "NIVEL 2"], ["mixto", "MIXTO"]];
+  const NIVS: [NivelBot, string][] = [["1", "NIVEL 1"], ["2", "NIVEL 2"], ["mixto", "MIXTO"], ["3", "EXPERTO"]];
   let dif: DificultadBot = "normal", nivBot: NivelBot = "mixto";
   try {
     const g = localStorage.getItem("circuitsync.dificultad"); if (g === "facil" || g === "normal" || g === "dificil") dif = g;
-    const n = localStorage.getItem("circuitsync.nivelbot"); if (n === "1" || n === "2" || n === "mixto") nivBot = n;
+    const n = localStorage.getItem("circuitsync.nivelbot"); if (n === "1" || n === "2" || n === "mixto" || n === "3") nivBot = n;
   } catch { /* sin disco */ }
   duelo.add(letras(s, W / 2, 436, "Jugar solo: duelo contra un bot", 2, CIAN).setOrigin(0.5, 0));
   const fila = <T extends string>(y: number, opciones: [T, string][], elegir: (v: T) => void) => opciones.map(([v, nombre], k) => {
-    const x = W / 2 + (k - 1) * 100;
-    const m = marco(s, x, y, "boton_secundario", 92, 36, 4);
+    const n = opciones.length, paso = n > 3 ? 80 : 100, ancho = n > 3 ? 76 : 92, x = W / 2 + (k - (n - 1) / 2) * paso;
+    const m = marco(s, x, y, "boton_secundario", ancho, 36, 4);
     const l = letras(s, x, y, nombre, 1.5, 0x140f1f).setOrigin(0.5);
-    const z = s.add.zone(x, y, 92, 36).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => elegir(v)));
+    const z = s.add.zone(x, y, ancho, 36).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => elegir(v)));
     duelo.add([m, l, z]);
     return { m, v };
   });
   const cNiv = fila(468, NIVS, (v) => {
-    if (v !== "1" && pf.nivelDesbloqueado !== 2) { aviso.setText("Nivel 2 y mixto: completa el nivel 1"); return; }
+    if (v === "3" ? pf.nivelDesbloqueado < 3 : v !== "1" && pf.nivelDesbloqueado < 2) { aviso.setText(v === "3" ? "Experto: completa el nivel 2" : "Nivel 2 y mixto: completa el nivel 1"); return; }
     aviso.setText(""); nivBot = v; try { localStorage.setItem("circuitsync.nivelbot", v); } catch { /* sin disco */ } pintarBot();
   });
   const cDif = fila(508, DIFS, (v) => { dif = v; try { localStorage.setItem("circuitsync.dificultad", v); } catch { /* sin disco */ } pintarBot(); });
   const pintarBot = () => {
     const nb = String(nivelBotElegido(pf, nivBot));
-    for (const c of cNiv) c.m.setTexture(c.v === (nb === "1" || nb === "2" ? nb : "mixto") ? "boton_primario" : "boton_secundario").setAlpha(c.v !== "1" && pf.nivelDesbloqueado !== 2 ? 0.5 : 1);
+    for (const c of cNiv) c.m.setTexture(c.v === nb ? "boton_primario" : "boton_secundario").setAlpha(c.v === "3" ? (pf.nivelDesbloqueado < 3 ? 0.5 : 1) : c.v !== "1" && pf.nivelDesbloqueado < 2 ? 0.5 : 1);
     for (const c of cDif) c.m.setTexture(c.v === dif ? "boton_primario" : "boton_secundario");
   };
   duelo.add(letras(s, W / 2, 536, "Mismos pods y fallas que el duelo", 1.5, GRIS).setOrigin(0.5, 0));
@@ -258,29 +259,55 @@ export function menu(s: Phaser.Scene, net: Net) {
   const aprender = panel(60, 450, "APRENDER");
   aprender.add(boton(W / 2, 190, 296, 56, "MECANICAS", false, () => abrir(mecs)));
 
-  // Mecánicas: 2 columnas x 5 filas. El candado de nivel 2 solo informa: el toque siempre abre (demo).
+  // Mecánicas: 2 columnas x 7 filas (12 tutoriales + la tabla de colores), 50 px de paso. El candado de nivel 2 solo informa: el toque siempre abre (demo).
   const mecs = panel(40, 480, "MECANICAS");
   const tarjetas = MECANICAS.map((m, k) => {
-    const x = W / 2 + (k % 2 ? 76 : -76), y = 112 + 60 * Math.floor(k / 2);
-    const f = marco(s, x, y, "boton_secundario", 144, 54, 4);
+    const x = W / 2 + (k % 2 ? 76 : -76), y = 100 + 50 * Math.floor(k / 2);
+    const f = marco(s, x, y, "boton_secundario", 144, 48, 4);
     const nombre = letras(s, x - 6, y, m.nombre.toUpperCase(), 1.5).setOrigin(0.5);
     const marca = s.add.image(x + 58, y - 16, "icono_pasa").setScale(1.5);
     const candado = s.add.image(x - 58, y - 16, "icono_candado").setScale(1.5);
-    const z = s.add.zone(x, y, 144, 54).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => {
+    const z = s.add.zone(x, y, 144, 48).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => {
       void net.practicar(jugar(), m.nivel, true, false, m.id);
     }));
     mecs.add([f, nombre, marca, candado, z]);
     return { f, marca, candado, m };
   });
-  const infoMec = letras(s, W / 2, 400, "", 2, GRIS).setOrigin(0.5, 0).setMaxWidth(296).setCenterAlign();
+  // Tabla de colores (referencia del nivel 3): solo desde Aprender, nunca durante una partida.
+  const tabla = panel(30, 580, "TABLA DE COLORES");
+  const paginas: Phaser.GameObjects.GameObject[][] = [[], []];
+  const fila2 = (pag: number, y: number, hex: number, a: string, b: string, c = "") => {
+    const x0 = 36;
+    paginas[pag]!.push(s.add.rectangle(x0 + 16, y, 32, 14, hex).setStrokeStyle(1, 0xf4f7ff), letras(s, x0 + 42, y, a, 2).setOrigin(0, 0.5), letras(s, 196, y, b, 2).setOrigin(0, 0.5), letras(s, 262, y, c, 2).setOrigin(0, 0.5));
+  };
+  const cab = (pag: number, y: number, a: string, b: string, c = "") => paginas[pag]!.push(letras(s, 78, y, a, 1.5, GRIS).setOrigin(0, 0.5), letras(s, 196, y, b, 1.5, GRIS).setOrigin(0, 0.5), letras(s, 262, y, c, 1.5, GRIS).setOrigin(0, 0.5));
+  const MULT = ["x1", "x10", "x100", "x1k", "x10k", "x100k", "x1M", "x10M", "", ""];
+  cab(0, 78, "COLOR", "CIFRA", "BANDA 3");
+  COLORES.forEach((c, k) => fila2(0, 100 + 26 * k, c.hex, c.nombre.toUpperCase(), String(k), MULT[k]));
+  fila2(0, 100 + 26 * 10, ORO.hex, "ORO", "", "+/-5 %");
+  paginas[0]!.push(letras(s, W / 2, 392, "Bandas 1 y 2: cifras\nbanda 3: cuántos ceros\nbanda 4: tolerancia (oro +/-5 %)\nEj.: marrón-negro-rojo = 1 kΩ", 1.5, 0xffffff).setOrigin(0.5, 0).setCenterAlign());
+  cab(1, 78, "CUCHILLA", "AMPERIOS");
+  Object.entries(CUCHILLAS).sort((a, b) => Number(a[0]) - Number(b[0])).forEach(([a, c], k) => fila2(1, 100 + 26 * k, c.hex, c.nombre.toUpperCase(), `${a.replace(".", ",")} A`));
+  paginas[1]!.push(letras(s, W / 2, 300, "Vidrio 5x20: chico, hasta 5 A\nVidrio 6,3x32: grande, 10 A o más\nF: rápido (se funde al instante)\nT: lento (aguanta el arranque)\nMarca: letra y amperios, T2 = 2 A\nElige el valor justo sobre el consumo", 1.5, 0xffffff).setOrigin(0.5, 0).setCenterAlign());
+  tabla.add(paginas.flat());
+  let pagTabla = 0;
+  const verTabla = (p: number) => { pagTabla = p; paginas.forEach((l, k) => l.forEach((o) => (o as Phaser.GameObjects.Components.Visible & Phaser.GameObjects.GameObject).setVisible(k === p))); pasar.setText(p ? "RESISTENCIAS" : "FUSIBLES"); };
+  const bp = boton(W / 2, 520, 296, 44, "FUSIBLES", false, () => verTabla(1 - pagTabla), 2.5), pasar = bp[1] as Phaser.GameObjects.BitmapText;
+  tabla.add(bp);
+  tabla.add(boton(W / 2, 568, 296, 36, "VOLVER", false, () => abrir(mecs), 2));
+  const infoMec = letras(s, W / 2, 432, "", 1.5, GRIS).setOrigin(0.5, 0).setMaxWidth(296).setCenterAlign();
   mecs.add(infoMec);
+  { // 12.ª tarjeta: no es un tutorial, abre la tabla de colores (en Aprender, no en las partidas)
+    const k = MECANICAS.length, x = W / 2 + (k % 2 ? 76 : -76), y = 100 + 50 * Math.floor(k / 2), f = marco(s, x, y, "boton_secundario", 144, 48, 4);
+    mecs.add([f, letras(s, x, y, "TABLA COLORES", 1.5).setOrigin(0.5), s.add.zone(x, y, 144, 48).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { verTabla(0); abrir(tabla); }))]);
+  }
   mecs.add(boton(W / 2, 480, 296, 48, "VOLVER", false, () => abrir(aprender)));
-  const fichas = ([1, 2] as Nivel[]).map((n) => {
-    const x = W / 2 + (n === 1 ? -76 : 76);
-    const m = marco(s, x, 276, "boton_secundario", 144, 48, 4);
-    const candado = s.add.image(x - 44, 276, "icono_candado").setScale(2);
-    const l = letras(s, x + (n === 2 ? 10 : 0), 276, `NIVEL ${n}`, 2).setOrigin(0.5);
-    const z = s.add.zone(x, 276, 144, 48).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { if (n !== sel) { sel = cambiarNivel(pf, sel); refrescar(); } }));
+  const fichas = ([1, 2, 3] as Nivel[]).map((n) => {
+    const x = W / 2 + (n - 2) * 100;
+    const m = marco(s, x, 276, "boton_secundario", 96, 48, 4);
+    const candado = s.add.image(x - 34, 258, "icono_candado").setScale(1.5);
+    const l = letras(s, x, 280, etiquetaNivel(n), 1.5).setOrigin(0.5);
+    const z = s.add.zone(x, 276, 96, 48).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { if (n !== sel) { sel = n <= pf.nivelDesbloqueado ? n : cambiarNivel(pf, sel); refrescar(); } }));
     aprender.add([m, candado, l, z]);
     return { m, candado, n };
   });
@@ -301,21 +328,21 @@ export function menu(s: Phaser.Scene, net: Net) {
     xp.setText(r.siguiente ? `${r.n}/${r.m} XP` : `${pf.xp} XP`);
     barra.width = Math.max(2, 292 * (r.siguiente ? r.n / r.m : 1));
     insignias.setText(`INSIGNIAS ${pf.insignias.length}/${INSIGNIAS.length}`);
-    const abierto2 = pf.nivelDesbloqueado === 2;
+    const abierto2 = pf.nivelDesbloqueado >= 2;
     iconoN2.setTexture(abierto2 ? "icono_pasa" : "icono_candado");
-    nivel2.setText(abierto2 ? "NIVEL 2: ABIERTO" : "NIVEL 2: BLOQUEADO").setTint(abierto2 ? VERDE : GRIS);
+    nivel2.setText(pf.nivelDesbloqueado === 3 ? "EXPERTO: ABIERTO" : abierto2 ? "NIVEL 2: ABIERTO" : "NIVEL 2: BLOQUEADO").setTint(abierto2 ? VERDE : GRIS);
     nave.play(`${chasis(mejorNave(pf))}_reparado`);
     pintarBot();
     for (const f of fichas) {
       f.m.setTexture(f.n === sel ? "boton_primario" : "boton_secundario");
-      f.candado.setVisible(f.n === 2 && !abierto2);
+      f.candado.setVisible(f.n > pf.nivelDesbloqueado);
     }
     textoSel.setText(textoNivel(pf, sel));
-    infoMec.setText(abierto2 ? "" : "Nivel 2: ábrelo igual para aprender");
+    infoMec.setText(pf.nivelDesbloqueado === 3 ? "" : "Los candados no impiden aprender");
     const sug = MECANICAS.find((m) => !tutorialCompletado(pf, m.id));
     for (const t of tarjetas) {
       t.marca.setVisible(tutorialCompletado(pf, t.m.id));
-      t.candado.setVisible(t.m.nivel === 2 && !abierto2 && !tutorialCompletado(pf, t.m.id));
+      t.candado.setVisible(t.m.nivel > pf.nivelDesbloqueado && !tutorialCompletado(pf, t.m.id));
       t.f.setTexture(t.m === sug ? "boton_primario" : "boton_secundario");
     }
     return pf;
@@ -333,6 +360,9 @@ export function menu(s: Phaser.Scene, net: Net) {
   return {
     refrescar,
     /** Avisos de la red (errores de entrada o «Práctica terminada…»). */
-    pintar(p: Pantalla) { aviso.setText(p.aviso ?? "").setTint(p.aviso?.startsWith("Práctica terminada") ? VERDE : ROJO); },
+    pintar(p: Pantalla) {
+      aviso.setText(p.aviso ?? "").setTint(p.aviso?.startsWith("Práctica terminada") ? VERDE : ROJO);
+      chispa.cont.setVisible(!(p.aviso && abierto !== duelo && aviso.height > 24)); // un aviso de 2+ líneas no lo tapa el bocadillo
+    },
   };
 }

@@ -47,6 +47,8 @@ export const CONCEPTO: Record<Circuito, string> = {
   divisor: "El divisor reparte la tensión entre dos resistencias",
   protegido: "Cada componente en serie se come tensión",
   cadena: "Localizar la pieza abierta con continuidad",
+  fusible3: "Elegir el fusible por tamaño y color",
+  placa3: "Conectar en la protoboard solo lo que pide el problema",
 };
 
 /** Sprite de carrera del pod N (1-5). supuesto: el pod N de la partida usa el chasis N del kit. */
@@ -115,6 +117,7 @@ export function tarjetasRecompensa(ev: Eventos, max = 5): Tarjeta[] {
   if (ev.oleada?.diag) t.push({ titulo: `Diagnósticos: ${ev.oleada.diag}`, detalle: `+${ev.oleada.diag * DIAGNOSTICO} XP` });
   if (ev.naves.length) t.push({ titulo: "Nave nueva", detalle: corto(ev.naves.join(", ")) });
   if (ev.nivel2) t.push({ titulo: "¡Nivel 2 abierto!", detalle: "Elígelo en Practicar" });
+  if (ev.nivel3) t.push({ titulo: "¡Nivel Experto abierto!", detalle: "Colores y fusibles: elígelo en Practicar" });
   if (ev.habilidades.length) t.push({ titulo: "Habilidades", detalle: corto(ev.habilidades.map((c) => `${c.nombre} ${c.estrellas}/3${c.estrellas > c.antes ? " ↑" : c.estrellas < c.antes ? " ↓" : ""}`).join(", ")) });
   const ins = ev.insignias.map((i): Tarjeta => ({ titulo: `Insignia: ${i.nombre}`, detalle: corto(i.descripcion), destacada: true }));
   if (!t.length && !ins.length) return [{ titulo: "Sin novedades", detalle: "Sigue practicando" }];

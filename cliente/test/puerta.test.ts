@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("../src/arte", () => ({}));
 vi.mock("../src/audio", () => ({}));
-import { CODIGOS, generarPuerta } from "../src/puerta";
+import { CODIGOS, duracionPuerta, generarPuerta } from "../src/puerta";
 
 const plantilla = (p: { pregunta: string }) => p.pregunta.replace(/\d+([.,]\d+)?/g, "#");
 const todas = (nivel: 1 | 2) => Array.from({ length: 60 }, (_, i) => generarPuerta(7 + (i % 5), nivel, i));
@@ -44,5 +44,14 @@ describe("puerta", () => {
       const m = /R1 = R2 y ([\d,]+) V/.exec(p.pregunta);
       if (m) expect(parseFloat(p.opciones[p.correcta]!.replace(",", "."))).toBeCloseTo(parseFloat(m[1]!.replace(",", ".")) / 2);
     }
+  });
+
+  it("el tiempo crece con el texto, entre 15 y 30 s", () => {
+    const d = todas(2).map(duracionPuerta);
+    for (const x of d) { expect(x).toBeGreaterThanOrEqual(15000); expect(x).toBeLessThanOrEqual(30000); }
+    const corta = { pregunta: "a", opciones: ["b"] }, larga = { pregunta: "x".repeat(200), opciones: ["y".repeat(50)] };
+    expect(duracionPuerta(corta as never)).toBe(15000);
+    expect(duracionPuerta(larga as never)).toBe(30000);
+    expect(duracionPuerta({ pregunta: "x".repeat(60), opciones: ["y".repeat(20)] } as never)).toBe(18400);
   });
 });

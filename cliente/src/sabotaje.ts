@@ -26,6 +26,10 @@ export const AYUDA: Record<TipoSabotaje, string> = {
 export const sabotajeActivo = (p: Pantalla, ahora: number, tipo?: TipoSabotaje) =>
   !!p.sabotaje && ahora < p.sabotaje.hasta && (!tipo || p.sabotaje.tipo === tipo);
 
+/** El aviso «Rival: ¡humo!» sigue en pantalla pero el sabotaje ya caducó (o el humo se limpió): hay que quitarlo. */
+export const avisoSabotajeVencido = (p: Pantalla, ahora: number, limpiado: number) =>
+  !!p.sabotaje && p.aviso === avisoRecibido(p.sabotaje.tipo) && (ahora >= p.sabotaje.hasta || (p.sabotaje.tipo === "humo" && p.sabotaje.n === limpiado));
+
 /** Con este número de toques el humo se despeja. */
 export const limpiaHumo = (toques: number) => toques >= HUMO_TOQUES;
 

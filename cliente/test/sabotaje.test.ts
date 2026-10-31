@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("phaser", () => ({ Scene: class {} })); // lógica pura: el motor no corre en Node
 import { inicial, reducir, type Pantalla } from "../src/pantalla";
 import type { PodView, ServerMsg } from "../../spike/src/protocol";
-import { AYUDA, avisoEnviado, avisoRecibido, CHECK_PANEL, cruzan, HUMO_BAHIA, HUMO_GAVETA, HUMO_TOQUES, humoVisible, limpiaHumo, MULTIMETRO_PANEL, sabotajeActivo, sinPista } from "../src/sabotaje";
+import { AYUDA, avisoEnviado, avisoRecibido, avisoSabotajeVencido, CHECK_PANEL, cruzan, HUMO_BAHIA, HUMO_GAVETA, HUMO_TOQUES, humoVisible, limpiaHumo, MULTIMETRO_PANEL, sabotajeActivo, sinPista } from "../src/sabotaje";
 import { estadoZona, pestanasArte } from "../src/sprites";
 import { textoObjetivo } from "../src/progreso";
 import { reaccion } from "../src/chispa";
@@ -23,6 +23,17 @@ describe("avisos del sabotaje", () => {
     expect(avisoRecibido("enfriamiento")).toBe("Rival: ¡enfriamiento largo!");
     expect(avisoRecibido("sin-pista")).toBe("Rival: ¡sin pista!");
     for (const t of ["sabotaje", "ataque"] as const) expect(reaccion(t, 0).texto).not.toMatch(/turbina|reactor|radar|cabina|\d+ ?Ω/i);
+  });
+
+  it("«Rival: ¡humo!» se quita al caducar el sabotaje o al limpiar el humo, no antes ni con otro aviso", () => {
+    const p = reducir(jugando(), { t: "sabotaje", tipo: "humo", ms: 6000, de: "B" }, 1000);
+    expect(avisoSabotajeVencido(p, 6999, 0)).toBe(false);
+    expect(avisoSabotajeVencido(p, 7000, 0)).toBe(true);
+    expect(avisoSabotajeVencido(p, 2000, 1)).toBe(true); // humo limpiado (n del sabotaje)
+    const sp = reducir(jugando(), { t: "sabotaje", tipo: "sin-pista", ms: 6000, de: "B" }, 1000);
+    expect(avisoSabotajeVencido(sp, 2000, 1)).toBe(false); // solo el humo se limpia tocando
+    expect(avisoSabotajeVencido(sp, 7000, 0)).toBe(true);
+    expect(avisoSabotajeVencido({ ...p, aviso: "¡Pod despachado!" }, 8000, 0)).toBe(false);
   });
 
   it("el atacante lee «¡Sabotaje enviado: humo!» al despachar", () => {

@@ -7,7 +7,7 @@
 import * as Phaser from "phaser";
 import type { Circuito } from "../../spike/src/protocol";
 import { img, letras, marco } from "./arte";
-import { arrastrable } from "./arrastre";
+import { arrastrable, type Toque } from "./arrastre";
 import {
   ANCHO, ALTO, cableDelCorto, cableTocado, CARGAS, cargaEn, conectable, destinoValido, cargasPuestas, CASILLAS, colorCable, coord, K, piezaEn, poner, ponerCable,
   motivoCableNoValido, puntoEn, puntoSoltar, quitarCable, quitarPieza, ranuraEn, rutas, ranuraValida, textoCorto, todasPuestas, type Cable, type Carga, type Puestas, type Punto,
@@ -209,14 +209,14 @@ export class Tablero {
   /** El motor (carga 1 de la Turbina) gira cuando el árbitro dio la corriente correcta. */
   girar(grados: number) { this.cargas[0]!.angle += grados; }
 
-  private local(p: Phaser.Input.Pointer) {
+  private local(p: Toque) {
     // Coordenadas de la placa (el contenedor puede estar dentro del panel).
     const v = this.c.getWorldTransformMatrix().applyInverse(p.worldX, p.worldY);
     return { x: v.x, y: v.y };
   }
 
   /** Ranura bajo el puntero si la carga cabe ahí. */
-  private ranuraLibre(carga: Carga["punto"], p: Phaser.Input.Pointer) {
+  private ranuraLibre(carga: Carga["punto"], p: Toque) {
     const { x, y } = this.local(p), r = ranuraEn(x, y);
     return ranuraValida(this.puestas, carga, r) ? r : null;
   }

@@ -1,7 +1,9 @@
-import { Arbiter } from "../../spike/src/arbiter/arbiter";
+import { Arbiter, MEDIR_COMPETITIVO_MS } from "../../spike/src/arbiter/arbiter";
 import { evaluar } from "../../spike/src/engine/pods";
+import { candidatosPlaca3, codificar, plantillaDe } from "../../spike/src/engine/placa3";
 import type { Perfil } from "../../spike/src/engine/generador";
 import type { Circuito, PodView, ServerMsg, ZonaView } from "../../spike/src/protocol";
+import { esResistencia } from "./vista";
 import type { Transport } from "../../spike/src/transport/transport";
 
 export type DificultadBot = "facil" | "normal" | "dificil";
@@ -24,10 +26,20 @@ export const PERFILES_BOT: Record<DificultadBot, { lectura: number; min: number;
  * (placa, divisor, combinar… tardan más en leerse y se equivocan más) para que no sea imbatible ni siquiera en Difícil.
  */
 export const COMPLEJIDAD: Record<Circuito, number> = {
-  led: 1, cabina: 1, invertido: 1, abierto: 1, fusible: 1.2, combinar: 1.25, divisor: 1.3, protegido: 1.3, interruptor: 1.4, luces: 1.5, cadena: 1.4,
+  led: 1, cabina: 1, invertido: 1, abierto: 1, fusible: 1.2, combinar: 1.25, divisor: 1.3, protegido: 1.3, interruptor: 1.4, luces: 1.5, cadena: 1.4, fusible3: 1.5, placa3: 2,
 };
+/** Complejidad de una zona: en nivel 3 las resistencias se leen por colores (más lentas y con más errores). */
+export const complejidad = (z: ZonaView, nivel?: number) => COMPLEJIDAD[z.circuito] * (nivel === 3 && esResistencia(z.circuito) ? 1.3 : 1);
 /** `muerta`: en la cadena, el hueco (1..n) que el bot localizó midiendo continuidad; sin él no se puede evaluar. */
-export const veredicto = (z: ZonaView, p: string, muerta?: number) => evaluar({ circuito: z.circuito, volts: z.volts, r1: Number(/R1 (\d+)/.exec(z.fija ?? "")?.[1]) || undefined, cadena: z.cadena, muerta }, p);
+export const veredicto = (z: ZonaView, p: string, muerta?: number) => evaluar({ circuito: z.circuito, volts: z.volts, r1: Number(/R1 (\d+)/.exec(z.fija ?? "")?.[1]) || undefined, ...consumoDe(z), cadena: z.cadena, muerta, plantilla: plantillaDe(z.enunciado), opciones: z.opciones }, p);
+/** Jugadas que considera el bot: las opciones o, en la placa experta, montajes armados con las piezas visibles (placa3.ts, candidatosPlaca3). */
+export const jugadasBot = (z: ZonaView): string[] => (z.circuito === "placa3" ? candidatosPlaca3(plantillaDe(z.enunciado), z.opciones).map(codificar) : z.opciones);
+
+/** fusible3: el consumo normal sale del dato impreso en el pod («Consumo 0,9 A» / «Motor 1,8 A»), como lo lee un jugador. */
+const consumoDe = (z: ZonaView) => {
+  const m = /(Consumo|Motor) ([\d,]+) A/.exec(z.fija ?? "");
+  return m ? { consumo: Number(m[2]!.replace(",", ".")), ...(m[1] === "Motor" && { arranque: true }) } : {};
+};
 
 const mulberry32 = (a: number) => () => {
   a = (a + 0x6d2b79f5) | 0;
@@ -71,7 +83,7 @@ export class ContraBotTransport implements Transport {
     this.rnd = mulberry32(semilla ^ 0x9e3779b9);
     this.arbiter = new Arbiter(
       (peer, msg) => (peer === "bot" ? this.delBot(msg) : queueMicrotask(() => this.onMessage(msg, "arbitro"))),
-      { nivel, semilla, now: this.now, azar: mulberry32(semilla ^ 0x85ebca6b), ...(opts.limitMs && { limitMs: opts.limitMs }), ...(opts.countdownMs !== undefined && { countdownMs: opts.countdownMs }) },
+      { nivel, semilla, medirMs: MEDIR_COMPETITIVO_MS, now: this.now, azar: mulberry32(semilla ^ 0x85ebca6b), ...(opts.limitMs && { limitMs: opts.limitMs }), ...(opts.countdownMs !== undefined && { countdownMs: opts.countdownMs }) },
     );
   }
 
@@ -106,7 +118,7 @@ export class ContraBotTransport implements Transport {
 
   private nuevoPod(pod: PodView): void {
     this.factor = 0.8 + this.rnd() * 0.45; this.probadas.clear(); this.muertas.clear(); this.medidos.clear();
-    this.complejo = pod.zonas.reduce((a, z) => a + COMPLEJIDAD[z.circuito], 0) / Math.max(1, pod.zonas.length);
+    this.complejo = pod.zonas.reduce((a, z) => a + complejidad(z, pod.nivel), 0) / Math.max(1, pod.zonas.length);
   }
 
   private delBot(m: ServerMsg): void {
@@ -114,7 +126,7 @@ export class ContraBotTransport implements Transport {
     else if (m.t === "result") { if (m.hayMas) this.probadas.delete(m.zona); this.pod = m.pod; this.proximo = this.espera(m.waitMs); }
     else if (m.t === "medida") { // cadena: «no pasa» = pieza muerta; si las demás pasan, es la última sin medir
       if (m.pasa === false) this.muertas.set(m.zona, Number(m.punto.slice(1)));
-      this.proximo = this.now() + (1500 + this.rnd() * 1500) * this.factor; // medir es rápido: ~2-3 s por hueco
+      this.proximo = this.now() + (m.medirMs ?? 0) + this.rnd() * 1500 * this.factor; // paga la espera de medir (3 s) y luego decide: ~3-4,5 s por hueco
     }
     else if (m.t === "reject") this.proximo = this.espera(m.waitMs);
     else if (m.t === "sabotaje") { if (m.tipo === "humo") this.proximo = Math.max(this.proximo, this.now() + m.ms / 2); } // el humo lo frena la mitad de su duración; los otros dos los aplica el árbitro
@@ -125,7 +137,7 @@ export class ContraBotTransport implements Transport {
     const z = this.pod?.zonas.find((x) => !x.reparada);
     const base = { seq: ++this.seq, t0: this.now() };
     if (!z) return this.arbiter.handle("bot", { t: "despachar", ...base });
-    let jugadas = z.opciones;
+    let jugadas = jugadasBot(z);
     if (z.circuito === "cadena") { // diagnosticar antes de reparar: mide cada hueco con continuidad (sin penalizar), como un jugador
       const n = z.cadena!.length, m = this.muertas.get(z.zona), hechos = this.medidos.get(z.zona) ?? 0;
       if (m === undefined && hechos < n - 1) { this.medidos.set(z.zona, hechos + 1); return this.arbiter.handle("bot", { t: "medir", ...base, zone: z.zona, pieza: "ninguna", modo: "continuidad", punto: `t${hechos + 1}` }); }
@@ -142,7 +154,7 @@ export class ContraBotTransport implements Transport {
     const nuevas = (l: string[]) => (l.filter((p) => !vistas.has(p)).length ? l.filter((p) => !vistas.has(p)) : l);
     const suave = mal.filter((p) => !quema.includes(p));
     let pool = bien;
-    if (mal.length && this.rnd() < Math.min(0.6, this.perfil.error * COMPLEJIDAD[z.circuito])) pool = quema.length && this.rnd() < this.perfil.quema ? quema : suave.length ? suave : mal;
+    if (mal.length && this.rnd() < Math.min(0.6, this.perfil.error * complejidad(z, this.pod?.nivel))) pool = quema.length && this.rnd() < this.perfil.quema ? quema : suave.length ? suave : mal;
     pool = nuevas(pool);
     const pieza = pool[Math.floor(this.rnd() * pool.length)]!;
     this.probadas.set(z.zona, vistas.add(pieza));

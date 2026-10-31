@@ -1,5 +1,5 @@
 /**
- * «Puerta»: mini-pantalla de ~3,5 s mientras entra el siguiente pod, con una pregunta de 1 toque (resistencia o tensión).
+ * «Puerta»: mini-pantalla mientras entra el siguiente pod, con una pregunta de 1 toque (resistencia o tensión).
  * Saltable, sin penalización de tiempo ni de puntos: solo refuerzo. La lógica es pura y determinista (generarPuerta);
  * el dibujo (mostrarPuerta) usa Phaser, temporizadores reales y respeta prefers-reduced-motion.
  */
@@ -82,17 +82,20 @@ export function generarPuerta(semilla: number, nivel: 1 | 2, indice: number): Pu
 }
 
 // ---------- dibujo ----------
-const W = 360, DEPTH = 1900, MS = 3500;
+const W = 360, DEPTH = 1900, ENTRADA_MS = 250, LEER_MS = 2600;
+/** Tiempo para responder: 12 s + 80 ms por carácter de la pregunta y las opciones, entre 15 y 30 s (la barra corre solo tras mostrarla). */
+export const duracionPuerta = (p: Puerta) => Math.min(30000, Math.max(15000, 12000 + 80 * (p.pregunta.length + p.opciones.join("").length)));
 const reducido = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
 /**
  * Dibuja la puerta sobre la escena. `onFin(true|false)` si respondió, `null` si saltó o se acabó el tiempo; se llama una vez.
- * Dura como mucho `opts.ms` (3500): tras responder deja ~1,4 s para leer la explicación. Devuelve `cerrar()` para cerrarla
+ * Da `duracionPuerta(p)` para responder (la barra empieza al terminar de entrar las hojas); agotar el tiempo equivale a saltar, sin penalización.
+ * Tras responder deja LEER_MS (2,6 s) para leer la explicación. Devuelve `cerrar()` para cerrarla
  * ya (p. ej. si el pod llegó); cuenta como `null`.
  */
 export function mostrarPuerta(s: Phaser.Scene, p: Puerta, onFin: (acierto: boolean | null) => void, opts: { ms?: number } = {}): { cerrar: () => void } {
   const H = Math.max(640, s.cameras.main.height); // las hojas y su bloqueo cubren todo el lienzo (el Taller mide 800)
-  const ms = opts.ms ?? MS, t0 = Date.now(), quieto = reducido();
+  const ms = opts.ms ?? duracionPuerta(p), quieto = reducido(), t0 = Date.now() + (quieto ? 0 : ENTRADA_MS);
   const o: Phaser.GameObjects.GameObject[] = [];
   const poner = <T extends Phaser.GameObjects.GameObject>(g: T, d = 1) => { o.push(g); (g as unknown as Phaser.GameObjects.Components.Depth).setDepth(DEPTH + d); return g; };
   const hojaI = poner(s.add.rectangle(0, H / 2, W / 2, H, 0x1c2233).setOrigin(0, 0.5).setStrokeStyle(3, 0x3a4466).setInteractive(), 0); // tapan y bloquean lo de abajo
@@ -141,13 +144,13 @@ export function mostrarPuerta(s: Phaser.Scene, p: Puerta, onFin: (acierto: boole
     txt(470, ok ? "¡CORRECTO! +XP" : "CASI", 3, ok ? 0x8fe3a0 : 0xe57373);
     txt(510, p.explicacion, 2);
     window.clearTimeout(tCierre);
-    tCierre = window.setTimeout(() => cierre(ok), Math.max(1200, Math.min(1400, t0 + ms - Date.now())));
+    tCierre = window.setTimeout(() => cierre(ok), LEER_MS);
   }
   // Tiempo real; la barra solo informa, nunca castiga.
   poner(s.add.rectangle(30, 568, W - 60, 8, 0x3a4466).setOrigin(0, 0.5), 0);
   const barra = poner(s.add.rectangle(30, 568, W - 60, 8, 0x3bb273).setOrigin(0, 0.5));
-  reloj = window.setInterval(() => { barra.width = Math.max(0, (W - 60) * (1 - (Date.now() - t0) / ms)); }, 60);
-  tCierre = window.setTimeout(() => cierre(null), ms);
+  reloj = window.setInterval(() => { barra.width = Math.max(0, Math.min(W - 60, (W - 60) * (1 - (Date.now() - t0) / ms))); }, 60);
+  tCierre = window.setTimeout(() => cierre(null), ms + ENTRADA_MS);
   poner(marco(s, W / 2, 606, "boton_secundario", 140, 44));
   poner(letras(s, W / 2, 606, "SALTAR", 2).setOrigin(0.5));
   poner(toque(s, W / 2, 606, 140, 48, () => cierre(null)));

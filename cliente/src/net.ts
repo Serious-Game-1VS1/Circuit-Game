@@ -113,6 +113,7 @@ export class Net {
     }
 
     const sala = { codigo: normalizarCodigo(codigo), alias: alias.trim() };
+    this.mejoras = sinMejoras(); this.extra = 0; this.mejorRacha = 0; this.podMs = []; this.usadas = []; // nada de una práctica anterior en el duelo
     try {
       await this.transport.join(sala.codigo);
     } catch (e) {
@@ -212,7 +213,7 @@ export class Net {
   public elegirMejora(m: Mejora): void {
     this.mejoras = elegir(this.mejoras, m);
     this.usadas = [...this.usadas, m];
-    if (this.transport instanceof PracticaTransport) this.transport.arbiter.ajustar({ enfriamiento: this.mejoras.enfriamiento ? COOLDOWN_CORTO : 1, escudo: this.mejoras.escudo });
+    if (this.transport instanceof PracticaTransport) this.transport.arbiter.ajustar({ enfriamiento: this.mejoras.enfriamiento ? COOLDOWN_CORTO : 1, escudo: this.mejoras.escudo, multimetro: this.mejoras.multimetro });
   }
 
   public limpiarAviso(): void {
@@ -317,7 +318,7 @@ export { Net as NetManager };
 export function salasAbiertas(salas: SalaInfo[]): SalaInfo[] {
   return salas.filter((s) => s.estado === "esperando").sort((a, b) => b.jugadores - a.jugadores || a.codigo.localeCompare(b.codigo));
 }
-export const textoSala = (s: SalaInfo) => `${s.codigo}  NIVEL ${s.nivel}  ${s.jugadores}/${s.max}`;
+export const textoSala = (s: SalaInfo) => `${s.codigo}  ${s.nivel === 3 ? "EXPERTO" : `NIVEL ${s.nivel}`}  ${s.jugadores}/${s.max}`;
 
 /** Partida rápida: la sala «esperando» con más jugadores (empate: código menor). El nivel lo fija el servidor, no cuenta. */
 export const elegirSalaRapida = (salas: SalaInfo[]): SalaInfo | null => salasAbiertas(salas)[0] ?? null;

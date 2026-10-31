@@ -39,4 +39,4 @@ export const casillas = (n: number, total: number) => Array.from({ length: total
 export const textoObjetivo = (p: Pantalla, neutro = false) => (faltan(p.pod) ? (neutro ? "Objetivo: repara el pod" : `Objetivo: repara ${faltan(p.pod)}`) : "Objetivo: despacha el pod");
 
 /** Globo del Taller: reto de la zona abierta y zonas reparadas del pod ("Zonas reparadas: n/m"). */
-export const textoGlobo = (z: ZonaView, pod: PodView) => `${NOMBRE_ZONA[z.nombre]}: ${RETO[z.circuito]}\n${reparadas(pod)}`;
+export const textoGlobo = (z: ZonaView, pod: PodView) => `${NOMBRE_ZONA[z.nombre]}: ${z.enunciado ?? RETO[z.circuito]}\n${reparadas(pod)}`; // placa3: el enunciado del problema

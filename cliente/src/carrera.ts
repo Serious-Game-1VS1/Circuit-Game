@@ -42,6 +42,16 @@ const CAPA = { confeti: 5, texto: 10 } as const;
 const texto = (s: Phaser.Scene, x: number, y: number, t: string, k = 2, color = 0xffffff) =>
   letras(s, x, y, t, k, color).setOrigin(0.5, 0).setCenterAlign().setMaxWidth(W - 24).setDropShadow(1, 1, 0x140f1f, 1).setDepth(CAPA.texto);
 
+/**
+ * Texto de longitud libre (motivo del ganador): empieza a escala 2 y baja a 1,5 y 1 hasta caber en `alto` px. Así el bloque que
+ * va debajo (que se coloca con `y + height`) no se pisa con textos de 1 a 4 líneas.
+ */
+export function texto2(s: Phaser.Scene, x: number, y: number, t: string, alto: number, color = 0xffffff) {
+  let k = 2, o = texto(s, x, y, t, k, color);
+  while (o.height > alto && k > 1) { o.destroy(); o = texto(s, x, y, t, (k -= 0.5), color); }
+  return o;
+}
+
 /** Cielo y dos capas de parallax (fondos móviles 90×200 a escala 4). */
 function fondo(s: Phaser.Scene) {
   s.add.image(0, 0, "capa_cielo_movil").setOrigin(0).setScale(4);
@@ -96,8 +106,8 @@ export class Carrera extends Phaser.Scene {
       this.salir = () => this.net.verPodio();
     }
     texto(this, W / 2, 16, g ? TXT.fantasmaTitulo : TXT.carreraTitulo, 3);
-    texto(this, W / 2, 56, sub, 2);
-    texto(this, W / 2, 100, ayuda, 2, 0xccddee);
+    const motivo = texto2(this, W / 2, 56, sub, 48);
+    texto(this, W / 2, Math.max(100, motivo.y + motivo.height + 6), ayuda, 2, 0xccddee);
 
     const Y = [400, 540]; // 140 px entre carriles: la etiqueta del segundo (126 px sobre su suelo) no pisa la nave del primero
     for (const y of Y.slice(0, lanes.length)) this.add.tileSprite(0, y - 12, 180, 24, "pista_recta").setOrigin(0).setScale(2);
@@ -185,8 +195,8 @@ export class Podio extends Phaser.Scene {
     sonar(medallaDe(e, yo));
     const cartel = e.winner === null ? "cartel_empate" : e.winner === yo ? "cartel_ganaste" : "cartel_perdiste";
     this.add.image(W / 2, 40, cartel).setScale(e.winner === null ? 2 : 3);
-    texto(this, W / 2, 76, decision(e), 2);
-    texto(this, W / 2, 118, TXT.regla, 2, 0xccddee);
+    const motivo = texto2(this, W / 2, 76, decision(e), 48);
+    texto(this, W / 2, Math.max(118, motivo.y + motivo.height + 6), TXT.regla, 2, 0xccddee);
 
     // Podio con el pod que corrió el ganador (o el mío en empate).
     const quien = e.winner ?? yo ?? "A";

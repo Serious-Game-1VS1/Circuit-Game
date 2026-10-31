@@ -10,7 +10,7 @@ import type { Pantalla } from "./pantalla";
 
 export type Evento =
   | "clic" | "elegir" | "pieza" | "cable" | "correcto" | "poco" | "demasiado" | "rechazo" | "fusible" | "quemada" | "reparada" | "insignia"
-  | "despacho" | "rival" | "tic3" | "tic2" | "tic1" | "ya" | "listo" | "ganaste" | "perdiste" | "oro" | "plata" | "bronce";
+  | "beep" | "despacho" | "rival" | "tic3" | "tic2" | "tic1" | "ya" | "listo" | "ganaste" | "perdiste" | "oro" | "plata" | "bronce";
 
 /** Una nota: `en` ms tras el inicio, `hz` (y `hasta` si barre), duración `ms`. En "ruido", `hz` es el centro del filtro pasabanda. */
 export interface Nota { en: number; hz: number; hasta?: number; ms: number; onda: "pulso" | "triangle" | "sawtooth" | "seno" | "ruido"; vol: number }
@@ -29,6 +29,7 @@ export const SONIDOS: Record<Evento, Nota[]> = {
   quemada: [n(0, 6000, 60, "ruido", 1.5), n(0, 110, 320, "triangle", 1, 55), n(20, 300, 250, "ruido", 1)],
   reparada: [n(0, 880, 350, "seno", 1), n(0, 1760, 200, "seno", 0.3)], // ding de LED
   insignia: [n(0, 440, 80, "pulso", 0.6), n(80, 523, 80, "pulso", 0.6), n(160, 659, 80, "pulso", 0.6), n(240, 1319, 320, "seno", 0.8)],
+  beep: [n(0, 1568, 110, "seno", 0.5)], // continuidad: pasa
   despacho: [n(0, 1200, 25, "ruido", 1.2), n(10, 392, 90, "triangle", 1), n(100, 587, 110, "triangle", 1)],
   rival: [n(0, 330, 60, "triangle", 0.3), n(60, 440, 80, "triangle", 0.3)],
   tic3: [n(0, 1000, 25, "ruido", 1.5)],

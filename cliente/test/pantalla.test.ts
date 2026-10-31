@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { avisoVivo, despachable, faltan, inicial, textoRechazo, pistaDemo, tarjetaVisible, reducir, reloj, textoFin, textoRival, validarEntrada } from "../src/pantalla";
-import type { PodView, ServerMsg } from "../../spike/src/protocol";
+import { avisoVivo, despachable, textoCheck, faltan, inicial, textoRechazo, pistaDemo, tarjetaVisible, reducir, reloj, textoFin, textoRival, validarEntrada } from "../src/pantalla";
+import { PROTOCOL_VERSION, type PodView, type ServerMsg } from "../../spike/src/protocol";
 import { vistaDeVeredicto } from "../src/vista";
 import { eventosDe } from "../src/audio";
 
@@ -223,5 +223,33 @@ describe("racha y bono del árbitro (indicador y aviso)", () => {
   it("una zona acertada sin subir la racha (falla encadenada) no avisa", () => {
     const p = reducir(inicial(), res("correcto", 0), 0);
     expect(p.eco).toBeUndefined();
+  });
+});
+
+describe("ronda del 30-oct: versión de protocolo y rechazos sin espera", () => {
+  const w = { t: "welcome", station: "A", alias: "ana" } as const;
+  it("avisa si el árbitro no manda versión (anterior) o manda otra; con la misma, nada", () => {
+    expect(reducir(inicial(), w, 0).versionAviso).toMatch(/recarga la página/);
+    expect(reducir(inicial(), { ...w, version: 99 }, 0).versionAviso).toMatch(/Versión distinta/);
+    expect(reducir(inicial(), { ...w, version: 1 }, 0).versionAviso).toBeDefined();
+    const ok = reducir(inicial(), { ...w, version: PROTOCOL_VERSION }, 0);
+    expect(ok.versionAviso).toBeUndefined();
+    expect(ok.fase).toBe("sala"); // compatible: la partida sigue su curso
+    expect(reducir(inicial(), { ...w, version: 99 }, 0).fase).toBe("sala"); // incluso con aviso no se rompe nada
+  });
+  it("un Reject sin espera (medir ocupado) no borra el enfriamiento en curso; uno con espera sí lo fija", () => {
+    const base = { ...inicial(), esperaHasta: 9000 };
+    const ocupado = reducir(base, { t: "reject", seq: 1, t0: 0, reason: "el multímetro sigue midiendo", waitMs: 0 }, 2000);
+    expect(ocupado.esperaHasta).toBe(9000);
+    expect(reducir(base, { t: "reject", seq: 1, t0: 0, reason: "enfriamiento", waitMs: 4000 }, 2000).esperaHasta).toBe(6000);
+  });
+});
+
+describe("rótulo de CHECK", () => {
+  it("cuenta atrás durante el enfriamiento y vuelve a CHECK", () => {
+    expect(textoCheck(0, 1000)).toBe("CHECK");
+    expect(textoCheck(3000, 1000)).toBe("ESPERA 2");
+    expect(textoCheck(3000, 2100)).toBe("ESPERA 1");
+    expect(textoCheck(3000, 3000)).toBe("CHECK");
   });
 });
