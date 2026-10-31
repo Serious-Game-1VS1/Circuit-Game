@@ -99,7 +99,7 @@ describe("ayuda de uso del multímetro", () => {
   });
   it("explica cada modo y que medir no cuesta intento, y no revela el contenido del pod", () => {
     const t = AYUDA_USO.lineas.join(" ");
-    expect(t).toMatch(/TENSIÓN/); expect(t).toMatch(/CONTINUIDAD/); expect(t).toMatch(/NO gasta intento/);
+    expect(t).toMatch(/TENSIÓN/); expect(t).toMatch(/CONTINUIDAD/); expect(t).toMatch(/no cuenta como fallo/);
     expect(`${t} ${AYUDA_USO.chispa}`).not.toMatch(/\d+ ?Ω|fusible|resistencia de/i);
   });
 });

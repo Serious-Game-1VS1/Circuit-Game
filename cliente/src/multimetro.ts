@@ -118,12 +118,12 @@ export const AYUDA_USO = {
     "TENSIÓN: cuánta batería cae en la pieza que tocas.",
     "CONTINUIDAD: si la corriente puede pasar por ella.",
     "Lee la cifra y el color de la aguja.",
-    "Medir NO gasta intento: solo CHECK valida.",
-    "En partida, medir varias veces en la misma zona cuesta más.",
+    "Medir no cuenta como fallo, pero toma tiempo.",
+    "En partida, cada medida en la misma zona tarda más.",
   ],
   encender: "Toca TENSIÓN o\nCONTINUIDAD para encender",
   /** Lo que dice Chispa las primeras veces (también en partidas). */
-  chispa: "Multímetro: toca TENSIÓN o CONTINUIDAD y luego una pieza. Medir no gasta intento.",
+  chispa: "Multímetro: toca TENSIÓN o CONTINUIDAD y luego una pieza. Medir no cuenta como fallo, pero toma tiempo (cada medida en la misma zona tarda más).",
   cerrar: "Entendido",
   /** Cartel de primera vez (flecha al multímetro) y rótulo de la flecha del tutorial: solo cómo se usa la herramienta. */
   cartel: "Mide con el multímetro, luego valida",
