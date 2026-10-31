@@ -1,8 +1,10 @@
 /** Identificador de un participante dentro de la sala (en Photon, el actorNr). */
 export type PeerId = string;
 
-/** Una sala abierta tal como la ve la lista: sin solución, sin alias de jugadores. `nivel` 1|2|3 (la partida «mixta» empieza en 1; 3 = Experto). */
-export interface SalaInfo { codigo: string; nivel: number; jugadores: number; max: 2; estado: "esperando" | "llena" | "jugando" }
+/** Una sala abierta tal como la ve la lista: sin solución, sin alias de jugadores. `nivel` 1|2|3 (3 = Experto) o "mixto" (pods 1-3 de nivel 1 y 4-5 con fallas de nivel 2). */
+export interface SalaInfo { codigo: string; nivel: 1 | 2 | 3 | "mixto"; jugadores: number; max: 2; estado: "esperando" | "llena" | "jugando" }
+/** Nivel de una sala leído del lobby (Photon guarda lo que publicó el anfitrión): lo desconocido cuenta como 1. */
+export const nivelDeSala = (v: unknown): SalaInfo["nivel"] => (v === "mixto" ? "mixto" : v === 2 || v === 3 ? v : Number(v) === 2 ? 2 : Number(v) === 3 ? 3 : 1);
 /** Lo que el anfitrión publica de su sala para la lista (el código ya es el de la sala). */
 export type SalaPublica = Pick<SalaInfo, "nivel" | "jugadores" | "estado">;
 

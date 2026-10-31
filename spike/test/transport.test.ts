@@ -5,7 +5,7 @@ import { Bot } from "../src/sim/bot.js";
 import { simulateDuel } from "../src/sim/duel.js";
 import { createRoom, hostRoom, joinAsPlayer, newCode, pausaReapertura, validAlias } from "../src/transport/room.js";
 import { eventoAceptable } from "../src/transport/photon.js";
-import type { Transport } from "../src/transport/transport.js";
+import { nivelDeSala, type Transport } from "../src/transport/transport.js";
 
 let relay: Awaited<ReturnType<typeof startLocalRelay>>;
 const open: Transport[] = [];
@@ -152,6 +152,9 @@ describe("Photon: solo el anfitrión habla como árbitro (S-03)", () => {
   it("un cliente rechaza eventos de otro cliente y acepta los del anfitrión", () => {
     expect(eventoAceptable(3, 1, 2)).toBe(false); // jugador 3, anfitrión 1, evento del jugador 2
     expect(eventoAceptable(3, 1, 1)).toBe(true);
+  });
+  it("el nivel de la lista de salas distingue mixto, 2 y Experto (lo desconocido es 1)", () => {
+    expect(["mixto", 2, "3", 3, 1, undefined, "x"].map(nivelDeSala)).toEqual(["mixto", 2, 3, 3, 1, 1, 1]);
   });
   it("el anfitrión acepta eventos de los jugadores", () => {
     expect(eventoAceptable(1, 1, 2)).toBe(true);

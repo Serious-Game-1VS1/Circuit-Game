@@ -1,5 +1,5 @@
 import Photon from "photon-realtime";
-import type { PeerId, SalaInfo, SalaPublica, Transport } from "./transport.js";
+import { nivelDeSala, type PeerId, type SalaInfo, type SalaPublica, type Transport } from "./transport.js";
 
 const LBC = Photon.LoadBalancing.LoadBalancingClient;
 const EVENT = 1;
@@ -133,7 +133,7 @@ export class PhotonTransport implements Transport {
       const est = r.getCustomPropertyOrElse("est", "esperando");
       return {
         codigo: r.name,
-        nivel: Number(r.getCustomPropertyOrElse("nivel", 1)) === 2 ? 2 : 1,
+        nivel: nivelDeSala(r.getCustomPropertyOrElse("nivel", 1)),
         jugadores: Math.min(2, Math.max(0, Number(r.getCustomPropertyOrElse("jug", 0)) || 0)),
         max: 2 as const,
         estado: est === "llena" || est === "jugando" ? est : "esperando",
