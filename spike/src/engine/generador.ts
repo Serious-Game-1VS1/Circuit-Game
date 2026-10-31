@@ -5,23 +5,34 @@
  * (lo usa `npm run validar:sorteos`, 10 000 sorteos por nivel).
  */
 import type { Circuito, Nivel, ZonaNombre } from "../protocol.js";
-import { PIEZAS, evaluar, jugadas } from "./pods.js";
+import { PIEZAS, amperios, evaluar, jugadas } from "./pods.js";
+import { sortearProblema, validarProblema } from "./placa3.js";
 
 export const ZONAS: readonly ZonaNombre[] = ["radar", "cabina", "turbina", "reactor"];
 export const PODS_POR_PARTIDA = 5;
-// supuesto: 18 V queda para el nivel 3; los niveles 1 y 2 sortean entre 3,7, 4,5 y 9 V.
-export const VOLTS_SORTEO = [3.7, 4.5, 9] as const;
+// supuesto: 18 V queda para el nivel 3; los niveles 1 y 2 sortean entre 3,7, 4,5, 9 y 15 V.
+// Reparto de la resistencia correcta (Radar/LED, 1500 semillas por nivel, antes -> despues): 100 33 % -> 25 %, 220 33 % -> 25 %, 470 33 % -> 25 %, 1000 0 % -> 25 %.
+// El 1000 Ω nunca era correcto: con 20 mA máx. necesita V >= 12,6 V para pasar el margen ±5 % (12 V da 9,99 mA, «poco»); 15 V da ~13 mA y deja 470 en «demasiado».
+// Cabina (2 LED en paralelo): antes 100 50 % / 220 50 %; ahora 100 / 220 / 470 un tercio de las veces cada una (con 15 V entra el 470); el 1000 no puede ser correcto
+// (pediría >= 22 V), así que ahí no se ofrece como distractor inútil. Protegido: 220 / 470 / 1000 (antes 220 / 470).
+export const VOLTS_SORTEO = [3.7, 4.5, 9, 15] as const;
+// combinar (una, serie o paralelo de 220 Ω) no tiene solución con 15 V: conserva su sorteo de siempre.
+const VOLTS_COMBINAR = [3.7, 4.5, 9] as const;
 // supuesto: focos, motor y calefactor siempre a 9 V (son sus valores nominales).
 const VOLTS_FIJO = 9;
 // supuesto: con diodo (2,7 V de caídas) 3,7 y 4,5 V no tienen solución única con margen ±5 % (el 100 Ω queda en 9,9 o 20,1 mA); 6 y 9 V sí.
-const VOLTS_PROTEGIDO = [6, 9] as const;
+const VOLTS_PROTEGIDO = [6, 9, 15] as const;
 const R1_DIVISOR = [220, 470, 1000] as const;
 /** Margen: la solución sigue siendo la única correcta con la batería ±5 %. */
 const MARGEN = [1, 0.95, 1.05];
 
 export interface ZonaPod { zona: number; nombre: ZonaNombre; circuito: Circuito; volts: number; opciones: string[]; solucion: string; r1?: number;
   /** Cadena: piezas en serie ("cable", "led", "r220"), cuál (1..n) está muerta por dentro y por lo tanto la solución «hueco:repuesto». */
-  cadena?: string[]; muerta?: number }
+  cadena?: string[]; muerta?: number;
+  /** fusible3: consumo normal (A) impreso en el pod y si la carga es un motor (arranque). */
+  consumo?: number; arranque?: boolean;
+  /** placa3: plantilla del problema (su enunciado sí viaja) y montajes trampa que nunca deben validar (no viajan). `solucion` = montaje de referencia. */
+  plantilla?: string; trampas?: string[] }
 /** `encadenada` (solo Oleadas): segunda falla escondida en una de las zonas; sale al reparar la primera. */
 export interface Pod { numero: number; zonas: ZonaPod[]; encadenada?: ZonaPod }
 
@@ -110,15 +121,17 @@ function faltaCobertura(perfil: Perfil, cs: Circuito[][]): string | null {
 /** Sortea una zona válida: voltaje, 3 de las 4 resistencias (o todo el cableado/fusibles) en orden aleatorio. En demo, las 4. `excluir`: solución que no puede repetirse (falla encadenada). */
 function sortearZona(rnd: Rnd, zona: number, circuito: Circuito, demo = false, excluir?: string): ZonaPod {
   if (circuito === "cadena") return sortearCadena(rnd, zona);
+  if (circuito === "fusible3") return sortearFusible3(rnd, zona);
+  if (circuito === "placa3") { const p = sortearProblema(rnd); return { zona, nombre: ZONAS[zona]!, circuito, ...p }; }
   const resistencias = circuito === "led" || circuito === "cabina" || circuito === "divisor" || circuito === "protegido";
-  const voltios: readonly number[] = circuito === "led" || circuito === "cabina" || circuito === "combinar" ? (demo ? VOLTS_DEMO : VOLTS_SORTEO) : circuito === "protegido" ? VOLTS_PROTEGIDO : [VOLTS_FIJO];
+  const voltios: readonly number[] = circuito === "combinar" ? VOLTS_COMBINAR : circuito === "led" || circuito === "cabina" ? (demo ? VOLTS_DEMO : VOLTS_SORTEO) : circuito === "protegido" ? VOLTS_PROTEGIDO : [VOLTS_FIJO];
   for (let i = 0; i < MAX_INTENTOS; i++) {
     const volts = voltios.length > 1 ? pick(rnd, voltios) : voltios[0]!;
     const r1 = circuito === "divisor" ? pick(rnd, R1_DIVISOR) : undefined;
     const z = { circuito, volts, r1 };
     const solucion = PIEZAS[circuito].find((p) => evaluar(z, p) === "correcto");
     if (!solucion || solucion === excluir) continue;
-    const distractores = shuffle(rnd, PIEZAS[circuito].filter((p) => p !== solucion)).slice(0, resistencias && !demo ? 2 : undefined);
+    const distractores = shuffle(rnd, PIEZAS[circuito].filter((p) => p !== solucion && !(circuito === "cabina" && p === "1000"))).slice(0, resistencias && !demo ? 2 : undefined);
     const cand: ZonaPod = { zona, nombre: ZONAS[zona]!, circuito, volts, opciones: shuffle(rnd, [solucion, ...distractores]), solucion, ...(r1 && { r1 }) };
     if (!validarZona(cand)) return cand;
   }
@@ -126,9 +139,29 @@ function sortearZona(rnd: Rnd, zona: number, circuito: Circuito, demo = false, e
 }
 
 /**
+ * Nivel 3: fusible por tamaño/color/marcado. Consumo impreso = 0,9 × el nominal correcto (nominal «ligeramente por encima»); con un motor (arranque, 40 %) solo sirve un «T»
+ * y su gemelo «F» del mismo valor va siempre de distractor. Los demás distractores no son correctos con ningún margen de batería (±5 %).
+ */
+function sortearFusible3(rnd: Rnd, zona: number): ZonaPod {
+  const todos = PIEZAS.fusible3;
+  for (let i = 0; i < MAX_INTENTOS; i++) {
+    const arranque = rnd() < 0.4;
+    const solucion = pick(rnd, arranque ? todos.filter((p) => /T:/.test(p)) : todos);
+    const consumo = Math.round(amperios(solucion) * 0.9 * 100) / 100;
+    const z = { circuito: "fusible3" as const, volts: 12, consumo, ...(arranque && { arranque }) };
+    const gemelo = arranque ? [solucion.replace("T:", "F:")] : [];
+    const sirve = (p: string) => MARGEN.some((f) => evaluar({ ...z, volts: z.volts * f }, p) === "correcto");
+    const otros = shuffle(rnd, todos.filter((p) => p !== solucion && !gemelo.includes(p) && !sirve(p)));
+    const cand: ZonaPod = { zona, nombre: ZONAS[zona]!, ...z, opciones: shuffle(rnd, [solucion, ...gemelo, ...otros].slice(0, 3)), solucion };
+    if (!validarZona(cand)) return cand;
+  }
+  throw new Error("sin zona válida para fusible3");
+}
+
+/**
  * Cadena de 3 o 4 piezas en serie (cable, LED, resistencia del valor justo para ese LED y, a veces, un segundo cable) con UNA muerta por dentro.
- * La solución es «hueco:repuesto» (el repuesto es la misma pieza que murió); la gaveta lleva 4 repuestos: ese y 3 distractores, con al menos
- * uno del mismo tipo pero equivocado (otro valor de R, o el LED girado). Se repite hasta que validarZona (±5 %) encuentre una sola jugada correcta.
+ * La solución es «hueco:repuesto» (el repuesto es la misma pieza que murió); la gaveta lleva 4 repuestos: los 3 tipos de la cadena y un distractor
+ * (otro valor de R, o el LED girado). Se repite hasta que validarZona (±5 %) encuentre una sola jugada correcta.
  */
 function sortearCadena(rnd: Rnd, zona: number): ZonaPod {
   for (let i = 0; i < MAX_INTENTOS; i++) {
@@ -137,11 +170,9 @@ function sortearCadena(rnd: Rnd, zona: number): ZonaPod {
     if (!rOk) continue;
     const cadena = shuffle(rnd, ["cable", "led", `r${rOk}`, ...(rnd() < 0.5 ? ["cable"] : [])]);
     const muerta = 1 + Math.floor(rnd() * cadena.length), buena = cadena[muerta - 1]!;
-    const otros = PIEZAS.cadena.filter((p) => p !== buena);
-    const parecido = buena === "led" ? ["ledInv"] : buena.startsWith("r") ? otros.filter((p) => p.startsWith("r")) : [];
-    const forzado = parecido.length ? [pick(rnd, parecido)] : [];
-    const distractores = [...forzado, ...shuffle(rnd, otros.filter((p) => !forzado.includes(p)))].slice(0, 3);
-    const cand: ZonaPod = { zona, nombre: ZONAS[zona]!, circuito: "cadena", volts, opciones: shuffle(rnd, [buena, ...distractores]), solucion: `${muerta}:${buena}`, cadena, muerta };
+    // La gaveta lleva SIEMPRE los tipos de la cadena (si no, `opciones` ∩ tipos darían candidatos sin medir) y un solo distractor: LED girado u otro valor de R.
+    const distractor = pick(rnd, ["ledInv", ...PIEZAS.cadena.filter((p) => p.startsWith("r") && p !== `r${rOk}`)]);
+    const cand: ZonaPod = { zona, nombre: ZONAS[zona]!, circuito: "cadena", volts, opciones: shuffle(rnd, [...new Set(cadena), distractor]), solucion: `${muerta}:${buena}`, cadena, muerta };
     if (!validarZona(cand)) return cand;
   }
   throw new Error("sin zona válida para cadena");
@@ -228,11 +259,13 @@ export function validarPodOleada(p: Pod, nivel: Nivel): string | null {
 
 /** null si la zona es válida; si no, el motivo. */
 export function validarZona(z: ZonaPod): string | null {
+  if (z.circuito === "placa3") return validarProblema(z); // vale cualquier montaje que cumpla el objetivo: la referencia cumple y las trampas no
   if (z.opciones.length < 2 || new Set(z.opciones).size !== z.opciones.length) return "opciones repetidas o insuficientes";
   if (!z.opciones.every((p) => PIEZAS[z.circuito].includes(p))) return "pieza fuera de catálogo";
   // Cadena: la jugada es «hueco:repuesto»; se prueban todas (y no poner nada) y debe quedar una sola correcta.
   const todas = z.circuito === "cadena" ? ["ninguna", ...jugadas(z)] : z.opciones;
   if (z.circuito === "cadena" && (!z.cadena || !z.muerta || z.solucion !== `${z.muerta}:${z.cadena[z.muerta - 1]}`)) return "cadena mal formada";
+  if (z.circuito === "cadena" && !z.cadena!.every((p) => z.opciones.includes(p))) return "cadena: faltan tipos de la cadena en la gaveta";
   for (const f of MARGEN) {
     const correctas = todas.filter((p) => evaluar({ ...z, volts: z.volts * f }, p) === "correcto");
     if (correctas.length !== 1 || correctas[0] !== z.solucion) {
@@ -294,7 +327,7 @@ export function validarPartida(pods: Pod[], nivel: Perfil, demo: Demo = false): 
 export function validarFamilias(d: typeof FAMILIAS): void {
   const bad = (m: string): never => { throw new Error(`familias.json inválido: ${m}`); };
   const usadas = new Set<string>();
-  for (const nivel of ["1", "2"] as const) {
+  for (const nivel of ["1", "2", "3"] as const) {
     for (const col of ["sinCables", "conCables"] as const) {
       const zs = d.zonas?.[nivel]?.[col];
       if (!Array.isArray(zs) || zs.length !== ZONAS.length) bad(`zonas.${nivel}.${col} debe tener ${ZONAS.length} zonas`);

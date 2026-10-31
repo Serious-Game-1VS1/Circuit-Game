@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Arbiter, MATCH_LIMIT_MS } from "../src/arbiter/arbiter.js";
 import { encadena, generar, generarOleada } from "../src/engine/generador.js";
 import { evaluar, jugadas } from "../src/engine/pods.js";
-import type { PodView, ServerMsg } from "../src/protocol.js";
+import { PROTOCOL_VERSION, type PodView, type ServerMsg } from "../src/protocol.js";
 
 /** Semilla cuyo primer pod (nivel 1) ofrece una pieza correcta, una que se queda corta y una que quema. */
 const SEMILLA = (() => {
@@ -64,7 +64,7 @@ describe("sala: alias, Listo y cuenta 3-2-1 (SCRUM-21, SCRUM-22)", () => {
     expect(last("p2", "full")).toMatchObject({ reason: "alias en uso" });
     arb.handle("p2", { t: "hello", alias: "beto" });
     arb.handle("p3", { t: "hello", alias: "carla" });
-    expect(last("p1", "welcome")).toEqual({ t: "welcome", station: "A", alias: "ana" });
+    expect(last("p1", "welcome")).toEqual({ t: "welcome", station: "A", alias: "ana", version: PROTOCOL_VERSION });
     expect(last("p2", "welcome")).toMatchObject({ station: "B" });
     expect(last("p3", "full")).toMatchObject({ reason: "sala completa" });
     expect(arb.phase).toBe("listo");
@@ -233,7 +233,7 @@ describe("racha de despachos y bono (autoridad del árbitro)", () => {
     while (n < 3) { for (const z of podOf("p1").zonas) { if (n >= 3) break; test("p1", z.zona, jugadas(z).find((p) => evaluar(z, p) === "correcto")!); n++; } if (n < 3) despachar("p1"); }
     despachar("p1");
     const z = podOf("p1").zonas[0]!;
-    const mala = jugadas(z).find((p) => evaluar(z, p) === "poco")!;
+    const mala = jugadas(z).find((p) => ["poco", "demasiado"].includes(evaluar(z, p)))!;
     test("p1", z.zona, mala);
     expect(racha("p1")).toMatchObject({ racha: 0, bono: "usado", waitMs: 1000 });
   });

@@ -20,7 +20,7 @@ describe("generador de pods (RF-06)", () => {
     expect(distintas.size).toBeGreaterThan(15);
   });
 
-  it.each(NIVELES)("nivel %i: 500 sorteos válidos (el CI corre 10 000 con npm run validar:sorteos)", (nivel) => {
+  it.each(NIVELES)("nivel %i: 500 sorteos válidos (10 000 a mano con npm run validar:sorteos; el CI no lo corre)", (nivel) => {
     for (let s = 0; s < 500; s++) expect(validarPartida(generar(s, nivel), nivel)).toBeNull();
   });
 
@@ -37,9 +37,18 @@ describe("generador de pods (RF-06)", () => {
     const zonas = Array.from({ length: 200 }, (_, s) => generar(s, 1)).flat().flatMap((p) => p.zonas).filter((z) => z.circuito === "led");
     expect(zonas.every((z) => z.opciones.length === 3)).toBe(true);
     const porVolts = new Map(zonas.map((z) => [z.volts, z.solucion]));
-    expect(Object.fromEntries(porVolts)).toEqual({ 3.7: "100", 4.5: "220", 9: "470" });
+    expect(Object.fromEntries(porVolts)).toEqual({ 3.7: "100", 4.5: "220", 9: "470", 15: "1000" });
     // la correcta no está siempre en la misma posición
     expect(new Set(zonas.map((z) => z.opciones.indexOf(z.solucion))).size).toBe(3);
+  });
+
+  it("la resistencia correcta se reparte parecido entre las 4 (Radar, niveles 1 y 2)", () => {
+    for (const nivel of [1, 2] as const) {
+      const n: Record<string, number> = {};
+      for (let s = 0; s < 400; s++) for (const p of generar(s, nivel)) for (const z of p.zonas) if (z.circuito === "led") n[z.solucion] = (n[z.solucion] ?? 0) + 1;
+      expect(Object.keys(n).sort()).toEqual(["100", "1000", "220", "470"]);
+      const v = Object.values(n); expect(Math.min(...v)).toBeGreaterThan(Math.max(...v) * 0.6);
+    }
   });
 
   it("nivel 2 cubre focos en paralelo, interruptor y fusible con sus veredictos", () => {
@@ -152,10 +161,10 @@ describe("generador en modo demo de cableado (Cabina y Turbina)", () => {
 
 describe("falla encadenada (solo Oleadas)", () => {
   const h = (x: string) => { let a = 5381; for (const c of x) a = (Math.imul(a, 33) ^ c.charCodeAt(0)) >>> 0; return a; };
-  // Huellas (nivel 2 actualizado al añadir LED invertido, circuito abierto, combinar, divisor y protegido y, en el bloque 5, al cambiar invertido/abierto por la cadena); tomadas antes de añadir la encadenada: el duelo, la práctica normal y las zonas de Oleadas no deben cambiar.
+  // Huellas (resistencias: 15 V y reparto de la correcta, ver VOLTS_SORTEO; nivel 2 actualizado al añadir LED invertido, circuito abierto, combinar, divisor y protegido y, en el bloque 5, al cambiar invertido/abierto por la cadena y, en la ronda del 30-oct, al fijar la gaveta de la cadena con todos los tipos); tomadas antes de añadir la encadenada: el duelo, la práctica normal y las zonas de Oleadas no deben cambiar.
   const HUELLAS: [Nivel, number, number, number][] = [
-    [1, 1, 3303168567, 644005380], [1, 7, 350318067, 1267894063], [1, 42, 210100651, 2322169135], [1, 20261019, 1966667399, 4137727553],
-    [2, 1, 1486293319, 1178405013], [2, 7, 2094413713, 991155616], [2, 42, 821218889, 2076351937], [2, 20261019, 570152580, 552540187],
+    [1, 1, 1741707192, 4276358291], [1, 7, 887873660, 779038811], [1, 42, 1518233202, 907116463], [1, 20261019, 3272820337, 4008486270],
+    [2, 1, 1508765279, 3493224660], [2, 7, 3665630562, 10662436], [2, 42, 634838147, 377073665], [2, 20261019, 1722553660, 452479173],
   ];
   it.each(HUELLAS)("nivel %i, semilla %i: mismos pods que antes (partida y zonas de las 18 primeras oleadas)", (nivel, s, partida, oleada) => {
     expect(h(JSON.stringify(generar(s, nivel)))).toBe(partida);

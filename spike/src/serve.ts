@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { RECONNECT_MS, type Arbiter } from "./arbiter/arbiter.js";
+import { MEDIR_COMPETITIVO_MS, RAZON_SALA_OCIOSA, RECONNECT_MS, type Arbiter } from "./arbiter/arbiter.js";
 import { borrarVivo, guardarPartida, guardarVivo } from "./docente/almacen.js";
 import { partidaDe, vivoDe } from "./docente/registro.js";
 import { iniciarRetencion } from "./docente/retencion.js";
@@ -33,8 +33,8 @@ const opcion = (flag: string, env: string) => {
   return i >= 0 ? process.argv[i + 1] : process.env[env];
 };
 const nivelTxt = opcion("--nivel", "NIVEL") ?? "mixto";
-if (nivelTxt !== "1" && nivelTxt !== "2" && nivelTxt !== "mixto") throw new Error(`--nivel debe ser 1, 2 o mixto (llegó "${nivelTxt}")`);
-const nivel: Perfil = nivelTxt === "mixto" ? "mixto" : nivelTxt === "2" ? 2 : 1;
+if (nivelTxt !== "1" && nivelTxt !== "2" && nivelTxt !== "3" && nivelTxt !== "mixto") throw new Error(`--nivel debe ser 1, 2, 3 o mixto (llegó "${nivelTxt}")`);
+const nivel: Perfil = nivelTxt === "mixto" ? "mixto" : nivelTxt === "3" ? 3 : nivelTxt === "2" ? 2 : 1;
 const semillaTxt = opcion("--semilla", "SEMILLA");
 const semilla = semillaTxt === undefined ? undefined : Number(semillaTxt);
 if (semilla !== undefined && !(/^\d+$/.test(semillaTxt!) && semilla < 2 ** 32)) throw new Error(`--semilla debe ser un entero de 0 a 2^32-1 (llegó "${semillaTxt}")`);
@@ -70,6 +70,11 @@ function vigilar(code: string, arbiter: Arbiter, fin: () => void): () => void {
     vivo();
     if (last === "fin" || last === "anulada") {
       clearInterval(timer);
+      if (arbiter.outcome?.reason === RAZON_SALA_OCIOSA) { // sala ociosa: sin partida que registrar, solo se libera
+        console.log(`[${code}] sala inactiva liberada`);
+        setTimeout(() => { docente("borrar el vivo", () => borrarVivo(code)); fin(); }, 1000);
+        return;
+      }
       mkdirSync("bench-out", { recursive: true });
       // El CSV conserva su formato; nivel y semilla van en el nombre para poder reproducir la partida.
       const file = `bench-out/intentos-${code}${arbiter.demo ? "-demo" : ""}-nivel${arbiter.nivel}-semilla${arbiter.semilla}.csv`;
@@ -98,7 +103,7 @@ async function crearConCodigo(t: Transport, code: string) {
 async function abrir(t: Transport, alTerminar: () => void, codigo?: string, alCaer?: () => void) {
   const code = codigo ? await crearConCodigo(t, codigo) : await createRoom(t);
   let parar = () => {};
-  const room = hostRoom(t, { nivel, semilla, demo, limitMs }, () => {
+  const room = hostRoom(t, { nivel, semilla, demo, limitMs, medirMs: MEDIR_COMPETITIVO_MS }, () => {
     parar();
     console.error(`[${code}] se perdió la conexión del árbitro: sala cerrada`);
     docente("borrar el vivo", () => borrarVivo(code));

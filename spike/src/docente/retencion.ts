@@ -1,4 +1,4 @@
-import { readdirSync, rmSync } from "node:fs";
+import { readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { dirDatos, escribirJsonAtomico, leerJson } from "./almacen.js";
 import { idAlumnoValido } from "./alumnos.js";
@@ -36,6 +36,22 @@ export function purgarVencidos(dir: string = dirDatos(), ahora: Date = new Date(
 }
 
 /**
+ * El árbitro escribe un CSV por partida en `bench-out/` (con la semilla en el nombre y la pieza correcta dentro): se borra por fecha
+ * de modificación pasados `meses` meses. Solo toca `intentos-*.csv`. Devuelve cuántos borró.
+ */
+export function purgarBench(dir = "bench-out", ahora: Date = new Date(), meses: number = retencionMeses()): number {
+  const corte = new Date(ahora); corte.setMonth(corte.getMonth() - meses);
+  let n = 0;
+  try {
+    for (const f of readdirSync(dir)) {
+      if (!/^intentos-.*\.csv$/.test(f)) continue;
+      if (statSync(join(dir, f)).mtime < corte) { rmSync(join(dir, f), { force: true }); n++; }
+    }
+  } catch { /* sin carpeta: nada que purgar */ }
+  return n;
+}
+
+/**
  * Derecho de supresión: borra las partidas (json + csv) en las que jugó `id`. Borra la partida entera
  * (el rival también pierde ese registro) porque el CSV no separa por persona. Devuelve cuántas borró; 0 si el id es inválido.
  */
@@ -52,7 +68,7 @@ export function eliminarDatosDeAlumno(dir: string, id: string): number {
 /** Al arrancar y luego cada 24 h. Registra solo el número eliminado. */
 export function iniciarRetencion(): void {
   const correr = () => {
-    try { console.log(`retención: ${purgarVencidos()} registros eliminados`); }
+    try { console.log(`retención: ${purgarVencidos() + purgarBench()} registros eliminados`); }
     catch (e) { console.error(`retención: falló: ${(e as Error).message}`); }
   };
   correr();

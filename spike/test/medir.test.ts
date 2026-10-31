@@ -29,8 +29,8 @@ describe("multímetro: solo lo que mediría un multímetro real", () => {
 
   it("lecturas con cifra: voltios exactos y ohmios de una resistencia (el corte se lee sin Ω)", () => {
     expect(medir({ circuito: "divisor", volts: 9, r1: 470 }, "220", "tension", "pieza")).toMatchObject({ voltios: 2.87 });
-    expect(medir({ circuito: "led", volts: 9 }, "470", "continuidad", "pieza")).toEqual({ pasa: true, ohmios: 470 });
-    expect(medir({ circuito: "abierto", volts: 9 }, "dejar", "continuidad", "pieza")).toEqual({ pasa: false });
+    expect(medir({ circuito: "led", volts: 9 }, "470", "continuidad", "pieza")).toEqual({ pasa: true, ohmios: 470, dial: "correcto" });
+    expect(medir({ circuito: "abierto", volts: 9 }, "dejar", "continuidad", "pieza")).toEqual({ pasa: false, dial: "poco" });
   });
 
   it("continuidad con la batería desconectada: las piezas sanas pasan (el probador no funde fusibles)", () => {
@@ -80,17 +80,17 @@ describe("árbitro: mensaje medir", () => {
     arb.handle("p2", { t: "ready" });
     t += 3000;
     arb.tick();
-    return { arb, out, z: generar(SEMILLA, 1)[0]!.zonas[0]! };
+    return { arb, out, paso: () => { t += 1000; }, z: generar(SEMILLA, 1)[0]!.zonas[0]! };
   };
 
   it("responde solo con la lectura (sin veredicto ni solución), no penaliza ni avisa al rival", () => {
-    const { arb, out, z } = setup();
+    const { arb, out, z, paso } = setup();
     const antes = out.length;
-    for (let i = 0; i < 5; i++) arb.handle("p1", { t: "medir", seq: 10 + i, t0: 0, zone: z.zona, pieza: z.opciones[0], modo: "tension", punto: "carga1" });
+    for (let i = 0; i < 5; i++, paso()) arb.handle("p1", { t: "medir", seq: 10 + i, t0: 0, zone: z.zona, pieza: z.opciones[0], modo: "tension", punto: "carga1" });
     const nuevos = out.slice(antes);
     expect(nuevos.every((o) => o.to === "p1" && o.m.t === "medida")).toBe(true);
     const m = nuevos[0]!.m;
-    expect(Object.keys(m).sort()).toEqual(["fraccion", "modo", "punto", "seq", "t", "t0", "tension", "voltios", "zona"]);
+    expect(Object.keys(m).sort()).toEqual(["dial", "fraccion", "medirMs", "modo", "punto", "seq", "t", "t0", "tension", "voltios", "zona"]);
     expect(JSON.stringify(nuevos)).not.toMatch(/solucion|semilla|veredicto/);
     // Medir no cuenta como intento: «Probar» sigue disponible y el CSV no tiene filas.
     arb.handle("p1", { t: "test", seq: 99, t0: 0, zone: z.zona, pieza: z.solucion });

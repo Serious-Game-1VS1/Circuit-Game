@@ -7,7 +7,7 @@ import type { ServerMsg } from "../src/protocol.js";
 
 /** Cadena de 4 piezas a 9 V: cable, LED, resistencia del valor justo (470 Ω) y cable; la 3 (la resistencia) está muerta. */
 const Z: ZonaPod = { zona: 0, nombre: "radar", circuito: "cadena", volts: 9, cadena: ["cable", "led", "r470", "cable"], muerta: 3,
-  opciones: ["r470", "r100", "led", "ledInv"], solucion: "3:r470" };
+  opciones: ["r470", "r100", "led", "cable"], solucion: "3:r470" };
 
 describe("cadena: la pieza muerta (nivel 2)", () => {
   it("solo el repuesto igual puesto en el hueco muerto enciende bien el LED", () => {
@@ -21,7 +21,7 @@ describe("cadena: la pieza muerta (nivel 2)", () => {
   });
 
   it("LED muerto: el LED girado de la gaveta no sirve (polaridad)", () => {
-    const z: ZonaPod = { ...Z, cadena: ["r470", "cable", "led", "cable"], muerta: 3, opciones: ["led", "ledInv", "cable", "r220"], solucion: "3:led" };
+    const z: ZonaPod = { ...Z, cadena: ["r470", "cable", "led", "cable"], muerta: 3, opciones: ["led", "ledInv", "cable", "r470"], solucion: "3:led" };
     expect([evaluar(z, "3:led"), evaluar(z, "3:ledInv"), evaluar(z, "3:cable")]).toEqual(["correcto", "poco", "poco"]);
     expect(validarZona(z)).toBeNull();
   });
@@ -37,7 +37,7 @@ describe("cadena: la pieza muerta (nivel 2)", () => {
     expect(lee("ninguna")).toEqual([true, true, false, true]);
     expect(lee("3:r470")).toEqual([true, true, true, true]);
     expect(medir(Z, "ninguna", "continuidad", "t2")).toEqual({ pasa: true }); // el LED bien puesto deja pasar
-    expect(medir(Z, "ninguna", "continuidad", "t3")).toEqual({ pasa: false }); // «abierto»: sin Ω (no dice el valor de la muerta)
+    expect(medir(Z, "ninguna", "continuidad", "t3")).toEqual({ pasa: false, dial: "poco" }); // «abierto»: sin Ω (no dice el valor de la muerta)
     expect(medir(Z, "ninguna", "continuidad", "t5")).toBeNull();
     // Con tensión no se marca nada en el cliente (con el LED aguas abajo el corte no siempre lee «toda»); solo la continuidad localiza.
     expect(medir(Z, "ninguna", "tension", "t1")).toMatchObject({ tension: "nada" });
@@ -84,7 +84,7 @@ describe("cadena: la pieza muerta (nivel 2)", () => {
     const ultimo = <K extends ServerMsg["t"]>(k: K) => out.filter((m) => m.t === k).at(-1) as Extract<ServerMsg, { t: K }>;
     let seq = 0;
     const probar = (zona: number, pieza: string) => { arb.handle("p1", { t: "test", seq: ++seq, t0: 0, zone: zona, pieza }); return ultimo("result"); };
-    const medida = (zone: number, punto: string, pieza = "ninguna", modo: "continuidad" | "tension" = "continuidad") => { arb.handle("p1", { t: "medir", seq: ++seq, t0: 0, zone, pieza, modo, punto }); return ultimo("medida"); };
+    const medida = (zone: number, punto: string, pieza = "ninguna", modo: "continuidad" | "tension" = "continuidad") => { t += 1000; arb.handle("p1", { t: "medir", seq: ++seq, t0: 0, zone, pieza, modo, punto }); return ultimo("medida"); };
     const resolver = () => { for (const z of pod().zonas) if (!z.reparada) { const zs = arb.pods[pod().numero - 1]!.zonas.find((x) => x.zona === z.zona)!; probar(z.zona, jugadas(zs).find((p) => evaluar(zs, p) === "correcto")!); } arb.handle("p1", { t: "despachar", seq: ++seq, t0: 0 }); t += 5000; };
     while (!pod().zonas.some((z) => z.circuito === "cadena" && z.cadena!.length === 4)) resolver();
     const vista = pod().zonas.find((z) => z.circuito === "cadena")!, real = arb.pods[pod().numero - 1]!.zonas.find((z) => z.zona === vista.zona)!;

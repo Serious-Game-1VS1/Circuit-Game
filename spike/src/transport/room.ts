@@ -30,7 +30,7 @@ export function hostRoom(t: Transport, opts?: ArbiterOptions, alCaer?: () => voi
   const publicar = () => {
     const jugadores = arbiter.vivo().jugadores.length;
     const estado = arbiter.phase === "esperando" ? "esperando" : arbiter.phase === "listo" || arbiter.phase === "cuenta" ? "llena" : "jugando";
-    const info = { nivel: arbiter.nivel === 2 ? 2 : 1, jugadores, estado } as const;
+    const info = { nivel: arbiter.nivel === 3 ? 3 : arbiter.nivel === 2 ? 2 : 1, jugadores, estado } as const;
     const txt = JSON.stringify(info);
     if (txt !== ultima) { ultima = txt; t.publicar?.(info); }
   };

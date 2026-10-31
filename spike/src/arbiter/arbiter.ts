@@ -1,8 +1,9 @@
 import { generar, generarOleada, mulberry32, nivelDePod, type Demo, type Perfil, type Pod, type ZonaPod } from "../engine/generador.js";
 import { medir } from "../engine/medir.js";
 import { evaluar, piezaValida } from "../engine/pods.js";
+import { ENUNCIADOS, type Plantilla } from "../engine/placa3.js";
 import {
-  validAlias, type Carril, type End, type Phase, type PodView, type RivalView, type ServerMsg, type Station, type TipoSabotaje,
+  PROTOCOL_VERSION, validAlias, type Carril, type End, type Phase, type PodView, type RivalView, type ServerMsg, type Station, type TipoSabotaje,
 } from "../protocol.js";
 import { BURN_BLOCK_MS, csvField, PenaltyTracker, QUEMADAS_OLEADAS } from "./penalties.js";
 
@@ -10,6 +11,20 @@ export const PODS_TO_WIN = 5;
 // supuesto: límite de 12 min pendiente de confirmar con el tutor; configurable por opción.
 export const MATCH_LIMIT_MS = 12 * 60_000;
 export const RECONNECT_MS = 30_000;
+/** Lo que cuesta medir con el multímetro: ~1 s en tutorial/práctica/oleadas y 3 s en las partidas competitivas (1v1 y bot), para que no se resuelva midiendo todo gratis. */
+export const MEDIR_MS = 1000;
+export const MEDIR_COMPETITIVO_MS = 3000;
+/**
+ * PUNTO ÚNICO del coste de medir (M-1, pendiente de decisión del dueño): hoy el coste es fijo (`medirMs`) para cualquier zona.
+ * Cuando se decida el coste creciente por zona, se aplica aquí (p. ej. `medirMs * (1 + piezas ya medidas en la zona)`) y solo aquí.
+ */
+export const costeMedir = (medirMs: number, _medidasEnZona: number): number => medirMs;
+/** Sala en «esperando»/«listo» sin actividad (ni jugador nuevo ni Listo) caduca a los 120 s y se libera. */
+export const SALA_OCIOSA_MS = 120_000;
+export const RAZON_SALA_OCIOSA = "sala inactiva";
+/** Mensajes por jugador en cualquier ventana de 1 s; el exceso se ignora sin responder. */
+export const LIMITE_MSG_POR_S = 30;
+const MEDIR_TOLERANCIA_MS = 250; // red y reloj del cliente: no rechazar a quien espera lo que muestra la barra
 export const COUNTDOWN_MS = 3_000;
 /**
  * Sabotajes (bloque 4): al 3.er pod limpio seguido (despachado sin ningún fallo) el árbitro aplica UN sabotaje al rival
@@ -48,6 +63,8 @@ export interface ArbiterOptions {
   oleadas?: boolean;
   /** Pods propios en lugar de los 5 generados (p. ej. una práctica de un solo pod); la partida termina al despachar todos. Ignorado con `oleadas`. */
   pods?: Pod[];
+  /** Coste de una medición del multímetro (ms); por defecto MEDIR_MS. El árbitro rechaza otra medida antes de que pase. */
+  medirMs?: number;
 }
 
 interface Seat {
@@ -62,6 +79,8 @@ interface Seat {
   repaired: Set<number>;
   lastPieza: Map<number, string>;
   penalUntil: number;
+  /** Hasta cuándo está ocupado el multímetro (la medición anterior aún no «termina»). */
+  medirLibre: number;
   lastRival: string;
   /** Inicio (reloj del árbitro) del pod actual: cronómetro por pod hacia arriba, sin límite ni castigo. */
   podInicio: number;
@@ -82,6 +101,8 @@ interface Seat {
   sabPods: Set<number>;
   inmuneHasta: number;
   sab: { tipo: TipoSabotaje; hasta: number; de: Station } | null;
+  /** Instantes de los últimos `LIMITE_MSG_POR_S` mensajes aceptados (límite de tasa). */
+  recientes: number[];
 }
 
 /**
@@ -96,6 +117,8 @@ export class Arbiter {
   outcome?: End;
   private seats: Seat[] = [];
   private countdownAt = 0;
+  /** Último avance de la sala antes de jugar (jugador nuevo, Listo o salida): base de la caducidad por ociosidad. */
+  private ociosaDesde = 0;
   private lastCount = 0;
   private startAt = 0;
   private readonly now: () => number;
@@ -106,6 +129,8 @@ export class Arbiter {
   /** Azar de los sabotajes: derivado de la semilla, así que la secuencia de tipos es reproducible. */
   private readonly sabAzar: () => number;
   readonly semilla: number;
+  readonly medirMs: number;
+  private medirFactor = 1;
   readonly nivel: Perfil;
   readonly demo: Demo;
   readonly practica: boolean;
@@ -121,6 +146,7 @@ export class Arbiter {
     this.limitMs = opts.limitMs ?? MATCH_LIMIT_MS;
     this.reconnectMs = opts.reconnectMs ?? RECONNECT_MS;
     this.azar = opts.azar ?? Math.random;
+    this.medirMs = opts.medirMs ?? MEDIR_MS;
     this.semilla = opts.semilla ?? Math.floor(Math.random() * 2 ** 32);
     this.sabAzar = mulberry32((this.semilla ^ 0x5ab07a6e) >>> 0);
     this.nivel = opts.nivel ?? 1;
@@ -131,8 +157,9 @@ export class Arbiter {
   }
 
   /** Práctica: aplica las mejoras del jugador (factor del enfriamiento sobre 2/4/8 s y escudo contra la próxima quemada). */
-  ajustar(a: { enfriamiento: number; escudo: boolean }): void {
+  ajustar(a: { enfriamiento: number; escudo: boolean; multimetro?: boolean }): void {
     if (!this.practica) return;
+    this.medirFactor = a.multimetro ? 0.5 : 1;
     this.escudo = a.escudo;
     for (const s of this.seats) s.penalties.cooldownFactor = a.enfriamiento;
   }
@@ -152,6 +179,10 @@ export class Arbiter {
     if (m?.t === "hello") return this.hello(peer, m.alias);
     const s = this.seats.find((x) => x.peer === peer);
     if (!s) return;
+    const t = this.now();
+    if (s.recientes.length >= LIMITE_MSG_POR_S && t - s.recientes[0]! < 1000) return; // exceso: rechazo silencioso
+    s.recientes.push(t);
+    if (s.recientes.length > LIMITE_MSG_POR_S) s.recientes.shift();
     if (m?.t === "ready") return this.ready(s);
     const seq = typeof m?.seq === "number" ? m.seq : 0;
     const t0 = typeof m?.t0 === "number" ? m.t0 : 0;
@@ -175,6 +206,7 @@ export class Arbiter {
     // Tras el fin se guarda el asiento para reenviar el resultado a quien vuelva (30 s).
     if (this.phase === "fin") { s.peer = null; s.goneAt = this.now(); return; }
     if (this.phase === "anulada") return;
+    this.ociosaDesde = this.now();
     // supuesto: antes de empezar, quien se va libera su asiento y se cancela la cuenta; el otro vuelve a "no listo".
     this.seats = this.seats.filter((x) => x !== s);
     for (const x of this.seats) x.ready = false;
@@ -184,6 +216,12 @@ export class Arbiter {
 
   tick(): void {
     const t = this.now();
+    if ((this.phase === "esperando" || this.phase === "listo") && this.seats.length && t - this.ociosaDesde >= SALA_OCIOSA_MS) {
+      // Sala ociosa: se anula para que serve.ts la cierre y la reabra (si no, 12 conexiones quietas bloquearían las 6 salas).
+      this.phase = "anulada";
+      this.outcome = { t: "end", phase: "anulada", winner: null, reason: RAZON_SALA_OCIOSA, score: this.score() };
+      return this.broadcast(this.outcome);
+    }
     if (this.phase === "cuenta") {
       const el = t - this.countdownAt;
       if (el >= this.countdownMs) return this.start();
@@ -238,20 +276,20 @@ export class Arbiter {
     if (!validAlias(alias)) return this.send(peer, { t: "full", reason: "alias de 1 a 12 caracteres" });
     const name = alias.trim();
     const mine = this.seats.find((x) => x.peer === peer);
-    if (mine) return this.send(peer, { t: "welcome", station: mine.station, alias: mine.alias });
+    if (mine) return this.send(peer, { t: "welcome", station: mine.station, alias: mine.alias, version: PROTOCOL_VERSION });
 
     const same = this.seats.find((x) => x.alias === name);
     if (this.phase === "jugando" && same && !same.peer) {
       if (this.now() - same.goneAt >= this.reconnectMs) return this.send(peer, { t: "full", reason: "tiempo de reconexión agotado" });
       same.peer = peer;
-      this.send(peer, { t: "welcome", station: same.station, alias: same.alias });
+      this.send(peer, { t: "welcome", station: same.station, alias: same.alias, version: PROTOCOL_VERSION });
       this.send(peer, this.snapshot(same));
       return this.syncRival(same);
     }
     if (this.phase === "fin" && same && !same.peer && this.outcome) {
       if (this.now() - same.goneAt >= this.reconnectMs) return this.send(peer, { t: "full", reason: "tiempo de reconexión agotado" });
       same.peer = peer;
-      this.send(peer, { t: "welcome", station: same.station, alias: same.alias });
+      this.send(peer, { t: "welcome", station: same.station, alias: same.alias, version: PROTOCOL_VERSION });
       return this.send(peer, this.outcome);
     }
     if (this.phase === "anulada") return this.send(peer, { t: "full", reason: "partida anulada" });
@@ -266,11 +304,12 @@ export class Arbiter {
       station, alias: name, peer, goneAt: 0, ready: false, penalties: new PenaltyTracker(this.now),
       despachados: 0, repaired: new Set(), lastPieza: new Map(), penalUntil: 0, lastRival: "",
       podInicio: 0, podMs: [], podFallos: 0, llamas: 0, intentoPod: [], intentoZona: [], revelada: false,
-      limpios: 0, sabRecibidos: 0, sabPods: new Set(), inmuneHasta: 0, sab: null,
+      medirLibre: 0, limpios: 0, sabRecibidos: 0, sabPods: new Set(), inmuneHasta: 0, sab: null, recientes: [],
     });
     this.seats.sort((a, b) => a.station.localeCompare(b.station));
+    this.ociosaDesde = this.now();
     this.phase = this.seats.length === 2 ? "listo" : "esperando";
-    this.send(peer, { t: "welcome", station, alias: name });
+    this.send(peer, { t: "welcome", station, alias: name, version: PROTOCOL_VERSION });
     if (this.practica) return this.start();
     this.broadcastLobby();
   }
@@ -279,6 +318,7 @@ export class Arbiter {
     // Listo pulsado antes de que llegue el rival se recuerda; la cuenta espera a los 2 asientos.
     if (this.phase !== "listo" && this.phase !== "esperando") return;
     s.ready = true;
+    this.ociosaDesde = this.now();
     this.broadcastLobby();
     if (this.phase === "listo" && this.seats.every((x) => x.ready)) {
       this.phase = "cuenta";
@@ -350,7 +390,6 @@ export class Arbiter {
    * Multímetro: lee el circuito con la pieza o montaje que el jugador tiene puesto. No toca
    * penalizaciones, intentos, CSV ni el estado del rival (medir no cuenta como «Probar»).
    */
-  // shortcut: el ~1 s que cuesta medir lo espera el cliente; si un cliente tramposo lo salta solo gana tiempo, no información.
   private measure(s: Seat, m: Record<string, unknown>, seq: number, t0: number): void {
     const reject = (reason: string) => this.send(s.peer!, { t: "reject", seq, t0, reason, waitMs: 0 });
     if (this.phase !== "jugando") return reject("la partida no está en juego");
@@ -359,9 +398,13 @@ export class Arbiter {
     if (!z || typeof pieza !== "string" || !piezaValida(z, pieza) || (modo !== "continuidad" && modo !== "tension") || typeof punto !== "string") {
       return reject("medida no válida");
     }
-    const lectura = medir(z, pieza, modo, punto);
+    const ahora = this.now(), medirMs = costeMedir(this.medirMs * this.medirFactor, 0);
+    if (ahora < s.medirLibre - MEDIR_TOLERANCIA_MS) return this.send(s.peer!, { t: "reject", seq, t0, reason: "el multímetro sigue midiendo", waitMs: 0 });
+    let lectura: ReturnType<typeof medir> = null;
+    try { lectura = medir(z, pieza, modo, punto); } catch { /* punto hostil: se trata como medida no válida */ }
     if (!lectura) return reject("medida no válida");
-    this.send(s.peer!, { t: "medida", seq, t0, zona: z.zona, modo, punto, ...lectura });
+    s.medirLibre = ahora + medirMs;
+    this.send(s.peer!, { t: "medida", seq, t0, zona: z.zona, modo, punto, medirMs, ...lectura });
   }
 
   /** "Despachar": el pod cuenta solo si todas sus zonas están reparadas (RF-03). */
@@ -409,6 +452,7 @@ export class Arbiter {
       winner = d > 0 ? a.station : d < 0 ? b.station : undefined;
     }
     this.phase = "fin";
+    for (const x of this.seats) if (!x.peer) x.goneAt = this.now(); // la ventana de reconexión corre desde el fin, no desde la caída
     // supuesto: ambos reciben el mismo End (con los fallos de los dos); el podio muestra solo los propios.
     const carrera = this.practica ? undefined : Object.fromEntries(this.seats.map((s) => [s.station, this.carril(s)]));
     this.outcome = { t: "end", phase: "fin", winner: winner ?? null, reason, score: this.score(), ...(carrera && { carrera }) };
@@ -444,8 +488,8 @@ export class Arbiter {
       numero: s.despachados + 1,
       nivel: nivelDePod(this.nivel, this.oleadas ? 0 : Math.min(s.despachados, this.pods.length - 1)),
       zonas: pod.zonas.map((z) => {
-        const { zona, nombre, circuito, volts, opciones, r1, cadena } = this.zonaDe(s, pod, z.zona)!;
-        return { zona, nombre, circuito, volts, opciones: [...opciones], reparada: s.repaired.has(zona), ...(r1 && { fija: `R1 ${r1} Ω` }), ...(cadena && { cadena: [...cadena] }) };
+        const { zona, nombre, circuito, volts, opciones, r1, cadena, consumo, arranque, plantilla } = this.zonaDe(s, pod, z.zona)!;
+        return { zona, nombre, circuito, volts, opciones: [...opciones], reparada: s.repaired.has(zona), ...(plantilla && { enunciado: ENUNCIADOS[plantilla as Plantilla] }), ...(r1 && { fija: `R1 ${r1} Ω` }), ...(consumo && { fija: `${arranque ? "Motor" : "Consumo"} ${String(consumo).replace(".", ",")} A` }), ...(cadena && { cadena: [...cadena] }) };
       }),
     };
   }

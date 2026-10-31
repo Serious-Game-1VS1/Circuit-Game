@@ -54,7 +54,7 @@ export async function simulateDuel(make: () => Transport): Promise<{ arbiter: Ar
     await ana.until((m) => m.t === "rival" && m.estado === "sin-conexion");
     const mark = ana.log.length;
     const beto2 = new Bot(mk());
-    assert.deepEqual(await beto2.enter(code, "beto"), { t: "welcome", station: "B", alias: "beto" });
+    assert.deepEqual(await beto2.enter(code, "beto"), { t: "welcome", station: "B", alias: "beto", version: 2 });
     const snap = await beto2.until((m) => m.t === "start");
     assert.ok(snap.t === "start" && snap.despachados === 2 && snap.rival?.alias === "ana");
     await ana.until((m) => m.t === "rival" && m.estado === "reparando" && m.despachados === 2, mark);

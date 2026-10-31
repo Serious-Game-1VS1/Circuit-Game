@@ -1,7 +1,7 @@
 /** Identificador de un participante dentro de la sala (en Photon, el actorNr). */
 export type PeerId = string;
 
-/** Una sala abierta tal como la ve la lista: sin solución, sin alias de jugadores. `nivel` 1|2 (la partida «mixta» empieza en 1). */
+/** Una sala abierta tal como la ve la lista: sin solución, sin alias de jugadores. `nivel` 1|2|3 (la partida «mixta» empieza en 1; 3 = Experto). */
 export interface SalaInfo { codigo: string; nivel: number; jugadores: number; max: 2; estado: "esperando" | "llena" | "jugando" }
 /** Lo que el anfitrión publica de su sala para la lista (el código ya es el de la sala). */
 export type SalaPublica = Pick<SalaInfo, "nivel" | "jugadores" | "estado">;

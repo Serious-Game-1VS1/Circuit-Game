@@ -24,6 +24,16 @@
  *  (aditivo). `opciones` son los repuestos de la gaveta ("cable", "led", "ledInv", "r220"…). TestMsg/MedirMsg.pieza es «hueco:repuesto»
  *  (hueco 1..n, p. ej. "2:led") o, solo para medir, "ninguna"; los puntos de medida son "t1".."tn". Misma validación, mismas penalizaciones.
  *
+ * Nivel 3 «Experto» (aditivo): `Nivel` suma 3. Reutiliza las familias de resistencia (led, cabina) con los mismos id en Ω ("100"…"1000"): el CLIENTE oculta el texto y
+ *  muestra las bandas de color cuando `PodView.nivel` es 3. Familia nueva "fusible3" (Reactor, 12 V): `opciones` son id de fusible «forma:amperios» ("5x20F:1", "5x20T:2",
+ *  "6x32F:10", "car:7.5"); `ZonaView.fija` trae el consumo impreso en el pod («Consumo 0,9 A»; «Motor 1,8 A» = carga con arranque fuerte). La corriente nominal y el veredicto siguen solo en el árbitro.
+ *
+ * Nivel 3, «placa experta» (aditivo; engine/placa3.ts): familia "placa3" (Cabina, pods con cables). ZonaView suma `enunciado` (el problema, p. ej.
+ *  «El interruptor debe apagar solo el LED rojo»); `opciones` son las piezas de las gavetas «tipo:valor:n» ("R:470:1", "L:rojo:1", "D:1N4007:1",
+ *  "S:int:1", "S:pul:1", "C:100uF:1"), con sobrantes y trampas. TestMsg/MedirMsg.pieza es la placa entera «id@f,c[^];…|h1>h2;…» (piezas | cables);
+ *  MedirMsg.punto son dos agujeros «h1~h2» (punta roja ~ negra). Verdict suma "mal" («mal conectado»: no cumple el objetivo, sin decir qué
+ *  conexión falla), que penaliza como «poco». No viajan la solución de referencia, las trampas ni el objetivo estructurado.
+ *
  * Despacho explícito (anteproyecto, RF-03). NO compatible con el cliente anterior:
  *  - Reparar la última zona ya no despacha: el Result trae el pod con todas sus zonas `reparada` y
  *    `despachados` sin cambiar. El jugador manda Dispatch ("despachar") y solo entonces cuenta el pod.
@@ -47,7 +57,8 @@
  *    "carga1", "carga2"). No es «Probar»: no penaliza, no cuenta como intento ni entra en el CSV.
  *  - Medida ("medida"): solo lo que mostraría el multímetro: en continuidad, si pasa (batería
  *    desconectada); en tensión, el tramo («nada» | «parte» | «toda») y la fracción de la batería
- *    redondeada a décimas. Nunca el veredicto, la corriente ni la solución. Error: Reject "medida no válida".
+ *    redondeada a décimas. Suma `dial` (poco | correcto | demasiado): la zona del dial de la pieza PUESTA, medida con el criterio físico de cada
+ *    familia (ver engine/medir.ts); es lo mismo que daría CHECK sobre esa pieza, pero sin coste y sin decir cuál otra es la correcta. Nunca la corriente ni la solución. Error: Reject "medida no válida".
  *
  * Modo práctica (SCRUM-151), compatible con el cliente anterior:
  *  - Snapshot suma `practica`: true si el árbitro corre en práctica (un jugador, sin rival, sin límite de tiempo:
@@ -58,10 +69,10 @@ import type { Label } from "./engine/circuit.js";
 export type Station = "A" | "B";
 export type Phase = "esperando" | "listo" | "cuenta" | "jugando" | "fin" | "anulada";
 export type RivalStatus = "reparando" | "penalizado" | "sin-conexion";
-export type Circuito = "led" | "cabina" | "luces" | "interruptor" | "fusible" | "invertido" | "abierto" | "combinar" | "divisor" | "protegido" | "cadena";
+export type Circuito = "led" | "cabina" | "luces" | "interruptor" | "fusible" | "invertido" | "abierto" | "combinar" | "divisor" | "protegido" | "cadena" | "fusible3" | "placa3";
 export type ZonaNombre = "radar" | "cabina" | "turbina" | "reactor";
-export type Nivel = 1 | 2;
-export type Verdict = Label | "corto";
+export type Nivel = 1 | 2 | 3;
+export type Verdict = Label | "corto" | "mal";
 
 /** Sabotajes (bloque 4): los concede y aplica el árbitro al rival; ningún mensaje cliente->árbitro los dispara. */
 export type TipoSabotaje = "humo" | "enfriamiento" | "sin-pista";
@@ -80,11 +91,15 @@ export interface ZonaView { zona: number; nombre: ZonaNombre; circuito: Circuito
   /** Dato fijo del circuito que se imprime en la placa, p. ej. «R1 470 Ω» (divisor). Nunca revela la solución. */
   fija?: string;
   /** Cadena (nivel 2): las piezas en serie desde el + ("cable", "led", "r220"…), todas con su valor impreso; cuál está muerta por dentro no viaja. */
-  cadena?: string[] }
+  cadena?: string[];
+  /** placa3 (nivel 3): el problema que hay que resolver en la placa. */
+  enunciado?: string }
 export interface PodView { numero: number; nivel?: Nivel; zonas: ZonaView[] }
 export interface RivalView { alias: string; despachados: number; estado: RivalStatus }
 
-export interface Welcome { t: "welcome"; station: Station; alias: string }
+/** Versión del protocolo: súbela al cambiar mensajes de forma incompatible. Un árbitro anterior a la v2 no la envía. */
+export const PROTOCOL_VERSION = 2;
+export interface Welcome { t: "welcome"; station: Station; alias: string; version?: number }
 export interface Full { t: "full"; reason: string }
 export interface Lobby { t: "lobby"; phase: Phase; players: { station: Station; alias: string; ready: boolean }[] }
 export interface Countdown { t: "countdown"; n: number }
@@ -100,7 +115,9 @@ export interface Result { t: "result"; seq: number; t0: number; zona: number; ve
 export interface Dispatched { t: "despachado"; seq: number; t0: number; despachados: number; pod: PodView; limpios?: number; /** Sabotaje que ganaste con este despacho y ya se aplicó al rival. */ enviado?: TipoSabotaje }
 export interface Reject { t: "reject"; seq: number; t0: number; reason: string; waitMs: number }
 export type Tramo = "nada" | "parte" | "toda";
-export interface Medida { t: "medida"; seq: number; t0: number; zona: number; modo: ModoMedir; punto: string; pasa?: boolean; tension?: Tramo; fraccion?: number; /** V entre los bornes (2 decimales) y Ω de una resistencia: solo lo que mostraría el aparato. */ voltios?: number; ohmios?: number }
+/** Zona del dial del multímetro: lo que hace la pieza puesta (poco = ámbar, correcto = verde, demasiado = rojo). */
+export type Dial = "poco" | "correcto" | "demasiado";
+export interface Medida { t: "medida"; seq: number; t0: number; zona: number; modo: ModoMedir; punto: string; /** Lo que tarda esta medición (ms): la barra del cliente dura eso. */ medirMs?: number; pasa?: boolean; tension?: Tramo; fraccion?: number; /** V entre los bornes (2 decimales) y Ω de una resistencia: solo lo que mostraría el aparato. */ voltios?: number; ohmios?: number; /** Zona del dial de la pieza puesta; ausente si la medición no la distingue. */ dial?: Dial }
 export interface Rival extends RivalView { t: "rival"; t0?: number }
 export interface Score { alias: string; despachados: number; quemadas: number }
 /** Zona/circuito con fallos del jugador, para «Qué repasar» del podio. */

@@ -21,9 +21,9 @@ describe("LED invertido y circuito abierto (siguen en el motor; desde el bloque 
     expect(medir(inv, "inversa", "tension", "carga1")).toMatchObject({ tension: "toda" });
     expect(medir(inv, "directa", "tension", "carga1")).toMatchObject({ tension: "parte" });
     // Circuito abierto: el hueco no conduce y tiene toda la tensión; empalmado, conduce y no tiene tensión.
-    expect(medir(abi, "dejar", "continuidad", "pieza")).toEqual({ pasa: false });
+    expect(medir(abi, "dejar", "continuidad", "pieza")).toEqual({ pasa: false, dial: "poco" });
     expect(medir(abi, "dejar", "tension", "pieza")).toMatchObject({ tension: "toda" });
-    expect(medir(abi, "empalmar", "continuidad", "pieza")).toEqual({ pasa: true });
+    expect(medir(abi, "empalmar", "continuidad", "pieza")).toEqual({ pasa: true, dial: "correcto" });
     expect(medir(abi, "empalmar", "tension", "pieza")).toMatchObject({ tension: "nada" });
   });
 

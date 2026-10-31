@@ -156,6 +156,15 @@ Recomendación: Netlify manual para salir rápido, o Static Web Apps si quieres 
 4. Opcional: marcar el dominio nuevo como predeterminado y probar `https://juego.<tu-dominio>`.
 5. Un futuro panel docente iría en `docente.<tu-dominio>` (registro `A` hacia la IP de la VM); el SSH tendría que salir del puerto 443.
 
+## Orden de despliegue y versión de protocolo
+
+Cuando una actualización toca el protocolo o las familias de pods, el orden es siempre **primero el cliente (sección 4), luego el árbitro (sección 2)**, fuera de horario de clase y avisando de que recarguen la página:
+
+- Cliente nuevo + árbitro viejo: **degrada sin romperse** (rachas, `limpios` y `medirMs` caen a su valor por defecto; la lectura del multímetro sale gris; no llegan sabotajes). La Sala muestra «Versión distinta del servidor: recarga la página».
+- Árbitro nuevo + cliente viejo (pestañas abiertas o caché): **puede fallar** en familias que el cliente no conoce (p. ej. `cadena`) y rechaza el multímetro con otro ritmo. Por eso el árbitro va al final.
+- El `Welcome` lleva `version` (`PROTOCOL_VERSION` en `spike/src/protocol.ts`, hoy 2). Súbela cuando un cambio sea incompatible con clientes anteriores. Un árbitro anterior a la v2 no la envía, y el cliente lo trata como versión distinta.
+- **Tras desplegar, verifica `version`**: abre el cliente nuevo contra el árbitro nuevo, entra a una sala y comprueba que la Sala NO muestra el aviso naranja de versión; si aparece, el árbitro o el cliente publicado no son los esperados.
+
 ## 5. Comprobación de punta a punta
 
 1. En la VM, anota el último código: `journalctl -u arbitro --no-pager | grep "código:" | tail -1`.
