@@ -2,15 +2,15 @@
  * Placa 4×4 en Phaser (Cabina y Turbina): casillas y rieles del kit, gaveta con las dos cargas (2 focos,
  * o motor e interruptor) que se ARRASTRAN a la placa, cables rectos (ángulos de 90°) y vista previa del cable mientras se
  * arrastra (como `previaSVG` del prototipo v3). También vale tocar: pieza y luego su casilla; punto de
- * origen y luego destino. Tocar un cable o una pieza puesta lo quita (la pieza vuelve a la gaveta). La lógica pura vive en placa.ts y arrastre.ts.
+ * origen y luego destino. Tocar un cable lo quita; tocar una pieza puesta la SELECCIONA y su botón «Quitar» (fila D, bajo ella) la devuelve con sus cables. La lógica pura vive en placa.ts y arrastre.ts.
  */
 import * as Phaser from "phaser";
 import type { Circuito } from "../../spike/src/protocol";
 import { img, letras, marco } from "./arte";
-import { arrastrable, type Toque } from "./arrastre";
+import { arrastrable, idPuntero, seguirPuntero, type Toque } from "./arrastre";
 import {
-  ANCHO, ALTO, cableDelCorto, cableTocado, CARGAS, cargaEn, conectable, destinoValido, cargasPuestas, CASILLAS, colorCable, coord, K, piezaEn, poner, ponerCable,
-  motivoCableNoValido, puntoEn, puntoSoltar, quitarCable, quitarPieza, ranuraEn, rutas, ranuraValida, textoCorto, todasPuestas, type Cable, type Carga, type Puestas, type Punto,
+  ANCHO, ALTO, cableDelCorto, cableTocado, CARGAS, cargaEn, conectable, destinoSoltar, destinoValido, cargasPuestas, CASILLAS, colorCable, coord, K, piezaEn, poner, ponerCable,
+  motivoCableNoValido, puntoEn, quitarCable, quitarPieza, ranuraEn, rutas, ranuraValida, textoCorto, todasPuestas, type Cable, type Carga, type Puestas, type Punto,
 } from "./placa";
 import { spriteCarga } from "./sprites";
 import { textoVolts } from "./vista";
@@ -20,11 +20,12 @@ const v2 = (r: { x: number; y: number }[]) => r.map(({ x, y }) => new Phaser.Mat
 // Textos de diseno-taller/prototipo-v3/textos.js (T.circuito y T.gaveta), salvo los marcados.
 export const TC = {
   rielMas: "+ (rojo)", rielMenos: "− (azul)",
-  cablesAyuda: "Une los puntos amarillos arrastrando. Toca una pieza para quitarla.",
+  cablesAyuda: "Une los puntos amarillos arrastrando. Toca una pieza y pulsa «Quitar» para devolverla.",
   // Solo en Cabina: allí el montaje no depende del sentido de los cables (ver montaje() en placa.ts); en Turbina no se afirma.
   ordenNoImporta: "El orden de + y - al cablear no importa.",
   sueltaAqui: "suelta aquí",
-  cableElegido: "Toca otro punto amarillo o un riel, o fuera para cancelar. Para quitar una pieza, toca su cuerpo.",
+  cableElegido: "Toca otro punto amarillo o un riel, o fuera para cancelar.",
+  piezaElegida: "Pulsa Quitar para devolverla a la gaveta (sus cables se quitan con ella).",
   destinoNoSirve: "Ahí no se une: suelta el cable en el carril resaltado o en otro punto amarillo.",
   cableNoValido: "Ese cable no sirve: une un punto amarillo con un carril.",
   noVaAhi: "Esa pieza no va ahí.",
@@ -65,7 +66,11 @@ export class Tablero {
   private origen: Punto | null = null;
   /** Pieza de la gaveta tocada (sin arrastrar), esperando que se toque su casilla. */
   private elegida: Carga["punto"] | null = null;
-  private arrastre?: { a: Punto; x0: number; y0: number; activo: boolean; id: number };
+  /** Toque en curso: `a` = borne o riel del que sale un cable (null si empezó en una pieza o un cable); `cable` = cable tocado (-1 si no); `pieza` = pieza tocada. */
+  private arrastre?: { a: Punto | null; x0: number; y0: number; activo: boolean; id: number; cable: number; pieza: Carga["punto"] | null };
+  /** Pieza puesta seleccionada (se resalta y su hueco de la gaveta muestra «Quitar»). */
+  private sel: Carga["punto"] | null = null;
+  private readonly quitarB: { fondo: Phaser.GameObjects.NineSlice; t: Phaser.GameObjects.BitmapText; zona: Phaser.GameObjects.Zone }[];
   private readonly trazo: Phaser.GameObjects.Graphics;
   private readonly previa: Phaser.GameObjects.Graphics;
   /** «+»/«−» dentro del aro de cada terminal, por encima de los cables. */
@@ -128,18 +133,23 @@ export class Tablero {
         num: letras(s, x - G.w / 2 + 8, G.y - G.h / 2 + 6, String(i + 1), 2).setVisible(false),
       };
     });
+    // «Quitar»: botón de 64×52 en la fila D, bajo la pieza seleccionada (la fila D nunca tiene bornes, no tapa nada que se cablee).
+    this.quitarB = CARGAS.map((c) => {
+      const zona = s.add.zone(0, 0, G.w, 56).setInteractive({ useHandCursor: true }).on("pointerdown", () => { if (this.sel === c.punto && !this.ev.bloqueado()) this.quitar(c.punto); });
+      return { fondo: marco(s, 0, 0, "boton_primario", G.w, 52).setVisible(false), t: letras(s, 0, 0, "Quitar", 2, OSCURO).setOrigin(0.5).setVisible(false), zona };
+    });
     this.c.add([...this.protoboard(), ...this.marcas.values(), this.rieles, ...this.cargas, this.pines, this.trazo, this.previa, this.signos,
       this.volts, letras(s, 100 * K, -26, TC.rielMenos, 2, OSCURO).setOrigin(1, 0), this.zona,
-      ...this.gaveta.flatMap((g) => [g.fondo, g.pieza, g.num, g.zona]), ...this.numeros, ...this.suelta]);
+      ...this.gaveta.flatMap((g) => [g.fondo, g.pieza, g.num, g.zona]), ...this.quitarB.flatMap((b) => [b.fondo, b.t, b.zona]), ...this.numeros, ...this.suelta]);
     this.zona.on("pointerdown", (p: Phaser.Input.Pointer) => this.bajar(p));
-    s.input.on("pointermove", (p: Phaser.Input.Pointer) => this.mover(p));
-    s.input.on("pointerup", (p: Phaser.Input.Pointer) => this.soltar(p));
+    seguirPuntero(s, (t, id) => this.mover(t, id), (t, id) => this.soltar(t, id));
   }
 
   /** Pinta la placa de una zona. `nivel` = brillo de las cargas (sprites.ts: nivelCarga). */
   pintar(circuito: Circuito, volts: number, cables: Cable[], puestas: Puestas, nivel: number, reparada: boolean) {
     if (cables !== this.cables || puestas !== this.puestas) { this.origen = null; this.arrastre = undefined; this.previa.clear(); }
     if (circuito !== this.circuito || puestas !== this.puestas) this.elegida = null;
+    if (this.sel && !puestas[this.sel]) this.sel = null;
     this.cables = cables;
     this.puestas = puestas;
     this.circuito = circuito;
@@ -162,6 +172,7 @@ export class Tablero {
       g.pieza.setVisible(!puesta).setTexture(spriteDe(circuito, i, 0)).setScale(escalaDe(circuito, i));
       g.zona.input!.enabled = ver;
     });
+    this.pintarQuitar();
     this.trazo.clear();
     rutas(cables, cargasPuestas(puestas)).forEach((pts, i) => {
       const c = cables[i]!;
@@ -223,7 +234,7 @@ export class Tablero {
 
   private bajar(p: Phaser.Input.Pointer) {
     if (!this.c.visible || this.ev.bloqueado()) return;
-    const { x, y } = this.local(p), punto = puntoEn(x, y);
+    const { x, y } = this.local({ worldX: p.worldX, worldY: p.worldY }), punto = puntoEn(x, y);
     // Pieza de la gaveta tocada antes: este toque elige su casilla.
     if (this.elegida) {
       const nuevas = poner(this.puestas, this.elegida, ranuraEn(x, y));
@@ -236,11 +247,11 @@ export class Tablero {
       const k = pieza ? { punto: pieza } : cargaEn(punto, cargasPuestas(this.puestas));
       return k ? medir(k.punto) : this.ev.aviso("Toca una pieza para medirla.");
     }
-    const i = cableTocado(this.cables, x, y, cargasPuestas(this.puestas));
-    if (i >= 0) { this.origen = null; return this.ev.cambio(quitarCable(this.cables, i)); }
-    if (pieza) return this.quitar(pieza); // arrastrar desde un pin (no desde el cuerpo) sigue iniciando un cable
-    if (!punto || !conectable(this.puestas, punto)) { this.origen = null; return this.marcar(); } // tocar fuera (o una casilla sin pieza) cancela el toque-toque
-    this.arrastre = { a: punto, x0: x, y0: y, activo: false, id: p.id };
+    // Nada se hace al bajar: el toque decide al soltar (quitar cable, seleccionar pieza) y el arrastre desde un borne o riel tiende un cable.
+    const cable = pieza ? -1 : cableTocado(this.cables, x, y, cargasPuestas(this.puestas));
+    const a = !pieza && cable < 0 && punto && conectable(this.puestas, punto) ? punto : null;
+    if (!pieza && cable < 0 && !a) { this.origen = null; this.sel = null; this.arrastre = undefined; return this.pintarSel(); } // tocar fuera (o una casilla sin pieza) cancela
+    this.arrastre = { a, x0: x, y0: y, activo: false, id: idPuntero(p), cable, pieza };
   }
 
   /** Se puso una pieza; con las dos luces puestas se aclara que el orden de + y - no importa. */
@@ -249,42 +260,69 @@ export class Tablero {
     if (this.circuito === "luces" && todasPuestas(nuevas)) this.ev.aviso(TC.ordenNoImporta);
   }
 
-  /** La pieza vuelve a la gaveta con sus cables; el árbitro no se entera hasta que se pulse CHECK. */
+  /** La pieza vuelve a la gaveta con sus cables (solo con «Quitar»); el árbitro no se entera hasta que se pulse CHECK. */
   private quitar(k: Carga["punto"]) {
     const { puestas, cables } = quitarPieza(this.puestas, this.cables, k);
     this.origen = null;
+    this.sel = null;
     if (cables.length !== this.cables.length) this.ev.cambio(cables);
     this.ev.poner(puestas);
   }
 
-  private mover(p: Phaser.Input.Pointer) {
+  /** Muestra u oculta «Quitar» y el aro de la pieza seleccionada sin pasar por la escena. */
+  private pintarSel() {
+    this.pintarQuitar();
+    this.marcar();
+  }
+
+  /** «Quitar» bajo la pieza seleccionada (en la fila D, a su altura de columna). */
+  private pintarQuitar() {
+    this.quitarB.forEach((q, i) => {
+      const k = cargasPuestas(this.puestas).find((x) => x.punto === CARGAS[i]!.punto), ok = !!k && this.sel === k.punto && this.c.visible;
+      if (k) { const x = coord(k.a).x, y = coord("3,0").y; q.fondo.setPosition(x, y); q.t.setPosition(x, y); q.zona.setPosition(x, y); }
+      q.fondo.setVisible(ok); q.t.setVisible(ok); q.zona.input!.enabled = ok;
+    });
+  }
+
+  private mover(t: Toque, id: number) {
     const d = this.arrastre;
-    if (!d || p.id !== d.id) return;
-    const { x, y } = this.local(p);
+    if (!d || !d.a || (id !== d.id && id !== -1 && d.id !== -1)) return;
+    const { x, y } = this.local(t);
     if (!d.activo) {
       if (Math.hypot(x - d.x0, y - d.y0) < 10) return;
       d.activo = true;
       this.origen = null;
+      this.sel = null;
+      this.pintarSel();
     }
-    const sobre = puntoSoltar(x, y);
-    this.dibujarPrevia(d.a, destinoValido(this.puestas, d.a, sobre) ? sobre! : null, x, y);
+    const sobre = destinoSoltar(this.puestas, d.a, x, y);
+    this.dibujarPrevia(d.a, sobre, x, y);
   }
 
-  private soltar(p: Phaser.Input.Pointer) {
+  private soltar(t: Toque, id: number) {
     const d = this.arrastre;
-    if (!d || p.id !== d.id) return;
+    if (!d || (id !== d.id && id !== -1 && d.id !== -1)) return;
     this.arrastre = undefined;
     this.previa.clear();
-    const { x, y } = this.local(p);
+    const { x, y } = this.local(t);
     if (!d.activo) {
+      if (d.cable >= 0) { this.origen = null; this.sel = null; return this.ev.cambio(quitarCable(this.cables, d.cable)); }
+      if (d.pieza) { // un toque en una pieza la selecciona (otro toque, o fuera, la suelta); Quitar es explícito
+        this.sel = this.sel === d.pieza ? null : d.pieza;
+        this.origen = null;
+        if (this.sel) this.ev.aviso(TC.piezaElegida);
+        return this.pintarSel();
+      }
+      this.sel = null;
+      this.pintarSel();
       // Toque corto: primero el origen, luego el destino (tocar el mismo punto lo suelta).
       if (!this.origen) { this.origen = d.a; this.ev.aviso(TC.cableElegido); return this.marcar(); }
       const a = this.origen;
       this.origen = null;
-      return a === d.a ? this.marcar() : this.unir(a, d.a);
+      return a === d.a ? this.marcar() : this.unir(a, d.a!);
     }
-    const b = puntoSoltar(x, y);
-    if (b && destinoValido(this.puestas, d.a, b)) return this.unir(d.a, b);
+    const b = destinoSoltar(this.puestas, d.a, x, y);
+    if (b) return this.unir(d.a!, b);
     this.ev.aviso(TC.destinoNoSirve);
     this.marcar();
   }
@@ -327,6 +365,8 @@ export class Tablero {
       // Polaridad dentro del aro (solo en Cabina: el motor y el interruptor no la tienen): + en el punto de arriba, − en el de abajo.
       if (this.circuito === "luces") this.signo(this.signos, x, y, p === k.a, claro ? OSCURO : 0xffffff, 6);
     }
+    const ps = this.sel ? cargasPuestas(this.puestas).find((q) => q.punto === this.sel) : undefined;
+    if (ps) { const A = coord(ps.a), B = coord(ps.b); this.signos.lineStyle(3, CIAN).strokeRoundedRect(A.x - 30, A.y - 18, 60, B.y - A.y + 36, 8); } // pieza seleccionada
     this.rieles.clear();
     let hay = false;
     (["+", "-"] as const).forEach((r, i) => {

@@ -24,6 +24,31 @@ export interface Toque { worldX: number; worldY: number }
 
 type Fantasma = Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.Transform & Phaser.GameObjects.Components.Depth & { setAlpha(a: number): unknown };
 
+/** clientX/Y -> coordenadas del lienzo (el lienzo se escala con FIT). */
+export const aLienzo = (s: Phaser.Scene, e: PointerEvent | MouseEvent): Toque => {
+  const r = s.game.canvas.getBoundingClientRect(), g = s.scale.gameSize;
+  return { worldX: ((e.clientX - r.left) * g.width) / r.width, worldY: ((e.clientY - r.top) * g.height) / r.height };
+};
+/** Id del puntero del navegador detrás de un puntero de Phaser (para emparejar bajar con mover/soltar de `window`). */
+export const idPuntero = (p: Phaser.Input.Pointer) => (p.event as PointerEvent | undefined)?.pointerId ?? -1;
+
+/**
+ * Movimiento y soltar de un cable o pieza que se arrastra sobre la placa: se leen de `window` (como en `arrastrable`), con la cola de
+ * Phaser de respaldo (quien llama ignora el segundo aviso porque ya cerró el arrastre). `id` = pointerId (idPuntero), -1 si no se sabe.
+ */
+export function seguirPuntero(s: Phaser.Scene, mover: (t: Toque, id: number) => void, soltar: (t: Toque, id: number) => void) {
+  const id = (e: PointerEvent) => e.pointerId;
+  const onMove = (e: PointerEvent) => mover(aLienzo(s, e), id(e));
+  const onUp = (e: PointerEvent) => soltar(aLienzo(s, e), id(e));
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+  window.addEventListener("pointercancel", onUp);
+  const pt = (p: Phaser.Input.Pointer): Toque => ({ worldX: p.worldX, worldY: p.worldY });
+  s.input.on("pointermove", (p: Phaser.Input.Pointer) => mover(pt(p), idPuntero(p)));
+  s.input.on("pointerup", (p: Phaser.Input.Pointer) => soltar(pt(p), idPuntero(p)));
+  s.events.once("shutdown", () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("pointercancel", onUp); });
+}
+
 export interface Opciones {
   /** Crea la vista previa de la pieza (se pinta encima de todo, en coordenadas de la escena). */
   fantasma: () => Fantasma;
@@ -42,11 +67,6 @@ export function arrastrable(s: Phaser.Scene, obj: Phaser.GameObjects.GameObject,
   let d: { id?: number; x0: number; y0: number; g?: Fantasma; ultimo: Toque; quitar: () => void } | undefined;
   const canvas = s.game.canvas;
   canvas.style.touchAction = "none"; // sin esto el navegador se queda el gesto táctil (scroll) y manda pointercancel
-  /** clientX/Y -> coordenadas del lienzo (el lienzo se escala con FIT). */
-  const aLienzo = (e: PointerEvent | MouseEvent): Toque => {
-    const r = canvas.getBoundingClientRect(), g = s.scale.gameSize;
-    return { worldX: ((e.clientX - r.left) * g.width) / r.width, worldY: ((e.clientY - r.top) * g.height) / r.height };
-  };
   const suyo = (e: PointerEvent | MouseEvent) => !d || d.id === undefined || !("pointerId" in e) || e.pointerId === d.id;
   const mover = (t: Toque) => {
     if (!d) return;
@@ -73,8 +93,8 @@ export function arrastrable(s: Phaser.Scene, obj: Phaser.GameObjects.GameObject,
   obj.on("pointerdown", (p: Phaser.Input.Pointer) => {
     if (d || (op.puede && !op.puede())) return;
     const ev = p.event as PointerEvent | undefined, id = ev && "pointerId" in ev ? ev.pointerId : undefined;
-    const onMove = (e: PointerEvent) => { if (suyo(e)) mover(aLienzo(e)); };
-    const onUp = (e: PointerEvent) => { if (suyo(e)) fin(aLienzo(e)); };
+    const onMove = (e: PointerEvent) => { if (suyo(e)) mover(aLienzo(s, e)); };
+    const onUp = (e: PointerEvent) => { if (suyo(e)) fin(aLienzo(s, e)); };
     const onCancel = (e: PointerEvent) => { if (suyo(e)) fin(undefined, true); };
     const onBlur = () => fin(undefined, true);
     window.addEventListener("pointermove", onMove);

@@ -58,6 +58,25 @@ export function puntoSoltar(x: number, y: number): Punto | null {
   return x < 22 * K ? "+" : x >= 78 * K ? "-" : p;
 }
 
+/** Radio (px de lienzo) dentro del cual un cable soltado engancha al destino válido más cercano. */
+export const RADIO_ENGANCHE = 36;
+/**
+ * Destino de un cable que viene de `a` y se suelta en (x, y): lo que cae en el aro o la banda del riel (puntoSoltar) si sirve; si no,
+ * el borne o riel válido más cercano a ≤ RADIO_ENGANCHE px (soltar junto al agujero, o en una casilla vecina, también engancha).
+ */
+export function destinoSoltar(puestas: Puestas, a: Punto | null | undefined, x: number, y: number): Punto | null {
+  const directo = puntoSoltar(x, y);
+  if (directo && destinoValido(puestas, a, directo)) return directo;
+  let mejor: Punto | null = null, dMin = RADIO_ENGANCHE;
+  for (const p of PUNTOS) {
+    if (!destinoValido(puestas, a, p)) continue;
+    const c = coord(p), dy = p.includes(",") ? y - c.y : y < 4 * K ? y - 4 * K : y > 76 * K ? y - 76 * K : 0; // el riel es largo: solo cuenta lo que se sale de él
+    const d = Math.hypot(x - c.x, dy);
+    if (d <= dMin) { dMin = d; mejor = p; }
+  }
+  return mejor;
+}
+
 export interface P2 { x: number; y: number }
 const MEDIO = 8.5 * K; // de una casilla a la rendija (pasillo) entre columnas
 const cuenta = (r1: P2[], r2: P2[]) => {

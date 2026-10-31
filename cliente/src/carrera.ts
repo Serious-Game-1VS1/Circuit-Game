@@ -100,7 +100,7 @@ export class Carrera extends Phaser.Scene {
       const carriles: Station[] = [yo, yo === "A" ? "B" : "A"];
       lanes = carriles.map((s) => {
         const c = e.carrera?.[s], sc = e.score[s], mia = s === yo && sc ? mejorNave(cargarPerfil(sc.alias)) : 0;
-        return { id: s, ch: chasisCarril(c?.pod ?? 1, mia), llamas: c?.llamas ?? 0, etq: `${sc?.alias ?? "-"}${s === yo ? " (tú)" : ""} · ${f(TXT.podLuce, { n: c?.pod ?? 1 })}`, gana: e.winner === null || s === e.winner };
+        return { id: s, ch: chasisCarril(c?.pod ?? 1, mia), llamas: c?.llamas ?? 0, etq: `${sc?.alias ?? "-"}${s === yo ? " (tú)" : ""}\n${f(TXT.podLuce, { n: c?.pod ?? 1 })}`, gana: e.winner === null || s === e.winner };
       });
       sub = decision(e); ayuda = TXT.carreraAyuda; gane = e.winner === yo;
       this.salir = () => this.net.verPodio();

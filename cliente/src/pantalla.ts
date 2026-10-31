@@ -145,6 +145,9 @@ export const reloj = (p: Pantalla, ahora: number) => {
 /** Rótulo del botón CHECK: «ESPERA 2», «ESPERA 1» durante el enfriamiento y «CHECK» después. */
 export const textoCheck = (esperaHasta: number, ahora: number) => (esperaHasta > ahora ? `ESPERA ${segundos(esperaHasta - ahora)}` : "CHECK");
 
+/** Estado del botón CHECK (no anticipa el veredicto): verde/activo = listo para validar (pieza colocada y distinta de la ya validada, sin enfriamiento) o zona reparada para despachar; gris = sin pieza, ya validada o en enfriamiento. */
+export const checkActivo = (reparada: boolean, probable: boolean, esperaHasta: number, ahora: number) => reparada || (probable && esperaHasta <= ahora);
+
 /** El aviso con el "espera N s" descontando en vivo; al acabar el bloqueo se quita la espera. */
 export function avisoVivo(p: Pantalla, ahora: number): string | null {
   const s = segundos(p.esperaHasta - ahora);

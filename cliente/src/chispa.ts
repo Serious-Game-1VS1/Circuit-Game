@@ -57,7 +57,7 @@ export function reaccion(tipo: EcoTipo, racha: number, espera = 0): Mensaje {
     case "acierto": return { texto: `¡Racha ${racha}/3!`, expr: "feliz" };
     case "listo": return { texto: "¡Bono listo! Tu próximo fallo espera la mitad.", expr: "feliz" };
     case "usado": return { texto: `¡Bono usado! Esperas solo ${espera} s.`, expr: "normal" };
-    case "perdido": return { texto: "Se perdió el bono. ¡Sigue!", expr: "preocupada" };
+    case "perdido": return { texto: "Se perdió el bono por la quemada. ¡Sigue!", expr: "preocupada" };
     case "sabotaje": return { texto: "¡Te sabotearon! Tranquilo, se pasa.", expr: "preocupada" };
     case "ataque": return { texto: "¡Sabotaje enviado! Buen ritmo.", expr: "feliz" };
     case "fallo": return { texto: espera ? `¡Ánimo! Enfriando ${espera} s.` : "¡Ánimo, tú puedes!", expr: "preocupada" };

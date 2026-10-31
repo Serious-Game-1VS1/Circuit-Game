@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluar } from "../../spike/src/engine/pods";
-import { conectable, destinoValido, pinesTocados, cableDelCorto, faltaCablear, faltaColocar, cableEn, cableTocado, cargaEn, cargasPuestas, conPlaca, coord, montaje, piezaEn, poner, ponerCable, motivoCableNoValido, puntoEn, puntoSoltar, PUNTOS, quitarCable, quitarPieza, ranuraEn, rutas, ranuraValida, todasPuestas, type Cable } from "../src/placa";
+import { conectable, destinoValido, pinesTocados, cableDelCorto, faltaCablear, faltaColocar, cableEn, cableTocado, cargaEn, cargasPuestas, conPlaca, coord, montaje, piezaEn, poner, ponerCable, motivoCableNoValido, puntoEn, puntoSoltar, destinoSoltar, PUNTOS, quitarCable, quitarPieza, ranuraEn, rutas, ranuraValida, todasPuestas, type Cable } from "../src/placa";
 
 const cables = (...xs: [string, string][]): Cable[] => xs.map(([a, b]) => ({ a, b }));
 const SERIE = cables(["+", "1,1"], ["2,1", "1,2"], ["2,2", "-"]);
@@ -175,6 +175,14 @@ describe("cableado: soltar y mensajes", () => {
     expect(puntoSoltar(coord("1,0").x, coord("1,0").y)).toBe("1,0");
     expect(puntoSoltar(coord("1,1").x + 5, coord("1,1").y - 5)).toBe("1,1");
     expect(puntoSoltar(5, 2)).toBeNull();
+  });
+  it("destinoSoltar: engancha al borne válido más cercano aunque se suelte en la casilla vecina", () => {
+    const puestas = { carga1: "1,1", carga2: "1,2" }; // bornes: 1,1 2,1 1,2 2,2
+    expect(destinoSoltar(puestas, "+", coord("2,1").x, coord("2,1").y)).toBe("2,1");
+    expect(destinoSoltar(puestas, "+", coord("3,1").x, coord("3,1").y - 25)).toBe("2,1"); // 25 px por encima de una casilla vacía: el borne está a 26 px
+    expect(destinoSoltar(puestas, "+", coord("0,0").x, coord("0,0").y)).toBeNull(); // casilla vacía lejos de todo
+    expect(destinoSoltar(puestas, "1,1", coord("1,1").x + 3, coord("1,1").y)).toBeNull(); // no se une consigo mismo
+    expect(destinoSoltar(puestas, "1,1", 20, 100)).toBe("+");
   });
   it("el motivo del cable no válido depende de la causa", () => {
     const uno = [{ a: "+", b: "1,1" }];

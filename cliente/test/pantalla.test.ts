@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { avisoVivo, despachable, textoCheck, faltan, inicial, textoRechazo, pistaDemo, tarjetaVisible, reducir, reloj, textoFin, textoRival, validarEntrada } from "../src/pantalla";
+import { avisoVivo, checkActivo, despachable, textoCheck, faltan, inicial, textoRechazo, pistaDemo, tarjetaVisible, reducir, reloj, textoFin, textoRival, validarEntrada } from "../src/pantalla";
 import { PROTOCOL_VERSION, type PodView, type ServerMsg } from "../../spike/src/protocol";
 import { vistaDeVeredicto } from "../src/vista";
 import { eventosDe } from "../src/audio";
@@ -251,5 +251,11 @@ describe("rótulo de CHECK", () => {
     expect(textoCheck(3000, 1000)).toBe("ESPERA 2");
     expect(textoCheck(3000, 2100)).toBe("ESPERA 1");
     expect(textoCheck(3000, 3000)).toBe("CHECK");
+  });
+  it("CHECK activo (verde) solo con pieza por validar y sin enfriamiento, o con la zona reparada; gris en el resto", () => {
+    expect(checkActivo(false, true, 0, 1000)).toBe(true);
+    expect(checkActivo(false, true, 3000, 1000)).toBe(false); // enfriando
+    expect(checkActivo(false, false, 0, 1000)).toBe(false); // sin pieza o ya validada
+    expect(checkActivo(true, false, 3000, 1000)).toBe(true); // reparada: despachar
   });
 });
