@@ -272,3 +272,5 @@ Cliente primero (SWA `circuitsync-juego`, bundle `index-Dt-0JLwn.js`, antes `ind
 Restaurar:
 - Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v4 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
 - Cliente: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v3`; sin `arte/`). Alternativa: reconstruir desde `79fb2af` y `swa deploy`.
+
+Segundo despliegue v4, solo cliente (31-oct-2026, commit `4ad2a17`): la ayuda del multímetro aclara que medir toma tiempo (bundle `index-Bdug4yaC.js`, antes `index-Dt-0JLwn.js`; `version.json` con `4ad2a17`). El árbitro no cambió. Respaldo del cliente anterior en el scratchpad (`dist-v4`, sin `arte/`). Restaurar: reconstruir desde `8a0621b` y `swa deploy`.
