@@ -46,7 +46,7 @@ async function soloBot(dif: DificultadBot, semilla: number, nivel: Perfil = 1) {
   const t0 = t;
   for (let i = 0; i < 40_000 && !fin; i++) { t += 100; tr.tick(); await Promise.resolve(); }
   await tr.close();
-  return { pods: fin?.score.B?.despachados ?? 0, porPod: (t - t0) / 5 / 1000, quemadas: fin?.score.B?.quemadas ?? 0, circuitos: tr.arbiter.pods.flatMap((p) => p.zonas.map((z) => z.circuito)) };
+  return { pods: fin?.score.B?.despachados ?? 0, porPod: (t - t0) / 5 / 1000, total: (t - t0) / 1000, quemadas: fin?.score.B?.quemadas ?? 0, circuitos: tr.arbiter.pods.flatMap((p) => p.zonas.map((z) => z.circuito)) };
 }
 
 describe("ContraBotTransport", () => {
@@ -133,6 +133,17 @@ describe("ContraBotTransport", () => {
     }
     expect([...vistas].sort()).toEqual(Object.keys(COMPLEJIDAD).filter((c) => c !== "invertido" && c !== "abierto").sort()); // las 10 familias que se sortean (invertido/abierto ya no; fusible3 es del nivel 3)
   });
+
+  it("con el coste creciente de medir (M-1) el bot completa 5 pods en menos de 12 min en todo nivel y dificultad (peor caso, 12 semillas)", async () => {
+    let max = 0;
+    for (const nivel of [1, 2, 3, "mixto"] as Perfil[]) {
+      for (const dif of ["facil", "normal", "dificil"] as const) {
+        for (let s = 1; s <= 12; s++) { const r = await soloBot(dif, s, nivel); expect(r.pods).toBe(5); max = Math.max(max, r.total); }
+      }
+    }
+    expect(max, `peor caso ${Math.round(max)} s`).toBeLessThan(12 * 60);
+    console.log(`bot peor caso: ${Math.round(max)} s`);
+  }, 240_000);
 
   it("completa 5 pods en nivel 1, nivel 2, nivel 3 y mixto con cada perfil, en tiempo razonable, sin atascarse (todas las familias de nivel 2 aparecen)", async () => {
     const tope = { facil: 65, normal: 42, dificil: 28 } as const; // s/pod medios

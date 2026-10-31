@@ -104,7 +104,7 @@ export interface Full { t: "full"; reason: string }
 export interface Lobby { t: "lobby"; phase: Phase; players: { station: Station; alias: string; ready: boolean }[] }
 export interface Countdown { t: "countdown"; n: number }
 /** Inicio de partida o estado completo al reconectar. `limpios`: pods limpios seguidos (0-3); `sabotaje`: el que sigue activo contra ti (`ms` restantes). */
-export interface Snapshot { t: "start"; limpios?: number; sabotaje?: { tipo: TipoSabotaje; ms: number; de: Station }; restanteMs: number; despachados: number; total: number; nivel: Nivel; demo: boolean; practica?: boolean; oleadas?: boolean; /** Racha de despachos del jugador (0-3); con 3 el bono de enfriamiento reducido está listo. */ racha?: number; pod: PodView; rival: RivalView | null }
+export interface Snapshot { t: "start"; limpios?: number; sabotaje?: { tipo: TipoSabotaje; ms: number; de: Station }; restanteMs: number; despachados: number; total: number; nivel: Nivel; demo: boolean; practica?: boolean; oleadas?: boolean; /** Racha de despachos del jugador (0-3); con 3 el bono de enfriamiento reducido está listo. */ racha?: number; /** Competitivo, al reconectar: coste (ms) de la próxima medida por zona ya medida en el pod actual. */ proxMedir?: Record<number, number>; /** Competitivo: coste base de medir (ms), para animar la 1.ª medida de cada zona. */ medirBase?: number; pod: PodView; rival: RivalView | null }
 /**
  * `escudo`: la mejora «Escudo» (solo práctica) absorbió la quemada: sin bloqueo de 4 s ni quemada contada.
  * `hayMas`: falla encadenada (solo Oleadas): el veredicto es «correcto» pero la zona sigue sin reparar; `pod` ya trae su segunda falla (otra batería y opciones).
@@ -117,7 +117,7 @@ export interface Reject { t: "reject"; seq: number; t0: number; reason: string; 
 export type Tramo = "nada" | "parte" | "toda";
 /** Zona del dial del multímetro: lo que hace la pieza puesta (poco = ámbar, correcto = verde, demasiado = rojo). */
 export type Dial = "poco" | "correcto" | "demasiado";
-export interface Medida { t: "medida"; seq: number; t0: number; zona: number; modo: ModoMedir; punto: string; /** Lo que tarda esta medición (ms): la barra del cliente dura eso. */ medirMs?: number; pasa?: boolean; tension?: Tramo; fraccion?: number; /** V entre los bornes (2 decimales) y Ω de una resistencia: solo lo que mostraría el aparato. */ voltios?: number; ohmios?: number; /** Zona del dial de la pieza puesta; ausente si la medición no la distingue. */ dial?: Dial }
+export interface Medida { t: "medida"; seq: number; t0: number; zona: number; modo: ModoMedir; punto: string; /** Lo que tarda esta medición (ms): la barra del cliente dura eso. */ medirMs?: number; /** Coste de la próxima medida en esta zona (ms); solo en competitivo. */ proxMs?: number; pasa?: boolean; tension?: Tramo; fraccion?: number; /** V entre los bornes (2 decimales) y Ω de una resistencia: solo lo que mostraría el aparato. */ voltios?: number; ohmios?: number; /** Zona del dial de la pieza puesta; ausente si la medición no la distingue. */ dial?: Dial }
 export interface Rival extends RivalView { t: "rival"; t0?: number }
 export interface Score { alias: string; despachados: number; quemadas: number }
 /** Zona/circuito con fallos del jugador, para «Qué repasar» del podio. */

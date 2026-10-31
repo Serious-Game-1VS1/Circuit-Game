@@ -57,6 +57,9 @@ export interface Pantalla {
   end?: End;
   /** Última lectura del multímetro (la escena la muestra tras ~1 s; ver multimetro.ts). */
   medida?: Medida;
+  /** Competitivo: coste base de medir y coste de la próxima medida por zona (el árbitro lo fija; la escena solo lo muestra). */
+  medirBase?: number;
+  proxMedir?: Record<number, number>;
 }
 
 /** Qué pasó con la racha en el último intento: lo decide el árbitro, la escena solo reacciona. */
@@ -171,7 +174,7 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     case "lobby": return { ...p, jugadores: m.players, fase: p.fase === "cuenta" ? "sala" : p.fase };
     case "countdown": return { ...p, fase: "cuenta", cuenta: m.n };
     case "start": return {
-      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, nivel: m.nivel ?? 1, demo: m.demo ?? false, practica: m.practica ?? false, oleadas: m.oleadas ?? false, quemadas: m.despachados === 0 ? 0 : p.quemadas, racha: m.racha ?? 0, limpios: m.limpios ?? 0, pod: m.pod, rival: m.rival,
+      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, nivel: m.nivel ?? 1, demo: m.demo ?? false, practica: m.practica ?? false, oleadas: m.oleadas ?? false, quemadas: m.despachados === 0 ? 0 : p.quemadas, racha: m.racha ?? 0, limpios: m.limpios ?? 0, pod: m.pod, rival: m.rival, medirBase: m.medirBase, proxMedir: m.proxMedir ?? {},
       sabotaje: m.sabotaje && { tipo: m.sabotaje.tipo, hasta: ahora + m.sabotaje.ms, n: (p.sabotaje?.n ?? 0) + 1 }, enviado: undefined,
       despachando: false, vistas: {}, tarjeta: null, terminaEn: ahora + m.restanteMs, end: undefined,
     };
@@ -197,7 +200,7 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     }
     // El contador sube solo aquí: cuando el árbitro confirma el despacho.
     case "despachado": return {
-      ...p, despachados: m.despachados, pod: m.pod, despachando: false, vistas: {}, tarjeta: null, limpios: m.limpios ?? p.limpios,
+      ...p, despachados: m.despachados, pod: m.pod, despachando: false, vistas: {}, tarjeta: null, limpios: m.limpios ?? p.limpios, proxMedir: {},
       aviso: m.enviado ? `¡Pod despachado! ${avisoEnviado(m.enviado)}` : "¡Pod despachado!",
       ...(m.enviado && { enviado: { tipo: m.enviado, hasta: ahora + ENVIADO_MS, n: (p.enviado?.n ?? 0) + 1 }, eco: { n: (p.eco?.n ?? 0) + 1, tipo: "ataque" as const } }),
     };
@@ -207,7 +210,7 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     // Un rechazo sin espera (medir ocupado, medida no válida) no borra el enfriamiento que ya corre.
     case "reject": return { ...p, despachando: false, aviso: textoRechazo(m.reason, m.waitMs), esperaHasta: m.waitMs > 0 ? ahora + m.waitMs : p.esperaHasta };
     // Medir no toca avisos ni bloqueos: solo guarda la lectura.
-    case "medida": return { ...p, medida: m };
+    case "medida": return { ...p, medida: m, ...(m.proxMs !== undefined && { proxMedir: { ...p.proxMedir, [m.zona]: m.proxMs } }) };
     case "rival": return { ...p, rival: { alias: m.alias, despachados: m.despachados, estado: m.estado },
       aviso: !p.practica && m.despachados >= p.total && p.despachados < p.total ? `${m.alias} terminó sus ${p.total} pods primero: la partida terminó.` : p.aviso };
     case "end":

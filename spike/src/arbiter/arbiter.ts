@@ -15,10 +15,13 @@ export const RECONNECT_MS = 30_000;
 export const MEDIR_MS = 1000;
 export const MEDIR_COMPETITIVO_MS = 3000;
 /**
- * PUNTO ÚNICO del coste de medir (M-1, pendiente de decisión del dueño): hoy el coste es fijo (`medirMs`) para cualquier zona.
- * Cuando se decida el coste creciente por zona, se aplica aquí (p. ej. `medirMs * (1 + piezas ya medidas en la zona)`) y solo aquí.
+ * M-1 (decisión del dueño): en las partidas competitivas medir varias veces en la MISMA zona cuesta más: 1.ª ×1, 2.ª ×1,25, 3.ª y siguientes ×1,5.
+ * El contador es por zona dentro del pod y se reinicia al despachar (pod nuevo); en tutorial/práctica/oleadas el coste es fijo.
+ * PUNTO ÚNICO del coste: `medidasEnZona` = mediciones ya aceptadas en esa zona.
  */
-export const costeMedir = (medirMs: number, _medidasEnZona: number): number => medirMs;
+export const ESCALA_COSTE_MEDIR = [1, 1.25, 1.5] as const;
+export const costeMedir = (medirMs: number, medidasEnZona: number): number =>
+  Math.round(medirMs * ESCALA_COSTE_MEDIR[Math.min(Math.max(0, medidasEnZona), ESCALA_COSTE_MEDIR.length - 1)]!);
 /** Sala en «esperando»/«listo» sin actividad (ni jugador nuevo ni Listo) caduca a los 120 s y se libera. */
 export const SALA_OCIOSA_MS = 120_000;
 export const RAZON_SALA_OCIOSA = "sala inactiva";
@@ -81,6 +84,8 @@ interface Seat {
   penalUntil: number;
   /** Hasta cuándo está ocupado el multímetro (la medición anterior aún no «termina»). */
   medirLibre: number;
+  /** Mediciones aceptadas por zona en el pod actual (coste creciente, solo competitivo); se vacía al despachar. */
+  medidas: Map<number, number>;
   lastRival: string;
   /** Inicio (reloj del árbitro) del pod actual: cronómetro por pod hacia arriba, sin límite ni castigo. */
   podInicio: number;
@@ -155,6 +160,10 @@ export class Arbiter {
     this.oleadas = this.practica && (opts.oleadas ?? false);
     this.pods = this.oleadas ? [] : opts.pods ?? generar(this.semilla, this.nivel, this.demo);
   }
+
+  /** Solo las partidas competitivas (1v1 y bot: medirMs > base, sin práctica) escalan el coste de medir. */
+  private get escalaMedir(): boolean { return !this.practica && this.medirMs > MEDIR_MS; }
+  private proxMedir(s: Seat, zona: number): number { return costeMedir(this.medirMs * this.medirFactor, s.medidas.get(zona) ?? 0); }
 
   /** Práctica: aplica las mejoras del jugador (factor del enfriamiento sobre 2/4/8 s y escudo contra la próxima quemada). */
   ajustar(a: { enfriamiento: number; escudo: boolean; multimetro?: boolean }): void {
@@ -304,7 +313,7 @@ export class Arbiter {
       station, alias: name, peer, goneAt: 0, ready: false, penalties: new PenaltyTracker(this.now),
       despachados: 0, repaired: new Set(), lastPieza: new Map(), penalUntil: 0, lastRival: "",
       podInicio: 0, podMs: [], podFallos: 0, llamas: 0, intentoPod: [], intentoZona: [], revelada: false,
-      medirLibre: 0, limpios: 0, sabRecibidos: 0, sabPods: new Set(), inmuneHasta: 0, sab: null, recientes: [],
+      medirLibre: 0, medidas: new Map(), limpios: 0, sabRecibidos: 0, sabPods: new Set(), inmuneHasta: 0, sab: null, recientes: [],
     });
     this.seats.sort((a, b) => a.station.localeCompare(b.station));
     this.ociosaDesde = this.now();
@@ -398,13 +407,15 @@ export class Arbiter {
     if (!z || typeof pieza !== "string" || !piezaValida(z, pieza) || (modo !== "continuidad" && modo !== "tension") || typeof punto !== "string") {
       return reject("medida no válida");
     }
-    const ahora = this.now(), medirMs = costeMedir(this.medirMs * this.medirFactor, 0);
+    const ahora = this.now(), base = this.medirMs * this.medirFactor, n = s.medidas.get(z.zona) ?? 0;
+    const medirMs = this.escalaMedir ? costeMedir(base, n) : base;
     if (ahora < s.medirLibre - MEDIR_TOLERANCIA_MS) return this.send(s.peer!, { t: "reject", seq, t0, reason: "el multímetro sigue midiendo", waitMs: 0 });
     let lectura: ReturnType<typeof medir> = null;
     try { lectura = medir(z, pieza, modo, punto); } catch { /* punto hostil: se trata como medida no válida */ }
     if (!lectura) return reject("medida no válida");
     s.medirLibre = ahora + medirMs;
-    this.send(s.peer!, { t: "medida", seq, t0, zona: z.zona, modo, punto, medirMs, ...lectura });
+    s.medidas.set(z.zona, n + 1);
+    this.send(s.peer!, { t: "medida", seq, t0, zona: z.zona, modo, punto, medirMs, ...(this.escalaMedir && { proxMs: this.proxMedir(s, z.zona) }), ...lectura });
   }
 
   /** "Despachar": el pod cuenta solo si todas sus zonas están reparadas (RF-03). */
@@ -419,6 +430,7 @@ export class Arbiter {
     if (s.podFallos === 0) s.llamas++;
     s.podFallos = 0;
     s.repaired.clear();
+    s.medidas.clear();
     s.revelada = false;
     s.lastPieza.clear();
     s.penalties.newPod();
@@ -505,6 +517,7 @@ export class Arbiter {
       t: "start", restanteMs: this.practica ? 0 : this.limitMs - (this.now() - this.startAt), despachados: s.despachados,
       total: this.oleadas ? 0 : this.pods.length, nivel: nivelDePod(this.nivel, 0), demo: this.demo !== false, pod: this.podView(s), rival: other ? this.rivalView(other) : null,
       racha: s.penalties.racha,
+      ...(this.escalaMedir && { medirBase: this.medirMs * this.medirFactor }), ...(this.escalaMedir && s.medidas.size > 0 && { proxMedir: Object.fromEntries([...s.medidas.keys()].map((z) => [z, this.proxMedir(s, z)])) }),
       ...(!this.practica && { limpios: s.limpios }),
       ...(s.sab && this.now() < s.sab.hasta && (s.sab.tipo !== "enfriamiento" || s.penalties.largoHasta > 0) && { sabotaje: { tipo: s.sab.tipo, ms: s.sab.hasta - this.now(), de: s.sab.de } }),
       ...(this.practica && { practica: true }), ...(this.oleadas && { oleadas: true }),

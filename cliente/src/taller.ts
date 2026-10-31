@@ -159,7 +159,7 @@ export class Taller extends Phaser.Scene {
   private golpe = 48;
   private guia!: { caja: Bloque; titulo: Letras; texto: Letras; esquema: Phaser.GameObjects.Container; saltar: BotonGuia; fin: BotonGuia[]; zonas: Phaser.GameObjects.Zone[]; resaltes: Phaser.GameObjects.NineSlice[]; chispa: Chispa };
   /** Multímetro: llamada «toca un modo para encender» y ayuda de uso; `apagado` = sin modo ni veredicto (los botones de modo parpadean suave). */
-  private multi!: { cta: Letras; ayuda: Bloque };
+  private multi!: { cta: Letras; ayuda: Bloque; prox: Letras };
   private apagado = false;
   private ayudaMulti(ver: boolean) { sonar("clic"); this.multi.ayuda.setVisible(ver); }
   private ui!: {
@@ -211,6 +211,8 @@ export class Taller extends Phaser.Scene {
   }
   private avisar(texto: string) { this.avisoLocal = { texto, hasta: Date.now() + 2600 }; }
   private limpiarMedida() { this.lectura = this.leida = this.midiendo = undefined; this.puntasG?.clear(); }
+  /** Lo que dura esta medición: la Medida del árbitro (con su seq) manda; antes de que llegue, el coste previsto. */
+  private durMedir(p: Pantalla, m: Midiendo) { return (p.medida?.seq === m.seq ? p.medida.medirMs : undefined) ?? m.ms ?? medirMs(this.net.mejoras); }
   private medir(punto: string) {
     const z = this.zonaActual(), modo = this.modo;
     if (!z || !modo) return;
@@ -218,7 +220,8 @@ export class Taller extends Phaser.Scene {
     const pieza = this.eleccion(z) ?? (z.circuito === "cadena" ? "ninguna" : z.circuito === "placa3" ? "|" : undefined); // placa experta vacía: se mide igual // cadena: sin repuesto puesto se mide la cadena tal cual
     if (!pieza) return this.avisar(conPlaca(z.circuito) ? TM.sinMontaje : TM.sinEleccion);
     this.lectura = undefined;
-    this.midiendo = { seq: this.net.medir(z.zona, pieza, modo, punto), desde: Date.now(), punto };
+    const p = this.net.estado, ms = p.proxMedir?.[z.zona] ?? p.medirBase;
+    this.midiendo = { seq: this.net.medir(z.zona, pieza, modo, punto), desde: Date.now(), punto, ...(ms !== undefined && { ms }) };
   }
   /** Cartel de primera vez (máx. 3 veces por alias): flecha que rebota hacia el multímetro y una frase corta. Se retira solo, al elegir un modo o al cerrar la escena. */
   private mostrarCartelMulti(ms: number) {
@@ -252,7 +255,7 @@ export class Taller extends Phaser.Scene {
     if (z.circuito === "placa3" && !p3) return void g.clear();
     const k = placa ? cargasPuestas(this.puestasZona()).find((c) => c.punto === m.punto) : undefined;
     const { rojo, negro } = puntosMedida({ circuito: z.circuito, punto: m.punto, modo: this.modo, cadenaN: z.cadena?.length, bornes: this.montajeBornes, cargas: cargas(z.circuito), placa: p3 ?? (k ? extremosPlaca(k.a, k.b, origen) : null) });
-    const f = dibujarPuntas(g, { transcurrido: ahora - m.desde, medirMs: p.medida?.medirMs ?? medirMs(this.net.mejoras), reducido: REDUCIDO, rojo, negro, jackRojo: { x: JACK.rojo.x, y: JACK.rojo.y + dy }, jackNegro: { x: JACK.negro.x, y: JACK.negro.y + dy } });
+    const f = dibujarPuntas(g, { transcurrido: ahora - m.desde, medirMs: this.durMedir(p, m), reducido: REDUCIDO, rojo, negro, jackRojo: { x: JACK.rojo.x, y: JACK.rojo.y + dy }, jackNegro: { x: JACK.negro.x, y: JACK.negro.y + dy } });
     if (f.fase === "fin") return;
     const objetivo = !ml ? null : ml.modo === "tension" ? anguloTension(ml.fraccion ?? 0) : ml.pasa ? 50 : -50;
     if (this.modo === "tension" || ml) u.aguja.setVisible(true).setAngle(agujaEn(f.fase, f.t, objetivo, ahora));
@@ -382,7 +385,8 @@ export class Taller extends Phaser.Scene {
     cuerpo.fillStyle(0x232a42, 1).fillRoundedRect(76, 124, 208, 80, 10).lineStyle(2, 0xd9a21b, 1).strokeRoundedRect(76, 124, 208, 80, 10);
     for (const [j, color] of [[JACK.rojo, 0xff4a4a], [JACK.negro, 0x0b0d14]] as const) cuerpo.fillStyle(color, 1).fillCircle(j.x, j.y, 6).lineStyle(2, 0xf4f7ff, 1).strokeCircle(j.x, j.y, 6);
     const jacks = [letras(this, JACK.rojo.x + 10, JACK.rojo.y, "+", 1.5, 0xff8a8a).setOrigin(0, 0.5), letras(this, JACK.negro.x - 10, JACK.negro.y, "COM", 1.5, 0xc9d2ea).setOrigin(1, 0.5)];
-    const fila = this.add.container(0, 0, [cuerpo, medidor, aguja, pasa, this.simbolo, ...etiquetas, ...jacks, cta, ...modos.flatMap((m) => [m.fondo, m.icono, m.rotulo]), ...ayudaB]);
+    const prox = letras(this, 190, 132, "", 1.5, 0xd9a21b).setOrigin(0.5); // coste de la próxima medida (solo en competitivo, si crece)
+    const fila = this.add.container(0, 0, [cuerpo, medidor, aguja, pasa, this.simbolo, ...etiquetas, ...jacks, cta, prox, ...modos.flatMap((m) => [m.fondo, m.icono, m.rotulo]), ...ayudaB]);
     this.puntasG = this.add.graphics(); // input pasivo: sin setInteractive, no bloquea toques
     // Ayuda de uso a pantalla del panel: se cierra tocando en cualquier parte.
     const ayuda = this.add.container(0, 0, [
@@ -392,7 +396,7 @@ export class Taller extends Phaser.Scene {
       letras(this, 28, 62, AYUDA_USO.lineas.join("\n\n"), 2).setMaxWidth(304),
       marco(this, 180, 328, "boton_primario", 150, 32), letras(this, 180, 328, AYUDA_USO.cerrar, 2, OSCURO).setOrigin(0.5),
     ]).setVisible(false).setPosition(panel.x, panel.y).setDepth(960); // fuera del panel: por encima de la señal y la guía
-    this.multi = { cta, ayuda };
+    this.multi = { cta, ayuda, prox };
     // Fuera de la placa se mide tocando la pieza de la gaveta o la carga del dibujo.
     // La pieza puesta no usa pointerdown: se arrastra fuera del hueco (o se toca) para devolverla, y con el multímetro encendido el toque mide.
     const medirToque = (x: number, y: number, w: number, h: number, punto: (ly: number) => string, propio = false) => {
@@ -574,7 +578,7 @@ export class Taller extends Phaser.Scene {
     this.ui.podT.setText(tiempoPod(ahora - this.podDesde));
     // Multímetro: «Midiendo…» (Medida.medirMs: 1 s, 3 s en partidas competitivas) con la aguja buscando; luego la lectura del árbitro.
     if (this.midiendo) {
-      const l = lecturaLista(this.midiendo, p.medida, ahora, p.medida?.medirMs ?? medirMs(this.net.mejoras));
+      const l = lecturaLista(this.midiendo, p.medida, ahora, this.durMedir(p, this.midiendo));
       if (l) {
         this.midiendo = undefined; this.lectura = l; this.medidas++;
         const clave = `${this.clave()}|${l.modo}|${l.punto}`, v = this.vistasVivas(p)[this.zona];
@@ -586,9 +590,11 @@ export class Taller extends Phaser.Scene {
           this.pintar(p);
         }
       }
-      else if (ahora - this.midiendo.desde > (p.medida?.medirMs ?? medirMs(this.net.mejoras)) + 4000) this.midiendo = undefined; // rechazo o red caída (holgura de 4 s para una Medida lenta): se puede volver a medir
+      else if (ahora - this.midiendo.desde > this.durMedir(p, this.midiendo) + 4000) this.midiendo = undefined; // rechazo o red caída (holgura de 4 s para una Medida lenta): se puede volver a medir
     }
     this.pintarPuntas(p, z, ahora);
+    const prox = this.modo && !this.midiendo && z && p.proxMedir?.[z.zona] ? AYUDA_USO.prox(p.proxMedir[z.zona]!) : "";
+    if (this.multi.prox.text !== prox) this.multi.prox.setText(prox);
     if (this.cartelMulti && this.modo) this.quitarCartelMulti();
     this.carteles = this.carteles.filter((k) => {
       if (!k.c.active) return false;

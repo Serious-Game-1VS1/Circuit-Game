@@ -58,7 +58,8 @@ export const textoModo = (modo: ModoMedir, circuito?: string) =>
   circuito === "fusible" || circuito === "fusible3" ? T.fusibleAyuda : modo === "continuidad" ? `${T.desconectada}. ${T.tocaPieza}` : T.tocaPieza;
 
 /** Estado de una medición en curso: se muestra cuando pasó MEDIR_MS y llegó la Medida con ese seq. */
-export interface Midiendo { seq: number; desde: number; punto: string }
+/** `ms`: coste previsto al medir (en competitivo crece por zona); la Medida del árbitro manda en cuanto llega. */
+export interface Midiendo { seq: number; desde: number; punto: string; ms?: number }
 export const lecturaLista = (m: Midiendo, medida: Medida | undefined, ahora: number, medirMs = MEDIR_MS) =>
   ahora - m.desde >= medirMs && medida?.seq === m.seq ? medida : null;
 
@@ -118,6 +119,7 @@ export const AYUDA_USO = {
     "CONTINUIDAD: si la corriente puede pasar por ella.",
     "Lee la cifra y el color de la aguja.",
     "Medir NO gasta intento: solo CHECK valida.",
+    "En partida, medir varias veces en la misma zona cuesta más.",
   ],
   encender: "Toca TENSIÓN o\nCONTINUIDAD para encender",
   /** Lo que dice Chispa las primeras veces (también en partidas). */
@@ -127,6 +129,8 @@ export const AYUDA_USO = {
   cartel: "Mide con el multímetro, luego valida",
   senal: "Mide para validar",
   sigue: "El multímetro sigue midiendo",
+  /** Indicador del coste de la próxima medida (solo si crece). */
+  prox: (ms: number) => `próx. ${String(ms / 1000).replace(".", ",")} s`,
 } as const;
 
 /** Veces que se ofrece la ayuda sola por perfil. */
