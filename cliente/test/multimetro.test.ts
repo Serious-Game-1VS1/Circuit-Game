@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Medida } from "../../spike/src/protocol";
-import { anguloTension, AYUDA_USO, ayudaPrimerasVeces, textoDial, VECES_AYUDA, leerMedida, luzValidacion, lecturaLista, MEDIR_MS, textoMedida, textoModo } from "../src/multimetro";
+import { T, anguloTension, AYUDA_USO, ayudaPrimerasVeces, textoDial, VECES_AYUDA, leerMedida, luzValidacion, lecturaLista, MEDIR_MS, textoMedida, textoModo } from "../src/multimetro";
 
 const tension = (fraccion: number, t: Medida["tension"]): Medida => ({ t: "medida", seq: 3, t0: 0, zona: 1, modo: "tension", punto: "carga1", tension: t, fraccion });
 
@@ -26,6 +26,16 @@ describe("multímetro del Taller", () => {
     expect(textoMedida(tension(1, "toda"), "divisor")).not.toMatch(/cortado/);
     expect(textoMedida(tension(1, "toda"), "protegido")).not.toMatch(/cortado/);
     expect(textoModo("continuidad")).toMatch(/^Batería desconectada/);
+  });
+
+  it("continuidad = sin tensión y con la pieza quitada: textos del hueco y sin color (no hay dial)", () => {
+    expect(T.quitaPieza).toBe("Quita la pieza para medir continuidad.");
+    expect(textoModo("continuidad", "led")).toMatch(/Quita la pieza y toca el hueco/);
+    expect(textoModo("continuidad", "cadena")).not.toMatch(/Quita la pieza/);
+    expect(AYUDA_USO.lineas.join(" ")).toMatch(/pieza quitada/);
+    const hueco: Medida = { t: "medida", seq: 1, t0: 0, zona: 1, modo: "continuidad", punto: "pieza", pasa: false };
+    expect(textoMedida(hueco, "led")).toMatch(/Hueco vacío/);
+    expect(leerMedida(hueco, { circuito: "led", volts: 9 })).toMatchObject({ cifra: "Abierto", luz: "gris" });
   });
 
   it("Reactor: el multímetro no promete amperios y la lectura del fusible se explica", () => {

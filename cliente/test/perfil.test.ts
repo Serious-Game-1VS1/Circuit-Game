@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { inicial, type Pantalla } from "../src/pantalla";
-import { firmaEnd, aplicarPartida, cargarPerfil, guardarPerfil, INSIGNIAS, marcarTutorial, tutorialCompletado, cambiarNivel, nivelBotElegido, nivelElegido, textoNivel, perfilNuevo, progresoRango, rangoDe, registrarOleada, registrarTiempo, registrarTotal, resultadoDe, UMBRALES_MEDALLA, type Resultado } from "../src/perfil";
+import { firmaEnd, aplicarPartida, cargarPerfil, guardarPerfil, INSIGNIAS, marcarTutorial, tutorialCompletado, tutorialesHechos, cambiarNivel, nivelBotElegido, nivelElegido, textoNivel, perfilNuevo, progresoRango, rangoDe, registrarOleada, registrarTiempo, registrarTotal, resultadoDe, UMBRALES_MEDALLA, type Resultado } from "../src/perfil";
 
 const res = (o: Partial<Resultado> = {}): Resultado => ({ puntos: 0, pods: 0, total: 5, quemadas: 0, limpios: 0, gano: false, nivel: 1, ...o });
 const ids = (r: ReturnType<typeof aplicarPartida>) => r.eventos.insignias.map((i) => i.id);
@@ -48,19 +48,12 @@ describe("aplicarPartida", () => {
     guardarPerfil(aplicarPartida(perfilNuevo("desb"), res({ pods: 5 })).perfil, null);
     expect(cargarPerfil("desb", null).nivelDesbloqueado).toBe(2);
   });
-  it("selector de nivel: el 2 con candado hasta desbloquearlo", () => {
-    const p = perfilNuevo("a"), abierto = { ...p, nivelDesbloqueado: 2 as const };
-    expect(textoNivel(p, 1)).toContain("Completa el nivel 1 para abrirlo");
-    expect(cambiarNivel(p, 1)).toBe(1);
-    expect(nivelElegido(p, 2)).toBe(1);
-    expect(nivelBotElegido(p, "mixto")).toBe(1); // bloqueado hasta abrir el nivel 2
-    expect(cambiarNivel(abierto, 1)).toBe(2);
-    expect(cambiarNivel(abierto, 2)).toBe(1);
-    expect(nivelElegido(abierto, 2)).toBe(2);
-    expect([nivelBotElegido(abierto, "1"), nivelBotElegido(abierto, "2"), nivelBotElegido(abierto, "mixto")]).toEqual([1, 2, "mixto"]);
-    expect(textoNivel(abierto, 2)).not.toContain("🔒");
-    expect(textoNivel(p, 1)).toContain("bloqueado");
-    expect(textoNivel(p, 1)).not.toContain("🔒");
+  it("selector de nivel: todos los niveles abiertos desde el inicio", () => {
+    const p = perfilNuevo("a");
+    expect(textoNivel(p, 1)).not.toContain("bloqueado");
+    expect([1, 2, 3].map((n) => nivelElegido(p, n as 1 | 2 | 3))).toEqual([1, 2, 3]);
+    expect([cambiarNivel(p, 1), cambiarNivel(p, 2), cambiarNivel(p, 3)]).toEqual([2, 3, 1]);
+    expect(["1", "2", "mixto", "3"].map((n) => nivelBotElegido(p, n as "1"))).toEqual([1, 2, "mixto", 3]);
   });
 });
 
@@ -226,6 +219,16 @@ describe("mini-tutoriales completados", () => {
     guardarPerfil(marcarTutorial(perfilNuevo("gio"), "t1"), disco);
     expect(cargarPerfil("gio", disco).tutoriales).toEqual(["t1"]);
   });
+  it("guía en partida: «mec-»/«med-» conocidos se guardan; los desconocidos se descartan al marcar y al cargar", () => {
+    const almacen = new Map<string, string>();
+    const disco = { getItem: (k: string) => almacen.get(k) ?? null, setItem: (k: string, v: string) => void almacen.set(k, v) };
+    const p = ["mec-led", "med-tension", "mec-nada", "med-voltaje", "mec-constructor"].reduce(marcarTutorial, perfilNuevo("guia"));
+    expect(p.tutoriales).toEqual(["mec-led", "med-tension"]);
+    almacen.set("circuitsync.perfil.vieja", JSON.stringify({ tutoriales: ["resistencia", "mec-cadena", "mec-xyz", "med-continuidad", "med-"] }));
+    expect(cargarPerfil("vieja", disco).tutoriales).toEqual(["resistencia", "mec-cadena", "med-continuidad"]);
+    guardarPerfil(p, disco);
+    expect(cargarPerfil("guia", disco).tutoriales).toEqual(["mec-led", "med-tension"]);
+  });
 });
 
 describe("bienvenida del menú", () => {
@@ -235,5 +238,13 @@ describe("bienvenida del menú", () => {
     const p = { ...perfilNuevo("ana"), partidas: 2, xp: 180 };
     expect(bienvenida(p)).toBe("Hola, ana. Rango Aprendiz. Te faltan 120 XP para Técnico.");
     expect(bienvenida({ ...p, nivelDesbloqueado: 2 })).toContain("Nivel 2 abierto.");
+  });
+});
+
+describe("tutorialesHechos", () => {
+  it("no cuenta los ids de la guía en partida", () => {
+    const p = { ...perfilNuevo("a"), tutoriales: ["mec-1", "med-2", "ohm"] };
+    expect(tutorialesHechos(p)).toEqual(["ohm"]);
+    expect(tutorialesHechos(perfilNuevo("a"))).toEqual([]);
   });
 });

@@ -12,6 +12,12 @@ export const T = {
   continuidad: "Continuidad",
   ayuda: "Toca un modo y luego una pieza para medir.",
   tocaPieza: "Toca una pieza para medirla.",
+  // Continuidad = sin tensión y con la pieza fuera del circuito (como con un multímetro real).
+  quitaPieza: "Quita la pieza para medir continuidad.",
+  quitada: "Pieza quitada. Toca el hueco para medir.",
+  tocaHueco: "Quita la pieza y toca el hueco (o la carga) para medir.",
+  huecoVacio: "Hueco vacío: no pasa. Ahí va la pieza.",
+  piezaSuelta: "Pieza suelta, sin tensión: mides solo ella.",
   midiendo: "Midiendo…",
   desconectada: "Batería desconectada para medir",
   pasaTexto: "Pasa: la corriente puede cruzar esta pieza.",
@@ -44,6 +50,7 @@ export const textoMedida = (m: Medida, circuito?: string) => {
   // LED invertido: mismo veredicto que el circuito abierto, pero la pista es la polaridad.
   const led = circuito === "invertido";
   if (m.modo === "continuidad" && (circuito === "fusible" || circuito === "fusible3") && m.punto === "pieza" && m.pasa) return T.fusibleSano; // el probador (3 mA) nunca funde un fusible: «no pasa» no ocurre
+  if (m.modo === "continuidad" && m.punto === "pieza" && circuito !== "cadena" && circuito !== "abierto" && circuito !== "invertido") return m.pasa ? T.piezaSuelta : T.huecoVacio; // el hueco de la gaveta, sin pieza
   if (m.modo === "continuidad") return m.pasa ? T.pasaTexto : led ? T.ledNoPasa : T.noPasaTexto;
   if (m.tension === "toda") { // «camino cortado» solo es cierto en los circuitos de corte; el divisor y el protegido no se cortan
     if (led) return T.ledSentido;
@@ -55,7 +62,8 @@ export const textoMedida = (m: Medida, circuito?: string) => {
 
 /** Aviso mientras el modo está activo y no hay lectura. */
 export const textoModo = (modo: ModoMedir, circuito?: string) =>
-  circuito === "fusible" || circuito === "fusible3" ? T.fusibleAyuda : modo === "continuidad" ? `${T.desconectada}. ${T.tocaPieza}` : T.tocaPieza;
+  modo === "continuidad" ? `${T.desconectada}. ${circuito === "cadena" || circuito === "luces" || circuito === "interruptor" || circuito === "placa3" ? T.tocaPieza : T.tocaHueco}`
+    : circuito === "fusible" || circuito === "fusible3" ? T.fusibleAyuda : T.tocaPieza;
 
 /** Estado de una medición en curso: se muestra cuando pasó MEDIR_MS y llegó la Medida con ese seq. */
 /** `ms`: coste previsto al medir (en competitivo crece por zona); la Medida del árbitro manda en cuanto llega. */
@@ -116,7 +124,7 @@ export const AYUDA_USO = {
   titulo: "MULTÍMETRO",
   lineas: [
     "TENSIÓN: cuánta batería cae en la pieza que tocas.",
-    "CONTINUIDAD: si la corriente puede pasar por ella.",
+    "CONTINUIDAD: sin tensión y con la pieza quitada, dice si la corriente pasa.",
     "Lee la cifra y el color de la aguja.",
     "Medir no cuenta como fallo, pero toma tiempo.",
     "En partida, cada medida en la misma zona tarda más.",

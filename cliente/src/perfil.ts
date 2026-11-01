@@ -8,6 +8,7 @@ import type { End, Nivel } from "../../spike/src/protocol";
 import { terminada, type Pantalla } from "./pantalla";
 import { cambios, habilidad, unir, type Cambio, type Conteo, type Dominio } from "./dominio";
 import { puntosDe } from "./progreso";
+import { idGuiaValido } from "./tutorial";
 
 /** PROVISIONAL: rangos por XP acumulada. Único sitio donde se cambian. */
 export const RANGOS = [
@@ -63,16 +64,14 @@ export const completoNivel2 = (r: Resultado) => r.nivel === 2 && r.pods >= r.tot
 /** Etiqueta del nivel en menús, salas y práctica: «NIVEL 1», «NIVEL 2» o «EXPERTO». */
 export const etiquetaNivel = (n: Nivel) => (n === 3 ? "EXPERTO" : `NIVEL ${n}`);
 
-/** Selector de nivel de la práctica: el 2 y el 3 salen con candado hasta desbloquearlos. El duelo no lo usa (el servidor fija el nivel con --nivel/NIVEL). */
-export const textoNivel = (p: Perfil, sel: Nivel) => p.nivelDesbloqueado === 1 ? "Nivel de práctica: 1\nNivel 2: bloqueado. Completa el nivel 1 para abrirlo"
-  : `Nivel de práctica: ${sel === 3 ? "3 EXPERTO" : sel} (toca para cambiar)${p.nivelDesbloqueado === 2 ? "\nExperto: completa el nivel 2" : ""}`;
-export const nivelElegido = (p: Perfil, sel: Nivel): Nivel => Math.min(sel, p.nivelDesbloqueado) as Nivel;
-/** Nivel de «Jugar solo»: 1, 2, mixto (el del duelo) o 3 (Experto). El 2 y el mixto traen fallas de nivel 2 y el 3 pide haber completado el 2: siguen bloqueados hasta abrirlos. */
+/** Selector de nivel de la práctica: todos los niveles están abiertos (demo). `nivelDesbloqueado` sólo alimenta rangos e insignias. */
+export const textoNivel = (_p: Perfil, sel: Nivel) => `Nivel de práctica: ${sel === 3 ? "3 EXPERTO" : sel} (toca para cambiar)`;
+export const nivelElegido = (_p: Perfil, sel: Nivel): Nivel => sel;
+/** Nivel de «Jugar solo»: 1, 2, mixto (el del duelo) o 3 (Experto); todos disponibles. */
 export type NivelBot = "1" | "2" | "mixto" | "3";
-export const nivelBotElegido = (p: Perfil, sel: NivelBot): 1 | 2 | 3 | "mixto" =>
-  p.nivelDesbloqueado === 1 ? 1 : sel === "mixto" ? "mixto" : sel === "3" ? (p.nivelDesbloqueado === 3 ? 3 : 2) : sel === "2" ? 2 : 1;
-/** Siguiente nivel abierto (da la vuelta al 1). */
-export const cambiarNivel = (p: Perfil, sel: Nivel): Nivel => (sel < p.nivelDesbloqueado ? sel + 1 : 1) as Nivel;
+export const nivelBotElegido = (_p: Perfil, sel: NivelBot): 1 | 2 | 3 | "mixto" => sel === "mixto" ? "mixto" : (Number(sel) as 1 | 2 | 3);
+/** Siguiente nivel (da la vuelta al 1). */
+export const cambiarNivel = (_p: Perfil, sel: Nivel): Nivel => (sel < 3 ? sel + 1 : 1) as Nivel;
 
 /** Saludo del menú (ajusta al ancho): primer uso, XP que falta para el siguiente rango y aviso del nivel 2. */
 export function bienvenida(p: Perfil): string {
@@ -127,9 +126,11 @@ export function registrarTotal(perfil: Perfil, nivel: Nivel, ms: number) {
 
 /** Marca un mini-tutorial como completado: sin duplicar, y un id vacío no cuenta. No guarda: quien llama usa guardarPerfil. */
 export function marcarTutorial(p: Perfil, id: string): Perfil {
-  if (typeof id !== "string" || !id.trim() || p.tutoriales.includes(id)) return p;
+  if (typeof id !== "string" || !id.trim() || !idGuiaValido(id) || p.tutoriales.includes(id)) return p;
   return { ...p, tutoriales: [...p.tutoriales, id] };
 }
+/** Tutoriales de menú hechos: `Perfil.tutoriales` también guarda ids de la guía en partida (`mec-*`, `med-*`), que no cuentan. */
+export const tutorialesHechos = (p: Perfil): string[] => p.tutoriales.filter((id) => !id.startsWith("mec-") && !id.startsWith("med-"));
 export const tutorialCompletado = (p: Perfil, id: string): boolean => p.tutoriales.includes(id);
 
 export const rangoDe =(xp: number) => RANGOS.reduce((r, x) => (xp >= x.xp ? x : r), RANGOS[0]);
@@ -190,7 +191,7 @@ export function cargarPerfil(alias: string, almacen: Almacen | null = disco()): 
     return {
       alias: alias.trim(), xp: num(o.xp), partidas: num(o.partidas), ganadas: num(o.ganadas), pods: num(o.pods), limpios: num(o.limpios),
       nivelDesbloqueado: o.nivelDesbloqueado === 3 ? 3 : o.nivelDesbloqueado === 2 ? 2 : 1, insignias: Array.isArray(o.insignias) ? o.insignias.filter((x) => typeof x === "string") : [],
-      tutoriales: Array.isArray(o.tutoriales) ? Array.from(new Set(o.tutoriales.filter((x): x is string => typeof x === "string" && x.trim() !== ""))) : [],
+      tutoriales: Array.isArray(o.tutoriales) ? Array.from(new Set(o.tutoriales.filter((x): x is string => typeof x === "string" && x.trim() !== "" && idGuiaValido(x)))) : [],
       dominio: limpiarDominio(o.dominio),
       records: Object.fromEntries(Object.entries(o.records && typeof o.records === "object" ? o.records : {}).filter(([, v]) => num(v) > 0) as [string, number][]),
       oleadas: Object.fromEntries(Object.entries(o.oleadas && typeof o.oleadas === "object" ? o.oleadas : {}).filter(([, v]) => num(v) > 0) as [string, number][]),

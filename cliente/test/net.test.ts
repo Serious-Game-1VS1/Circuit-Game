@@ -80,7 +80,7 @@ describe("cliente conectado al árbitro", () => {
   it("'medir' devuelve el seq con el que llega su Medida (el Taller espera esa lectura)", async () => {
     await empezar();
     const z = zonaReal(ana, 0);
-    const seq = ana.medir(z.zona, z.solucion, "continuidad", "carga1");
+    const seq = ana.medir(z.zona, "ninguna", "continuidad", "carga1", true); // con la pieza fuera
     expect(ana.estado.medida).toMatchObject({ t: "medida", seq, modo: "continuidad" });
     expect(ana.medir(z.zona, z.solucion, "tension", "carga1")).toBe(seq + 1);
   });
@@ -355,6 +355,8 @@ describe("cliente conectado al árbitro", () => {
     expect(elegirSalaRapida([s("AAA111", 2, "llena"), s("BBB222", 1, "jugando")])).toBeNull();
     expect(elegirSalaRapida([s("ZZZ222", 0, "esperando"), s("MMM333", 1, "esperando", 2), s("CCC444", 1, "esperando")])?.codigo).toBe("CCC444");
     expect(elegirSalaRapida([s("BBB222", 0, "esperando"), s("AAA111", 0, "esperando", 2)])?.codigo).toBe("AAA111");
+    expect(elegirSalaRapida([s("CCC444", 1, "esperando"), s("MMM333", 0, "esperando", 2)], 2)?.codigo).toBe("MMM333");
+    expect(elegirSalaRapida([s("CCC444", 1, "esperando")], "mixto")).toBeNull();
   });
 
   it("enlace ?sala=: lee y sanea el código; el texto a compartir no lleva alias ni otros parámetros", () => {

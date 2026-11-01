@@ -9,7 +9,7 @@ import { elegirSalaRapida, salaDeUrl, salasAbiertas, textoSala, type Net, type S
 import type { DificultadBot } from "./contraBot";
 import { anim, letras, marco } from "./arte";
 import { alternarSilencio, desbloquear, silenciado, sonar } from "./audio";
-import { type NivelBot, bienvenida, cambiarNivel, cargarPerfil, etiquetaNivel, INSIGNIAS, mejorNave, nivelBotElegido, nivelElegido, progresoRango, recordarAlias, textoNivel, tutorialCompletado, ultimoAlias } from "./perfil";
+import { type NivelBot, bienvenida, cargarPerfil, etiquetaNivel, INSIGNIAS, mejorNave, nivelBotElegido, nivelElegido, progresoRango, recordarAlias, textoNivel, tutorialCompletado, tutorialesHechos, ultimoAlias } from "./perfil";
 import type { Pantalla } from "./pantalla";
 import { MECANICAS } from "./tutorial";
 import { COLORES, CUCHILLAS, ORO } from "./colores";
@@ -81,7 +81,7 @@ export function menu(s: Phaser.Scene, net: Net) {
   const barra = s.add.rectangle(34, 368, 292, 10, CIAN).setOrigin(0, 0.5);
   s.add.image(45, 392, "icono_estrella").setScale(2);
   const insignias = letras(s, 62, 384, "", 2, 0xffffff);
-  const iconoN2 = s.add.image(45, 418, "icono_candado").setScale(2);
+  const iconoN2 = s.add.image(45, 418, "icono_pasa").setScale(2);
   const nivel2 = letras(s, 62, 410, "", 2, GRIS);
   s.add.zone(W / 2, 386, 328, 118).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => panelLogros(s, refrescar())));
 
@@ -155,14 +155,18 @@ export function menu(s: Phaser.Scene, net: Net) {
 
   // Partida rápida: entra sola a la sala «esperando» más llena; si se llenó o falló, una segunda consulta y luego el error de siempre.
   let ocupado = false;
+  // Filtro de nivel de la lista de salas y de «Partida rápida»: null = todos. Arranca en el nivel de «Jugar solo» (por defecto mixto).
+  let filtro: SalaInfo["nivel"] | null = "mixto";
+  const FILTROS: (SalaInfo["nivel"] | null)[] = [null, 1, 2, "mixto", 3];
+  const textoFiltro = () => `SALAS: ${filtro === null ? "TODOS" : filtro === 3 ? "EXPERTO" : filtro === "mixto" ? "MIXTO" : `NIVEL ${filtro}`}`;
   const rapida = async () => {
     if (ocupado) return;
     if (!alias()) { aviso.setText("Escribe tu alias para entrar"); aliasIn.focus(); return; }
     ocupado = true; recordarAlias(alias()); aviso.setText("");
     try {
       for (let intento = 0; intento < 2; intento++) {
-        const sala = elegirSalaRapida((await net.listarSalas(8000)).salas);
-        if (!sala) { aviso.setText("No hay salas abiertas ahora. Intenta de nuevo en unos segundos"); return; }
+        const sala = elegirSalaRapida((await net.listarSalas(8000)).salas, filtro ?? undefined);
+        if (!sala) { aviso.setText(filtro === null ? "No hay salas abiertas ahora" : "Sin sala libre en ese nivel"); return; }
         await net.entrar(sala.codigo, aliasIn.value);
         if (net.codigo === sala.codigo) return; // entró; si falló, entrar() ya dejó el aviso legible
       }
@@ -172,7 +176,8 @@ export function menu(s: Phaser.Scene, net: Net) {
 
   // Salas abiertas: hasta 3 tarjetas, «MAS» pasa de página; se consultan cada 4 s mientras el duelo está abierto.
   const PAG = 3;
-  etiqueta(duelo, 34, 296, "SALAS ABIERTAS");
+  const etFiltro = letras(s, 34, 296, "", 2, CIAN);
+  duelo.add([etFiltro, s.add.zone(110, 299, 150, 22).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { filtro = FILTROS[(FILTROS.indexOf(filtro) + 1) % FILTROS.length]!; pagina = 0; aviso.setText(""); pintarSalas(); }))]);
   let salas: SalaInfo[] = [], pagina = 0, motivo: string | undefined, consulta = 0, buscando = true; // buscando: hasta la primera respuesta
   const vacio = letras(s, W / 2, 360, "", 2, GRIS).setOrigin(0.5).setMaxWidth(296).setCenterAlign();
   duelo.add(vacio);
@@ -181,7 +186,7 @@ export function menu(s: Phaser.Scene, net: Net) {
     const m = marco(s, W / 2, y, "boton_secundario", 296, 32, 4);
     const l = letras(s, 50, y, "", 2, 0x140f1f).setOrigin(0, 0.5); // oscuro sobre la tarjeta clara
     const z = s.add.zone(W / 2, y, 296, 32).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => {
-      const sala = salasAbiertas(salas)[pagina * PAG + k];
+      const sala = salasAbiertas(salas, filtro ?? undefined)[pagina * PAG + k];
       if (!sala) return;
       codigoIn.value = sala.codigo;
       if (alias()) entrar();
@@ -194,7 +199,8 @@ export function menu(s: Phaser.Scene, net: Net) {
   duelo.add(mas);
   duelo.add(s.add.zone(W - 60, 304, 60, 28).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { pagina++; pintarSalas(); })));
   function pintarSalas() {
-    const ab = salasAbiertas(salas);
+    etFiltro.setText(textoFiltro());
+    const ab = salasAbiertas(salas, filtro ?? undefined);
     if (pagina * PAG >= ab.length) pagina = 0;
     filas.forEach((f, k) => {
       const sala = ab[pagina * PAG + k];
@@ -202,7 +208,7 @@ export function menu(s: Phaser.Scene, net: Net) {
       if (sala) f.l.setText(textoSala(sala));
     });
     mas.setText(ab.length > PAG ? `MAS ${pagina + 1}/${Math.ceil(ab.length / PAG)}` : "");
-    vacio.setText(buscando ? "Buscando salas…" : motivo ? "Sin conexión a salas" : ab.length ? "" : "No hay salas abiertas. Crea una o juega solo.");
+    vacio.setText(buscando ? "Buscando salas…" : motivo ? "Sin conexión a salas" : ab.length ? "" : "No hay salas libres de este nivel. Cambia el nivel o juega solo.");
   }
   const consultar = async () => {
     const mia = ++consulta;
@@ -222,6 +228,7 @@ export function menu(s: Phaser.Scene, net: Net) {
     const g = localStorage.getItem("circuitsync.dificultad"); if (g === "facil" || g === "normal" || g === "dificil") dif = g;
     const n = localStorage.getItem("circuitsync.nivelbot"); if (n === "1" || n === "2" || n === "mixto" || n === "3") nivBot = n;
   } catch { /* sin disco */ }
+  filtro = nivBot === "3" ? 3 : nivBot === "mixto" ? "mixto" : (Number(nivBot) as 1 | 2); pintarSalas();
   duelo.add(letras(s, W / 2, 436, "Jugar solo: duelo contra un bot", 2, CIAN).setOrigin(0.5, 0));
   const fila = <T extends string>(y: number, opciones: [T, string][], elegir: (v: T) => void) => opciones.map(([v, nombre], k) => {
     const n = opciones.length, paso = n > 3 ? 80 : 100, ancho = n > 3 ? 76 : 92, x = W / 2 + (k - (n - 1) / 2) * paso;
@@ -232,13 +239,12 @@ export function menu(s: Phaser.Scene, net: Net) {
     return { m, v };
   });
   const cNiv = fila(468, NIVS, (v) => {
-    if (v === "3" ? pf.nivelDesbloqueado < 3 : v !== "1" && pf.nivelDesbloqueado < 2) { aviso.setText(v === "3" ? "Experto: completa el nivel 2" : "Nivel 2 y mixto: completa el nivel 1"); return; }
     aviso.setText(""); nivBot = v; try { localStorage.setItem("circuitsync.nivelbot", v); } catch { /* sin disco */ } pintarBot();
   });
   const cDif = fila(508, DIFS, (v) => { dif = v; try { localStorage.setItem("circuitsync.dificultad", v); } catch { /* sin disco */ } pintarBot(); });
   const pintarBot = () => {
     const nb = String(nivelBotElegido(pf, nivBot));
-    for (const c of cNiv) c.m.setTexture(c.v === nb ? "boton_primario" : "boton_secundario").setAlpha(c.v === "3" ? (pf.nivelDesbloqueado < 3 ? 0.5 : 1) : c.v !== "1" && pf.nivelDesbloqueado < 2 ? 0.5 : 1);
+    for (const c of cNiv) c.m.setTexture(c.v === nb ? "boton_primario" : "boton_secundario");
     for (const c of cDif) c.m.setTexture(c.v === dif ? "boton_primario" : "boton_secundario");
   };
   duelo.add(letras(s, W / 2, 536, "Mismos pods y fallas que el duelo", 1.5, GRIS).setOrigin(0.5, 0));
@@ -259,19 +265,18 @@ export function menu(s: Phaser.Scene, net: Net) {
   const aprender = panel(60, 450, "APRENDER");
   aprender.add(boton(W / 2, 190, 296, 56, "MECANICAS", false, () => abrir(mecs)));
 
-  // Mecánicas: 2 columnas x 7 filas (12 tutoriales + la tabla de colores), 50 px de paso. El candado de nivel 2 solo informa: el toque siempre abre (demo).
+  // Mecánicas: 2 columnas x 7 filas (12 tutoriales + la tabla de colores), 50 px de paso.
   const mecs = panel(40, 480, "MECANICAS");
   const tarjetas = MECANICAS.map((m, k) => {
     const x = W / 2 + (k % 2 ? 76 : -76), y = 100 + 50 * Math.floor(k / 2);
     const f = marco(s, x, y, "boton_secundario", 144, 48, 4);
     const nombre = letras(s, x - 6, y, m.nombre.toUpperCase(), 1.5).setOrigin(0.5);
     const marca = s.add.image(x + 58, y - 16, "icono_pasa").setScale(1.5);
-    const candado = s.add.image(x - 58, y - 16, "icono_candado").setScale(1.5);
     const z = s.add.zone(x, y, 144, 48).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => {
       void net.practicar(jugar(), m.nivel, true, false, m.id);
     }));
-    mecs.add([f, nombre, marca, candado, z]);
-    return { f, marca, candado, m };
+    mecs.add([f, nombre, marca, z]);
+    return { f, marca, m };
   });
   // Tabla de colores (referencia del nivel 3): solo desde Aprender, nunca durante una partida.
   const tabla = panel(30, 580, "TABLA DE COLORES");
@@ -295,8 +300,6 @@ export function menu(s: Phaser.Scene, net: Net) {
   const bp = boton(W / 2, 520, 296, 44, "FUSIBLES", false, () => verTabla(1 - pagTabla), 2.5), pasar = bp[1] as Phaser.GameObjects.BitmapText;
   tabla.add(bp);
   tabla.add(boton(W / 2, 568, 296, 36, "VOLVER", false, () => abrir(mecs), 2));
-  const infoMec = letras(s, W / 2, 432, "", 1.5, GRIS).setOrigin(0.5, 0).setMaxWidth(296).setCenterAlign();
-  mecs.add(infoMec);
   { // 12.ª tarjeta: no es un tutorial, abre la tabla de colores (en Aprender, no en las partidas)
     const k = MECANICAS.length, x = W / 2 + (k % 2 ? 76 : -76), y = 100 + 50 * Math.floor(k / 2), f = marco(s, x, y, "boton_secundario", 144, 48, 4);
     mecs.add([f, letras(s, x, y, "TABLA COLORES", 1.5).setOrigin(0.5), s.add.zone(x, y, 144, 48).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { verTabla(0); abrir(tabla); }))]);
@@ -305,11 +308,10 @@ export function menu(s: Phaser.Scene, net: Net) {
   const fichas = ([1, 2, 3] as Nivel[]).map((n) => {
     const x = W / 2 + (n - 2) * 100;
     const m = marco(s, x, 276, "boton_secundario", 96, 48, 4);
-    const candado = s.add.image(x - 34, 258, "icono_candado").setScale(1.5);
     const l = letras(s, x, 280, etiquetaNivel(n), 1.5).setOrigin(0.5);
-    const z = s.add.zone(x, 276, 96, 48).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { if (n !== sel) { sel = n <= pf.nivelDesbloqueado ? n : cambiarNivel(pf, sel); refrescar(); } }));
-    aprender.add([m, candado, l, z]);
-    return { m, candado, n };
+    const z = s.add.zone(x, 276, 96, 48).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { if (n !== sel) { sel = n; refrescar(); } }));
+    aprender.add([m, l, z]);
+    return { m, n };
   });
   const textoSel = letras(s, W / 2, 308, "", 2, GRIS).setOrigin(0.5, 0).setMaxWidth(296).setCenterAlign();
   aprender.add(textoSel);
@@ -322,27 +324,23 @@ export function menu(s: Phaser.Scene, net: Net) {
     const r = progresoRango(pf.xp);
     sel = nivelElegido(pf, sel);
     bien.setText(bienvenida(pf));
-    const nuevos = mensajesMenu(pf, MECANICAS.length, Math.floor(Date.now() / 864e5));
+    const nuevos = mensajesMenu({ ...pf, tutoriales: tutorialesHechos(pf) }, MECANICAS.length, Math.floor(Date.now() / 864e5));
     if (JSON.stringify(nuevos) !== clave) { clave = JSON.stringify(nuevos); msgs = nuevos; mi = 0; hablar(); }
     rango.setText(r.actual.toUpperCase());
     xp.setText(r.siguiente ? `${r.n}/${r.m} XP` : `${pf.xp} XP`);
     barra.width = Math.max(2, 292 * (r.siguiente ? r.n / r.m : 1));
     insignias.setText(`INSIGNIAS ${pf.insignias.length}/${INSIGNIAS.length}`);
-    const abierto2 = pf.nivelDesbloqueado >= 2;
-    iconoN2.setTexture(abierto2 ? "icono_pasa" : "icono_candado");
-    nivel2.setText(pf.nivelDesbloqueado === 3 ? "EXPERTO: ABIERTO" : abierto2 ? "NIVEL 2: ABIERTO" : "NIVEL 2: BLOQUEADO").setTint(abierto2 ? VERDE : GRIS);
+    iconoN2.setTexture("icono_pasa");
+    nivel2.setText("TODOS LOS NIVELES ABIERTOS").setTint(VERDE);
     nave.play(`${chasis(mejorNave(pf))}_reparado`);
     pintarBot();
     for (const f of fichas) {
       f.m.setTexture(f.n === sel ? "boton_primario" : "boton_secundario");
-      f.candado.setVisible(f.n > pf.nivelDesbloqueado);
     }
     textoSel.setText(textoNivel(pf, sel));
-    infoMec.setText(pf.nivelDesbloqueado === 3 ? "" : "Los candados no impiden aprender");
     const sug = MECANICAS.find((m) => !tutorialCompletado(pf, m.id));
     for (const t of tarjetas) {
       t.marca.setVisible(tutorialCompletado(pf, t.m.id));
-      t.candado.setVisible(t.m.nivel > pf.nivelDesbloqueado && !tutorialCompletado(pf, t.m.id));
       t.f.setTexture(t.m === sug ? "boton_primario" : "boton_secundario");
     }
     return pf;

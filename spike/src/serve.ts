@@ -15,7 +15,9 @@ import type { Transport } from "./transport/transport.js";
  * una se llena, abre otra con un código nuevo; así caben varios duelos a la vez (hasta MAX_SALAS).
  * El cliente (cliente/, npm run dev) entra con el código. Al terminar cada partida guarda su CSV en bench-out/.
  *
- * Opciones (también por variable de entorno): --nivel 1|2|mixto (NIVEL, por defecto mixto: pods 1-3 de nivel 1 (LED, LED, Cabina) y
+ * En Photon mantiene una sala libre POR NIVEL (1, 2, mixto y 3; MAX_SALAS las limita en total, la del nivel por defecto se abre primero).
+ * Opciones (también por variable de entorno): --nivel 1|2|3|mixto (NIVEL, por defecto mixto; en el relé local es el nivel de la sala y en Photon
+ * solo el nivel que se abre primero, pues se ofrecen todos los niveles. mixto: pods 1-3 de nivel 1 (LED, LED, Cabina) y
  * pods 4-5 de nivel 2 con cables, interruptor, fusible, LED invertido o circuito abierto, para la demo de 5 min) y --semilla N (SEMILLA,
  * entero 0..2^32-1, por defecto aleatoria). Ej.: npm run serve -- --nivel 2 --semilla 42.
  * --demo (o DEMO=1): modo demo de cableado (Cabina y Turbina: arrastrar piezas a la placa y unirlas con cables).
@@ -100,10 +102,10 @@ async function crearConCodigo(t: Transport, code: string) {
   }
 }
 
-async function abrir(t: Transport, alTerminar: () => void, codigo?: string, alCaer?: () => void) {
+async function abrir(t: Transport, alTerminar: () => void, codigo?: string, alCaer?: () => void, nivelSala: Perfil = nivel) {
   const code = codigo ? await crearConCodigo(t, codigo) : await createRoom(t);
   let parar = () => {};
-  const room = hostRoom(t, { nivel, semilla, demo, limitMs, medirMs: MEDIR_COMPETITIVO_MS }, () => {
+  const room = hostRoom(t, { nivel: nivelSala, semilla, demo, limitMs, medirMs: MEDIR_COMPETITIVO_MS }, () => {
     parar();
     console.error(`[${code}] se perdió la conexión del árbitro: sala cerrada`);
     docente("borrar el vivo", () => borrarVivo(code));
@@ -119,19 +121,21 @@ if (photon) {
   const appId = process.env.PHOTON_APP_ID?.trim();
   const region = process.env.PHOTON_REGION?.trim() || "us";
   if (!appId) throw new Error("Falta PHOTON_APP_ID en spike/.env");
-  const salas = new Map<string, Arbiter>();
+  const salas = new Map<string, { arbiter: Arbiter; nivel: Perfil }>();
+  const NIVELES: Perfil[] = [nivel, ...([1, 2, "mixto", 3] as Perfil[]).filter((n) => n !== nivel)]; // el nivel por defecto va primero si falta cupo
   let abriendo = false;
   let fallos = 0, noAntesDe = 0; // tras un fallo la reapertura espera (2 s, 4 s… tope 30 s) en vez de insistir cada segundo
   const asegurarSalaLibre = async () => {
-    const libres = [...salas.values()].filter((a) => a.phase === "esperando").length;
-    if (abriendo || libres > 0 || salas.size >= MAX_SALAS || Date.now() < noAntesDe) return;
+    if (abriendo || salas.size >= MAX_SALAS || Date.now() < noAntesDe) return;
+    const falta = NIVELES.find((n) => ![...salas.values()].some((s) => s.nivel === n && s.arbiter.phase === "esperando")); // una sala libre por nivel
+    if (falta === undefined) return;
     abriendo = true;
     try {
       const quitar = () => { salas.delete(code); };
-      const { code, arbiter } = await abrir(new PhotonTransport(appId, region), quitar, undefined, quitar); // si Photon la cae, se quita y el ciclo de 1 s abre otra
+      const { code, arbiter } = await abrir(new PhotonTransport(appId, region), quitar, undefined, quitar, falta); // si Photon la cae, se quita y el ciclo de 1 s abre otra
       fallos = 0;
-      salas.set(code, arbiter);
-      console.log(`Photon (${region}) · sala nueva, código: ${code} · salas abiertas: ${salas.size}`);
+      salas.set(code, { arbiter, nivel: falta });
+      console.log(`Photon (${region}) · sala nueva (nivel ${falta}), código: ${code} · salas abiertas: ${salas.size}`);
     } catch (e) {
       noAntesDe = Date.now() + pausaReapertura(++fallos);
       console.error(`No se pudo abrir sala en Photon: ${(e as Error).message} · reintento en ${pausaReapertura(fallos) / 1000} s`);

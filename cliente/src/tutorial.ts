@@ -7,7 +7,7 @@
  */
 import type { Circuito, ModoMedir } from "../../spike/src/protocol";
 import type { Falta } from "./pantalla";
-import type { Aguja } from "./vista";
+import { esResistencia, type Aguja } from "./vista";
 
 /** Qué elemento del Taller se resalta en cada paso. */
 export type Objetivo = "gaveta" | "tension" | "pieza" | "carga" | "contador" | "pestanas" | "multimetro" | "check" | "cadena";
@@ -60,6 +60,8 @@ const CHECK: Paso = { titulo: "Check", objetivo: "check", pide: "check", hecho: 
 const LISTO = (texto: string): Paso => ({ titulo: "¡Listo!", objetivo: "contador", libre: true, fin: true, hecho: () => false, texto });
 const MODO_TENSION = (texto: string): Paso => ({ titulo: "Tensión", objetivo: "tension", hecho: (e) => e.modo === "tension", texto });
 const MODO_CONT = (texto: string): Paso => ({ titulo: "Continuidad", objetivo: "tension", hecho: (e) => e.modo === "continuidad", texto });
+/** Continuidad se mide sin tensión y con la pieza fuera: quitarla (tocarla o arrastrarla) es parte del flujo. */
+const QUITA: Paso = { titulo: "Quita la pieza", objetivo: "tension", hecho: (e) => e.modo === "continuidad" && !e.elegida, texto: "Toca Continuidad y quita la pieza (tócala): se mide sin tensión." };
 
 export interface Mecanica {
   id: string;
@@ -90,8 +92,9 @@ export const MECANICAS: Mecanica[] = [
     { titulo: "Arrastra una", objetivo: "gaveta", pide: arrastra("1000"), hecho: elige("1000"), texto: "Arrastra 1000 Ω al hueco: solo la coloca, aún no cuenta." },
     MODO_TENSION("Antes de validar puedes medir gratis. Toca Tensión."),
     { titulo: "Mide", objetivo: "pieza", hecho: MIDE_TENSION, texto: "Toca la pieza del centro: la aguja marca cuánta batería cae en ella." },
-    { titulo: "Continuidad", objetivo: "tension", hecho: MIDE_CONT, texto: "Toca Continuidad y luego la pieza: dice si está rota o sana." },
-    { titulo: "Según la lectura", objetivo: "gaveta", pide: arrastra("470"), hecho: elige("470"), texto: "No está rota, pero 1000 Ω frena de más. Arrastra 470 Ω." },
+    QUITA,
+    { titulo: "Mide el hueco", objetivo: "pieza", hecho: MIDE_CONT, texto: "Toca el hueco vacío: sin pieza no pasa. Así se mide, sin tensión." },
+    { titulo: "Según la lectura", objetivo: "gaveta", pide: arrastra("470"), hecho: elige("470"), texto: "1000 Ω frena de más. Arrastra 470 Ω." },
     VALIDA("Pulsa CHECK para validar: verde = bien.", SIN_FALLA),
     CHECK,
     LISTO("Medir no gasta intentos: úsalo cuando dudes de una pieza."),
@@ -108,7 +111,7 @@ export const MECANICAS: Mecanica[] = [
   ] },
   { id: "cadena", nombre: "Pieza muerta", ensena: "Con Continuidad se halla la pieza abierta de una cadena y se cambia por un repuesto.", nivel: 2, semilla: 1619, pod: 3, circuito: "cadena", pasos: [
     MODO_CONT("Una pieza está muerta por dentro. Toca Continuidad."),
-    { titulo: "Mide una", objetivo: "cadena", hecho: MIDE_CONT, texto: "Toca una pieza: «Pasa» = sana. Medir no gasta intentos." },
+    { titulo: "Mide una", objetivo: "cadena", hecho: MIDE_CONT, texto: "Toca una pieza: «Pasa» = sana. Sin repuesto en ese hueco." },
     { titulo: "Halla la muerta", objetivo: "cadena", hecho: (e) => !!e.localizada, texto: "Sigue midiendo: la que dice «No pasa» queda en rojo con «?»." },
     { titulo: "Cambia la pieza", objetivo: "cadena", pide: arrastra("r470"), hecho: (e) => !!e.elegida?.endsWith(":r470"), texto: "Conserva su valor impreso: 470 Ω. Arrastra el mismo repuesto al hueco." },
     VALIDA("Pulsa CHECK para validar: verde = bien.", SIN_FALLA),
@@ -134,8 +137,8 @@ export const MECANICAS: Mecanica[] = [
   { id: "combinar", nombre: "Combinar", ensena: "Dos resistencias en serie suman; en paralelo se reparten.", nivel: 2, semilla: 136, pod: 3, circuito: "combinar", pasos: [
     { titulo: "Una sola", objetivo: "gaveta", pide: arrastra("una"), hecho: elige("una"), texto: "Dos resistencias de 220 Ω. Arrastra «Una sola»: aún no cuenta." },
     VALIDA("Pulsa CHECK: con una sola el LED se quema. Espera.", QUEMADO),
-    MODO_CONT("Toca Continuidad: además de pasar o no, lee los ohmios de la pieza."),
-    { titulo: "Mide", objetivo: "pieza", hecho: MIDE_CONT, texto: "Toca la pieza: lee 220 Ω. Falta frenar más." },
+    QUITA,
+    { titulo: "Mide", objetivo: "pieza", hecho: MIDE_CONT, texto: "Toca el hueco: lee la pieza suelta, 220 Ω. Falta frenar más." },
     { titulo: "En paralelo", objetivo: "gaveta", pide: arrastra("paralelo"), hecho: elige("paralelo"), texto: "En paralelo bajan a 110 Ω: frena menos. Arrastra «En paralelo»." },
     { titulo: "En serie", objetivo: "gaveta", pide: arrastra("serie"), hecho: elige("serie"), texto: "En serie se suman: 440 Ω, frena más. Arrastra «En serie»." },
     VALIDA("Pulsa CHECK para validar: verde = bien.", SIN_FALLA),
@@ -248,3 +251,51 @@ export function permite(t: Tutorial | null, a: Accion, e?: EstadoTut): string | 
 }
 export const saltar = (t: Tutorial): Tutorial => ({ ...t, activo: false });
 export const textoPaso = (t: Tutorial) => `${(mecanica(t.id)?.nombre ?? t.id).toUpperCase()} ${t.i + 1}/${t.pasos.length} ${actual(t).titulo}`;
+
+// --- Guía en partida: aviso corto y NO bloqueante la primera vez que el jugador ve una mecánica (y, dentro, la medida que estrena) ---
+/** Clave de mecánica de una zona: en nivel 3 las resistencias se leen por bandas («colores»); si no, la familia. */
+type ClaveMec = Circuito | "colores";
+const claveMec = (c: Circuito, nivel?: number): ClaveMec => (nivel === 3 && esResistencia(c) ? "colores" : c);
+/** Tutorial de Aprender que enseña la misma mecánica (completarlo cuenta como visto). */
+const APRENDER: Partial<Record<ClaveMec, string>> = { led: "resistencia", fusible: "fusible", cadena: "cadena", luces: "placa", interruptor: "turbina", combinar: "combinar", divisor: "divisor", protegido: "protegido", fusible3: "fusibles", placa3: "placaExperta", colores: "colores" };
+export type MedidaGuia = "tension" | "continuidad";
+/** Medida que estrena cada familia. */
+export const MEDIDA_DE: Record<Circuito, MedidaGuia> = { led: "tension", cabina: "tension", protegido: "tension", divisor: "tension", combinar: "tension", luces: "tension", interruptor: "tension", placa3: "tension",
+  fusible: "continuidad", fusible3: "continuidad", abierto: "continuidad", invertido: "continuidad", cadena: "continuidad" };
+/** Tutoriales de Aprender que ya enseñan cada medida. */
+const APRENDER_MEDIDA: Record<MedidaGuia, string[]> = { tension: ["multimetro", "fusible", "placa", "divisor", "protegido", "placaExperta"], continuidad: ["multimetro", "cadena", "combinar"] };
+/** Textos de la guía (2 pasos por mecánica): cómo funciona la mecánica, nunca la respuesta del pod. */
+const GUIA_MEC: Record<ClaveMec, { titulo: string; pasos: string[] }> = {
+  led: { titulo: "Resistencia", pasos: ["Hueco rojo = falta la resistencia. Arrastra una: solo la coloca.", "Más Ω, más freno. CHECK valida: verde = bien, rojo = el LED se quema."] },
+  cabina: { titulo: "Cabina", pasos: ["Una resistencia frena la corriente de las luces de la cabina.", "Más Ω, más freno. Arrastra una al hueco rojo y pulsa CHECK."] },
+  protegido: { titulo: "Protegido", pasos: ["Diodo, LED y resistencia en serie se reparten la batería.", "Elige la resistencia que deja al LED su parte y pulsa CHECK."] },
+  divisor: { titulo: "Divisor", pasos: ["Dos resistencias en fila se reparten la tensión.", "R1 viene puesta: arrastra R2 (la de abajo) y pulsa CHECK."] },
+  combinar: { titulo: "Combinar", pasos: ["Dos resistencias: en serie suman, en paralelo bajan el total.", "Arrastra una forma de unirlas al hueco y pulsa CHECK."] },
+  luces: { titulo: "Placa", pasos: ["Esta zona usa una placa: arrastra cada pieza a su lugar.", "Une con cables al carril + y al carril −. Luego pulsa CHECK."] },
+  interruptor: { titulo: "Interruptor", pasos: ["Arrastra el motor y el interruptor a la placa.", "El interruptor va en serie con el motor. Luego pulsa CHECK."] },
+  fusible: { titulo: "Fusible", pasos: ["El fusible justo aguanta lo normal y corta la falla.", "A = lo que aguanta. Arrastra uno al hueco y pulsa CHECK."] },
+  fusible3: { titulo: "Fusibles", pasos: ["Se eligen por tamaño, marca (F rápido, T lento) y color.", "Elige el que aguanta el consumo normal y pulsa CHECK."] },
+  abierto: { titulo: "Cable roto", pasos: ["Un cable puede estar cortado: así la corriente no llega.", "Empalma el corte o déjalo como está, y pulsa CHECK."] },
+  invertido: { titulo: "LED girado", pasos: ["El LED solo deja pasar la corriente en un sentido.", "Gíralo o déjalo como está, y pulsa CHECK."] },
+  cadena: { titulo: "Pieza muerta", pasos: ["Una pieza de la cadena puede estar muerta por dentro.", "Hállala y arrastra encima un repuesto del mismo valor."] },
+  placa3: { titulo: "Placa experta", pasos: ["Lee el problema del globo: usa solo las piezas necesarias.", "Las pestañas son gavetas. Cada tira de 5 agujeros es un punto."] },
+  colores: { titulo: "Colores", pasos: ["Nivel Experto: las resistencias no traen su valor escrito.", "Bandas 1 y 2 = cifras, banda 3 = ceros: 1-0-00 = 1 kΩ."] },
+};
+const GUIA_MEDIDA = (m: MedidaGuia, c: Circuito) => m === "tension"
+  ? { titulo: "Medir tensión", pasos: ["Toca TENSIÓN en el multímetro: medir no gasta intentos.", "Luego toca una pieza: la aguja dice cuánta batería cae en ella."] }
+  : { titulo: "Medir continuidad", pasos: ["Toca CONTINUIDAD: dice si la corriente pasa por la pieza.",
+    c === "cadena" ? "En la cadena toca cada pieza: la que «No pasa» está muerta." : "Se mide sin tensión: QUITA la pieza (tócala) y mide el hueco o la pieza."] };
+
+export interface AvisoGuia { id: string; titulo: string; pasos: string[] }
+/** Ids que guarda la guía en Perfil.tutoriales: «mec-<clave>» y «med-<medida>». */
+export const idGuiaValido = (id: string) => /^mec-/.test(id) ? Object.hasOwn(GUIA_MEC, id.slice(4)) : /^med-/.test(id) ? Object.hasOwn(APRENDER_MEDIDA, id.slice(4)) : true;
+/**
+ * Avisos de la guía para la zona (familia `c`, nivel del pod) según lo ya visto, en orden: la mecánica nueva y, solo si es nueva,
+ * la medida que estrena si aún no se enseñó. Vacío = nada que mostrar. Aprender cuenta como visto.
+ */
+export function guiaPartida(c: Circuito, nivel: number | undefined, vistos: readonly string[]): AvisoGuia[] {
+  const k = claveMec(c, nivel), a = APRENDER[k];
+  if (vistos.includes(`mec-${k}`) || (a && vistos.includes(a))) return [];
+  const m = MEDIDA_DE[c], medida = vistos.includes(`med-${m}`) || APRENDER_MEDIDA[m].some((x) => vistos.includes(x)) ? [] : [{ id: `med-${m}`, ...GUIA_MEDIDA(m, c) }];
+  return [{ id: `mec-${k}`, ...GUIA_MEC[k] }, ...medida];
+}

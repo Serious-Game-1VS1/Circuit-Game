@@ -27,7 +27,7 @@ const SEMILLAS: Record<string, { circuito: string; volts?: number; r1?: number; 
 /** Un estado por paso (menos el último): el que confirma ese paso, con los contadores como los lleva el Taller. */
 const ESTADOS: Record<string, EstadoTut[]> = {
   resistencia: [e({ elegida: "1000" }), e({ elegida: "1000", aguja: "poco" }), e({ elegida: "100" }), e({ elegida: "100", quemado: true }), e({ elegida: "470" }), e({ elegida: "470", reparada: true }), e({ despachados: 1 })],
-  multimetro: [e({ elegida: "1000" }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "470" }), e({ elegida: "470", reparada: true }), e({ despachados: 1 })],
+  multimetro: [e({ elegida: "1000" }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "470" }), e({ elegida: "470", reparada: true }), e({ despachados: 1 })],
   fusible: [e({ elegida: "3" }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ elegida: "3", quemado: true }), e({ elegida: "1" }), e({ elegida: "1", reparada: true }), e({ despachados: 1 })],
   cadena: [e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ modo: "continuidad", medidas: 2, localizada: true }), e({ elegida: "3:r470" }), e({ elegida: "3:r470", reparada: true }), e({ despachados: 1 })],
   placa: [e({ falta: "cablear" }), e({ falta: null }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ falta: null, reparada: true }), e({ despachados: 1 })],

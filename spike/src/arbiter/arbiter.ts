@@ -1,5 +1,5 @@
 import { generar, generarOleada, mulberry32, nivelDePod, type Demo, type Perfil, type Pod, type ZonaPod } from "../engine/generador.js";
-import { medir } from "../engine/medir.js";
+import { QUITA_PIEZA, SIN_HUECO, medir, piezaPuesta } from "../engine/medir.js";
 import { evaluar, piezaValida } from "../engine/pods.js";
 import { ENUNCIADOS, type Plantilla } from "../engine/placa3.js";
 import {
@@ -404,9 +404,13 @@ export class Arbiter {
     if (this.phase !== "jugando") return reject("la partida no está en juego");
     const z = this.zonaDe(s, this.podAt(s.despachados), m.zone);
     const { pieza, modo, punto } = m;
-    if (!z || typeof pieza !== "string" || !piezaValida(z, pieza) || (modo !== "continuidad" && modo !== "tension") || typeof punto !== "string") {
+    // «ninguna» (hueco vacío) vale al medir continuidad en cualquier familia con gaveta; luces, interruptor y placa3 miden con su montaje puesto.
+    const vacia = pieza === "ninguna" && modo === "continuidad" && z !== undefined && !SIN_HUECO.includes(z.circuito);
+    if (!z || typeof pieza !== "string" || !(vacia || piezaValida(z, pieza)) || (modo !== "continuidad" && modo !== "tension") || typeof punto !== "string") {
       return reject("medida no válida");
     }
+    // Con la pieza puesta la continuidad no da lectura: rechazo sin coste, sin contar para la escala y sin información (solo depende de lo que mandó el cliente).
+    if (piezaPuesta(z, pieza, modo, punto, m.fuera === true)) return reject(QUITA_PIEZA);
     const ahora = this.now(), base = this.medirMs * this.medirFactor, n = s.medidas.get(z.zona) ?? 0;
     const medirMs = this.escalaMedir ? costeMedir(base, n) : base;
     if (ahora < s.medirLibre - MEDIR_TOLERANCIA_MS) return this.send(s.peer!, { t: "reject", seq, t0, reason: "el multímetro sigue midiendo", waitMs: 0 });

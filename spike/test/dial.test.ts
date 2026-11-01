@@ -9,7 +9,7 @@ const zonaVeredicto = (v: string): Dial => (v === "poco" || v === "correcto" ? v
 
 /**
  * Propiedad: en TODAS las familias, el color del multímetro (Medida.dial) de cada jugada coincide con el veredicto que daría CHECK,
- * en tensión y en continuidad y en cada punto medible. Única excepción física: el fusible de 1 A y el de 3 A leen igual con el consumo normal.
+ * en tensión y en cada punto medible; la continuidad (con la pieza fuera) nunca lleva dial. Única excepción física: el fusible de 1 A y el de 3 A leen igual con el consumo normal.
  */
 describe("dial del multímetro == veredicto del árbitro", () => {
   const PERFILES: Perfil[] = [1, 2, 3, "mixto"];
@@ -23,11 +23,9 @@ describe("dial del multímetro == veredicto del árbitro", () => {
           for (const z of pod.zonas.filter((x) => x.circuito !== "placa3")) { // placa3: su propiedad del dial está en placa3.test.ts
             for (const pieza of jugadas(z)) {
               const esperado = zonaVeredicto(evaluar(z, pieza));
-              // Cadena: la jugada es «hueco:repuesto» y solo el hueco juzga en continuidad; el resto de piezas del circuito juzgan en tensión.
               const puntos = Object.keys(montar(z, pieza).puntos);
-              for (const modo of ["tension", "continuidad"] as const) {
+              for (const modo of ["tension"] as const) {
                 for (const punto of puntos) {
-                  if (z.circuito === "cadena" && modo === "continuidad" && punto !== `t${pieza[0]}`) continue;
                   const m = medir(z, pieza, modo, punto)!;
                   total++; familias.set(z.circuito, (familias.get(z.circuito) ?? 0) + 1);
                   if (m.dial === undefined) { const k = `${z.circuito} ${pieza} A (esperado ${esperado})`; indistinguibles.set(k, (indistinguibles.get(k) ?? 0) + 1); continue; }
@@ -48,13 +46,29 @@ describe("dial del multímetro == veredicto del árbitro", () => {
     for (const k of indistinguibles.keys()) expect(k).toMatch(/^(fusible (1|3) A|fusible3 )/); // fusible3: sin cortar ni en la falla ni... el dial solo ve si corta con el consumo normal
   }, 120_000);
 
+  it("la continuidad NUNCA lleva dial (ni con la pieza fuera, ni suelta, ni en la cadena): no hay pieza puesta que juzgar", () => {
+    for (const perfil of PERFILES) {
+      for (let semilla = 0; semilla < 100; semilla++) {
+        for (const pod of generar(semilla, perfil)) {
+          for (const z of pod.zonas.filter((x) => x.circuito !== "placa3")) {
+            const puntos = Object.keys(montar(z, jugadas(z)[0]!).puntos);
+            for (const pieza of ["ninguna", ...jugadas(z)]) {
+              for (const punto of puntos) {
+                const m = medir(z, pieza, "continuidad", punto);
+                if (m) expect("dial" in m, `${z.circuito} ${pieza} ${punto}`).toBe(false);
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
   it("LED invertido y circuito abierto (no se sortean pero siguen en el catálogo): también coinciden", () => {
     for (const circuito of ["invertido", "abierto"] as const) {
       for (const volts of [3.7, 4.5, 9, 15]) {
         for (const pieza of PIEZAS[circuito]) {
-          for (const modo of ["tension", "continuidad"] as const) {
-            expect(medir({ circuito, volts }, pieza, modo, "pieza")!.dial, `${circuito} ${volts} V ${pieza} ${modo}`).toBe(zonaVeredicto(evaluar({ circuito, volts }, pieza)));
-          }
+          expect(medir({ circuito, volts }, pieza, "tension", "pieza")!.dial, `${circuito} ${volts} V ${pieza}`).toBe(zonaVeredicto(evaluar({ circuito, volts }, pieza)));
         }
       }
     }

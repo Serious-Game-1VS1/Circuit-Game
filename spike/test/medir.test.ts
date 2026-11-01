@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Arbiter } from "../src/arbiter/arbiter.js";
 import { generar } from "../src/engine/generador.js";
-import { medir } from "../src/engine/medir.js";
+import { medir, piezaPuesta } from "../src/engine/medir.js";
 import { PIEZAS } from "../src/engine/pods.js";
 import type { ServerMsg } from "../src/protocol.js";
 
@@ -29,8 +29,8 @@ describe("multímetro: solo lo que mediría un multímetro real", () => {
 
   it("lecturas con cifra: voltios exactos y ohmios de una resistencia (el corte se lee sin Ω)", () => {
     expect(medir({ circuito: "divisor", volts: 9, r1: 470 }, "220", "tension", "pieza")).toMatchObject({ voltios: 2.87 });
-    expect(medir({ circuito: "led", volts: 9 }, "470", "continuidad", "pieza")).toEqual({ pasa: true, ohmios: 470, dial: "correcto" });
-    expect(medir({ circuito: "abierto", volts: 9 }, "dejar", "continuidad", "pieza")).toEqual({ pasa: false, dial: "poco" });
+    expect(medir({ circuito: "led", volts: 9 }, "470", "continuidad", "pieza")).toEqual({ pasa: true, ohmios: 470 }); // la resistencia suelta: sin dial
+    expect(medir({ circuito: "abierto", volts: 9 }, "ninguna", "continuidad", "pieza")).toEqual({ pasa: false }); // el cable roto no pasa
   });
 
   it("continuidad con la batería desconectada: las piezas sanas pasan (el probador no funde fusibles)", () => {
@@ -44,10 +44,24 @@ describe("multímetro: solo lo que mediría un multímetro real", () => {
     }
   });
 
-  it("continuidad del LED girado: «no pasa» (polaridad); con el LED directo, pasa", () => {
-    const z = { circuito: "invertido" as const, volts: 9 };
-    expect(medir(z, "inversa", "continuidad", "carga1")).toMatchObject({ pasa: false });
-    expect(medir(z, "directa", "continuidad", "carga1")).toMatchObject({ pasa: true });
+  it("continuidad del LED girado (hueco vacío, tal como viene): «no pasa» por la polaridad", () => {
+    expect(medir({ circuito: "invertido", volts: 9 }, "ninguna", "continuidad", "carga1")).toEqual({ pasa: false });
+  });
+
+  it("continuidad con el hueco vacío: la carga aislada pasa, el hueco no, y nunca hay dial (no hay pieza puesta)", () => {
+    for (const circuito of ["led", "cabina", "protegido", "divisor", "combinar", "fusible"] as const) {
+      const z = { circuito, volts: 9, r1: 470 };
+      expect(medir(z, "ninguna", "continuidad", "pieza"), circuito).toEqual({ pasa: false });
+      expect(medir(z, "ninguna", "continuidad", "carga1"), circuito).toMatchObject({ pasa: true });
+    }
+  });
+
+  it("piezaPuesta: con la pieza puesta no hay lectura; luces, interruptor y placa3 quedan como estaban", () => {
+    const led = { circuito: "led" as const, volts: 9 };
+    expect(piezaPuesta(led, "470", "continuidad", "carga1", false)).toBe(true);
+    expect(piezaPuesta(led, "ninguna", "continuidad", "carga1", true)).toBe(false);
+    expect(piezaPuesta(led, "470", "tension", "carga1", false)).toBe(false);
+    expect(piezaPuesta({ circuito: "luces", volts: 9 }, "serie", "continuidad", "carga1", false)).toBe(false);
   });
 
   it("continuidad del fusible: los 3 (0,5 / 1 / 3 A) pasan siempre; el motor nunca devuelve «cortado»", () => {
@@ -96,6 +110,25 @@ describe("árbitro: mensaje medir", () => {
     arb.handle("p1", { t: "test", seq: 99, t0: 0, zone: z.zona, pieza: z.solucion });
     expect(out.filter((o) => o.m.t === "result").at(-1)!.m).toMatchObject({ t: "result", seq: 99, veredicto: "correcto", waitMs: 0 });
     expect(arb.toCsv().split("\r\n").filter((l) => l.startsWith("A;")).length).toBe(1);
+  });
+
+  it("continuidad con la pieza puesta: rechazo claro, sin coste, sin contar para la escala y sin información", () => {
+    const { arb, out, z, paso } = setup();
+    const ultimoMsg = () => out.at(-1)!.m;
+    arb.handle("p1", { t: "medir", seq: 1, t0: 0, zone: z.zona, pieza: z.opciones[0], modo: "continuidad", punto: "pieza" });
+    expect(ultimoMsg()).toEqual({ t: "reject", seq: 1, t0: 0, reason: "Quita la pieza para medir continuidad.", waitMs: 0 });
+    // no cobró: la siguiente medida de la misma zona es inmediata y a coste base (la escala no avanzó)
+    arb.handle("p1", { t: "medir", seq: 2, t0: 0, zone: z.zona, pieza: "ninguna", modo: "continuidad", punto: "carga1", fuera: true });
+    expect(ultimoMsg()).toMatchObject({ t: "medida", seq: 2, pasa: true });
+    expect(ultimoMsg()).not.toHaveProperty("dial");
+    paso(); paso(); paso();
+    // la pieza suelta (quitada): solo sus ohmios, nunca si es la correcta
+    arb.handle("p1", { t: "medir", seq: 3, t0: 0, zone: z.zona, pieza: z.opciones[0], modo: "continuidad", punto: "pieza", fuera: true });
+    expect(ultimoMsg()).toMatchObject({ t: "medida", seq: 3, pasa: true, ohmios: Number(z.opciones[0]) });
+    // «ninguna» no vale con tensión (se necesita la pieza puesta)
+    paso(); paso(); paso(); paso();
+    arb.handle("p1", { t: "medir", seq: 4, t0: 0, zone: z.zona, pieza: "ninguna", modo: "tension", punto: "carga1" });
+    expect(ultimoMsg()).toMatchObject({ t: "reject", reason: "medida no válida" });
   });
 
   it("rechaza zona, pieza, modo o punto que no existen", () => {

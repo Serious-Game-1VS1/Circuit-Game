@@ -197,9 +197,9 @@ export class Net {
   }
 
   /** Multímetro: no es «Probar» ni penaliza. Devuelve el seq para reconocer su Medida. */
-  public medir(zone: number, pieza: string, modo: "continuidad" | "tension", punto: string): number {
+  public medir(zone: number, pieza: string, modo: "continuidad" | "tension", punto: string, fuera = false): number {
     if (this.segunda?.zona === zone) this.segunda.medido = true;
-    this.enviar({ t: "medir", seq: ++this.seq, t0: this.getTime(), zone, pieza, modo, punto });
+    this.enviar({ t: "medir", seq: ++this.seq, t0: this.getTime(), zone, pieza, modo, punto, ...(fuera && { fuera }) });
     return this.seq;
   }
 
@@ -314,14 +314,14 @@ export const relayLocal = (location: LocationLike): LocalTransport =>
   );
 
 export { Net as NetManager };
-/** Solo las salas a las que se puede entrar, las más llenas primero (luego por código). */
-export function salasAbiertas(salas: SalaInfo[]): SalaInfo[] {
-  return salas.filter((s) => s.estado === "esperando").sort((a, b) => b.jugadores - a.jugadores || a.codigo.localeCompare(b.codigo));
+/** Solo las salas a las que se puede entrar (de `nivel`, si se da), las más llenas primero (luego por código). */
+export function salasAbiertas(salas: SalaInfo[], nivel?: SalaInfo["nivel"]): SalaInfo[] {
+  return salas.filter((s) => s.estado === "esperando" && (nivel === undefined || s.nivel === nivel)).sort((a, b) => b.jugadores - a.jugadores || a.codigo.localeCompare(b.codigo));
 }
 export const textoSala = (s: SalaInfo) => `${s.codigo}  ${s.nivel === 3 ? "EXPERTO" : s.nivel === "mixto" ? "MIXTO" : `NIVEL ${s.nivel}`}  ${s.jugadores}/${s.max}`;
 
-/** Partida rápida: la sala «esperando» con más jugadores (empate: código menor). El nivel lo fija el servidor, no cuenta. */
-export const elegirSalaRapida = (salas: SalaInfo[]): SalaInfo | null => salasAbiertas(salas)[0] ?? null;
+/** Partida rápida: la sala «esperando» con más jugadores (empate: código menor). Con `nivel`, solo las de ese nivel. */
+export const elegirSalaRapida = (salas: SalaInfo[], nivel?: SalaInfo["nivel"]): SalaInfo | null => salasAbiertas(salas, nivel)[0] ?? null;
 
 /** Solo A-Z0-9, mayúsculas, máximo 6. */
 export const sanearCodigo = (c: string) => c.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);

@@ -23,7 +23,7 @@ import { Tablero3 } from "./tablero3";
 import { codificar, faltaPlaca3, VACIO, type Montaje3 } from "./placa3";
 import { QUEMADAS_OLEADAS } from "../../spike/src/arbiter/penalties";
 import { conDoble, etiquetas, MEJORAS, medirMs, ofrecer } from "./mejoras";
-import { mecanica, actual, avanzar, esFin, iniciar, permite, siguiente, textoPaso, type EstadoTut, type Objetivo, type Tutorial } from "./tutorial";
+import { mecanica, actual, avanzar, esFin, guiaPartida, iniciar, permite, siguiente, textoPaso, type EstadoTut, type Objetivo, type Tutorial } from "./tutorial";
 import { huecosCadena, montajeCarga, montajeOpcion, montajePieza, cargas, cola, estadoZona, etiquetaCarga, nivelCarga, pestanasArte, podDe, sprite, spriteBateria, spriteCadena, spriteCarga, spritePieza, spriteTarjeta } from "./sprites";
 import { AJUSTES_GAVETA, ocultaValor, botonesGaveta, CARTEL, conHueco, FRENA, GAVETA, LEYENDA_ZONAS, NOMBRE_ZONA, PISTA_DEMO, RETO, retrasoCola, textoOpcion, textoPiezaCadena, textoRotulo, textoVolts, type Aguja } from "./vista";
 
@@ -50,6 +50,8 @@ export class Taller extends Phaser.Scene {
   private dibujarCables!: (hueco: boolean) => void;
   /** Pieza elegida por zona, con clave "pod-zona": la gaveta empieza sin elección. */
   private elegidas = new Map<string, string>();
+  /** Pieza que se acaba de quitar del hueco (vuelve a la gaveta): con Continuidad se mide suelta; sin penalización. */
+  private retiradas = new Map<string, string>();
   /** Última elección mandada a probar por zona (como lastPieza del árbitro): igual a la actual = «sin cambios». */
   private probadas = new Map<string, string>();
   /** Cables de la placa por "pod-zona" (Cabina y Turbina). */
@@ -157,7 +159,11 @@ export class Taller extends Phaser.Scene {
   private salirB: Phaser.GameObjects.GameObject[] = [];
   /** Alto táctil mínimo en unidades del lienzo para que valga 44 px en pantalla; ver ajustarGolpes(). */
   private golpe = 48;
-  private guia!: { caja: Bloque; titulo: Letras; texto: Letras; esquema: Phaser.GameObjects.Container; saltar: BotonGuia; fin: BotonGuia[]; zonas: Phaser.GameObjects.Zone[]; resaltes: Phaser.GameObjects.NineSlice[]; chispa: Chispa };
+  private guia!: { caja: Bloque; titulo: Letras; texto: Letras; esquema: Phaser.GameObjects.Container; saltar: BotonGuia; fin: BotonGuia[]; zonas: Phaser.GameObjects.Zone[]; resaltes: Phaser.GameObjects.NineSlice[]; chispa: Chispa;
+    partida: { caja: Bloque; titulo: Letras; texto: Letras } };
+  /** Guía en partida abierta (pasos aplanados de sus avisos) e ids ya vistos por el perfil (Perfil.tutoriales). */
+  private guiaP: { pasos: { titulo: string; texto: string }[]; i: number } | null = null;
+  private guiaVistos: string[] = [];
   /** Multímetro: llamada «toca un modo para encender» y ayuda de uso; `apagado` = sin modo ni veredicto (los botones de modo parpadean suave). */
   private multi!: { cta: Letras; ayuda: Bloque; prox: Letras };
   private apagado = false;
@@ -217,11 +223,17 @@ export class Taller extends Phaser.Scene {
     const z = this.zonaActual(), modo = this.modo;
     if (!z || !modo) return;
     if (this.midiendo) return this.avisar(AYUDA_USO.sigue); // misma regla que el árbitro («el multímetro sigue midiendo»); la animación sigue sin reiniciarse
-    const pieza = this.eleccion(z) ?? (z.circuito === "cadena" ? "ninguna" : z.circuito === "placa3" ? "|" : undefined); // placa experta vacía: se mide igual // cadena: sin repuesto puesto se mide la cadena tal cual
+    const puesta = this.eleccion(z);
+    // Continuidad: sin tensión y con la pieza fuera (placa de cables y protoboard miden con su montaje). Cadena: el hueco no puede llevar repuesto.
+    const aislar = modo === "continuidad" && !conPlaca(z.circuito) && z.circuito !== "placa3";
+    if (aislar && puesta && (z.circuito !== "cadena" || punto === `t${puesta[0]}`)) return this.avisar(TM.quitaPieza); // el árbitro también lo rechaza, pero sin ir a la red
+    const fuera = aislar && z.circuito !== "cadena";
+    const pieza = fuera ? (punto === "pieza" ? this.retiradas.get(this.clave()) : undefined) ?? "ninguna"
+      : puesta ?? (z.circuito === "cadena" ? "ninguna" : z.circuito === "placa3" ? "|" : undefined); // placa experta vacía: se mide igual // cadena: sin repuesto puesto se mide la cadena tal cual
     if (!pieza) return this.avisar(conPlaca(z.circuito) ? TM.sinMontaje : TM.sinEleccion);
     this.lectura = undefined;
     const p = this.net.estado, ms = p.proxMedir?.[z.zona] ?? p.medirBase;
-    this.midiendo = { seq: this.net.medir(z.zona, pieza, modo, punto), desde: Date.now(), punto, ...(ms !== undefined && { ms }) };
+    this.midiendo = { seq: this.net.medir(z.zona, pieza, modo, punto, fuera), desde: Date.now(), punto, ...(ms !== undefined && { ms }) };
   }
   /** Cartel de primera vez (máx. 3 veces por alias): flecha que rebota hacia el multímetro y una frase corta. Se retira solo, al elegir un modo o al cerrar la escena. */
   private mostrarCartelMulti(ms: number) {
@@ -279,6 +291,7 @@ export class Taller extends Phaser.Scene {
     const z = this.zonaActual(), k = this.clave();
     if (!z || z.reparada || !this.elegidas.has(k)) return;
     sonar("clic");
+    this.retiradas.set(k, this.elegidas.get(k)!);
     this.elegidas.delete(k); this.limpiarMedida();
     this.pintar(this.net.estado);
   }
@@ -438,15 +451,18 @@ export class Taller extends Phaser.Scene {
       return k < 0 ? null : k + 1;
     };
     // Pieza ya puesta: se ARRASTRA fuera del hueco (vuelve a la gaveta) o, con el multímetro apagado, se TOCA para devolverla. Nunca queda pegada.
-    const fantasmaPuesta = () => this.fantasma(this.zonaActual()!.circuito, this.eleccion(this.zonaActual()!) ?? "");
+    const fantasmaPuesta = () => { const z = this.zonaActual()!; return this.fantasma(z.circuito, this.eleccion(z) ?? this.retiradas.get(this.clave()) ?? z.opciones[0]!); };
     const quitable = (hueco?: number) => () => {
       const z = this.zonaActual();
       return !!z && !z.reparada && !conPlaca(z.circuito) && !!this.elegidas.get(this.clave()) && (hueco ? z.circuito === "cadena" && Number(this.elegidas.get(this.clave())![0]) === hueco : z.circuito !== "cadena");
     };
     arrastrable(this, zonasMedir[0]!, {
-      puede: quitable(), fantasma: fantasmaPuesta, sobre: (p) => void resalteRanura.setVisible(!!p).setAlpha(p && enRanura(p) ? 1 : 0.45),
+      // Hueco vacío + Continuidad: el toque mide el hueco (sin pieza no hay nada que arrastrar).
+      puede: () => quitable()() || (this.modo === "continuidad" && !conPlaca(this.zonaActual()?.circuito ?? "led") && this.zonaActual()?.circuito !== "cadena" && this.zonaActual()?.circuito !== "placa3" && !this.zonaActual()?.reparada),
+      fantasma: fantasmaPuesta, sobre: (p) => void resalteRanura.setVisible(!!p && !!this.elegidas.get(this.clave())).setAlpha(p && enRanura(p) ? 1 : 0.45),
       soltar: (p) => { if (enRanura(p)) return false; this.devolver(); return true; },
-      tocar: () => { if (this.modo) this.medirPieza("pieza"); else this.devolver(); },
+      // Continuidad con la pieza puesta: tocarla la quita (como en la vida real, se aísla antes de medir).
+      tocar: () => { if (this.modo === "continuidad" && this.elegidas.get(this.clave())) { this.devolver(); this.avisar(TM.quitada); } else if (this.modo) this.medirPieza("pieza"); else this.devolver(); },
     });
     huecos.forEach((h, i) => arrastrable(this, h, {
       // Con el multímetro encendido el toque mide aunque aún no haya repuesto puesto (sin esto no se podía localizar la pieza muerta).
@@ -455,7 +471,9 @@ export class Taller extends Phaser.Scene {
       tocar: () => {
         const z = this.zonaActual();
         if (z?.circuito !== "cadena" || z.reparada) return;
-        if (this.modo) this.medir(`t${i + 1}`); else if (this.elegidas.get(this.clave())?.[0] === String(i + 1)) this.devolver(); else this.avisar(TM.ayuda);
+        const aqui = this.elegidas.get(this.clave())?.[0] === String(i + 1);
+        if (this.modo === "continuidad" && aqui) { this.devolver(); this.avisar(TM.quitada); } // el repuesto de ese hueco se quita para medirlo
+        else if (this.modo) this.medir(`t${i + 1}`); else if (aqui) this.devolver(); else this.avisar(TM.ayuda);
       },
     }));
     const opciones = [0, 1, 2, 3].map((i) => {
@@ -471,6 +489,7 @@ export class Taller extends Phaser.Scene {
         sonar("elegir");
         if (this.elegidas.get(this.clave()) !== jugada) this.limpiarMedida();
         this.elegidas.set(this.clave(), jugada);
+        this.retiradas.delete(this.clave());
         this.pintar(net.estado); return true;
       };
       arrastrable(this, zona, {
@@ -546,6 +565,7 @@ export class Taller extends Phaser.Scene {
     this.despachoHasta = 0; this.puertaViva = null; this.puertasVistas = 0; this.puertaRacha = 0; this.puertaSemilla = Math.floor(Math.random() * 2 ** 32);
     this.intento = false;
     this.marcado = false;
+    this.guiaP = null; this.guiaVistos = cargarPerfil(this.aliasPerfil()).tutoriales; this.pintarGuiaPartida();
     this.sucio = false;
     this.racha = 0;
     this.reparadasVistas = net.estado.pod?.zonas.filter((z) => z.reparada).length ?? 0;
@@ -559,7 +579,7 @@ export class Taller extends Phaser.Scene {
     let almacen: Storage | null = null;
     try { almacen = localStorage; } catch { /* sin almacenamiento: sin ayuda sola */ }
     if (!this.tut?.activo && ayudaPrimerasVeces(this.aliasPerfil(), almacen)) {
-      window.setTimeout(() => { if (this.chispa.cont.active) { this.chispa.decir(AYUDA_USO.chispa, 7000); this.chispaHasta = Date.now() + 7000; this.mostrarCartelMulti(7000); } }, 1200);
+      window.setTimeout(() => { if (this.chispa.cont.active && !this.guiaP) { /* la guía de mecánica nueva ya enseña a medir */ this.chispa.decir(AYUDA_USO.chispa, 7000); this.chispaHasta = Date.now() + 7000; this.mostrarCartelMulti(7000); } }, 1200);
     }
   }
 
@@ -643,6 +663,7 @@ export class Taller extends Phaser.Scene {
     }
     if (this.tut && !this.marcado && p.despachados > 0) { this.marcado = true; guardarPerfil(marcarTutorial(cargarPerfil(this.aliasPerfil()), this.tut.id)); }
     this.pintarGuia(placa);
+    this.revisarGuiaPartida(p, z);
     if (z) this.pintarSenal(this.acabo(p) ? null : this.objetivoSenal(p, z, placa), placa, !!this.tut?.activo && actual(this.tut).titulo === "Continuidad"); // el paso del tutorial cambia aquí, no en pintar()
     const ver = !!z && tarjetaVisible(p, z.zona, ahora);
     if (ver !== this.ui.tarjeta.visible && z) {
@@ -989,7 +1010,50 @@ export class Taller extends Phaser.Scene {
     caja.add([marco(this, 0, 0, "panel_oscuro", 328, 120), titulo, texto, esquema, ...saltarB.partes, ...finB.flatMap((b) => b.partes)]);
     const resaltes = [0, 1].map(() => marco(this, 0, 0, "recuadro_resaltado", 100, 100).setVisible(false).setDepth(890));
     this.tweens.add({ targets: resaltes, alpha: 0.35, duration: 500, yoyo: true, repeat: -1 });
-    this.guia = { caja, titulo, texto, esquema, saltar: saltarB, fin: finB, resaltes, zonas: [saltarB, ...finB].map((b) => b.partes[2]) as Phaser.GameObjects.Zone[], chispa: this.chispa };
+    // Guía en partida (mecánica nueva): misma caja y sitio que el tutorial, sin bloquear nada; solo sus dos botones reciben toques.
+    const pc = this.add.container(0, 0).setVisible(false).setDepth(900);
+    const pTitulo = letras(this, -150, -52, "", 2, PISTA), pTexto = letras(this, -150, -32, "", 2).setMaxWidth(300);
+    const pSaltar = boton(-84, "boton_secundario", 0xffffff, () => this.cerrarGuiaPartida()), pOk = boton(84, "boton_primario", OSCURO, () => this.siguienteGuiaPartida());
+    pSaltar.t.setText("SALTAR"); pOk.t.setText("ENTENDIDO");
+    pc.add([marco(this, 0, 0, "panel_oscuro", 328, 120), pTitulo, pTexto, ...pSaltar.partes, ...pOk.partes]);
+    this.guia = { caja, titulo, texto, esquema, saltar: saltarB, fin: finB, resaltes, zonas: [saltarB, ...finB, pSaltar, pOk].map((b) => b.partes[2]) as Phaser.GameObjects.Zone[], chispa: this.chispa,
+      partida: { caja: pc, titulo: pTitulo, texto: pTexto } };
+  }
+
+  /** Guía en partida: si la zona a la vista estrena mecánica (o medida) para este perfil, la abre. Nunca en el tutorial de Aprender. */
+  private revisarGuiaPartida(p: Pantalla, z: ZonaView | undefined) {
+    if (this.guiaP || this.net.tutorial || !z || z.reparada) return;
+    const avisos = guiaPartida(z.circuito, p.pod?.nivel, this.guiaVistos);
+    if (!avisos.length) return;
+    this.guiaP = { i: 0, pasos: avisos.flatMap((a) => a.pasos.map((texto) => ({ titulo: a.titulo, texto }))) };
+    // Vista al abrirse (no al cerrar): si la partida acaba con la guía abierta tampoco se repite.
+    const perfil = avisos.reduce((q, a) => marcarTutorial(q, a.id), cargarPerfil(this.aliasPerfil()));
+    guardarPerfil(perfil);
+    this.guiaVistos = perfil.tutoriales;
+    this.chispa.poner("senalando"); this.chispaHasta = Infinity; // pintarChispa no le cambia la cara mientras la guía está abierta
+    this.pintarGuiaPartida();
+  }
+  private pintarGuiaPartida() {
+    const g = this.guia.partida, s = this.guiaP, { width, height } = this.scale.gameSize;
+    g.caja.setVisible(!!s);
+    this.leyenda.setVisible(!s && !this.tut?.activo);
+    if (!s) return;
+    const paso = s.pasos[s.i]!;
+    g.titulo.setText(`NUEVO: ${paso.titulo.toUpperCase()} ${s.i + 1}/${s.pasos.length}`);
+    g.texto.setText(paso.texto);
+    g.caja.setScale(width <= height ? 0.8 : 1).setPosition(width / 2, width <= height ? 340 : 780); // mismo sitio que la caja del tutorial: deja libres gaveta y CHECK
+  }
+  private siguienteGuiaPartida() {
+    const s = this.guiaP;
+    if (!s) return;
+    if (s.i < s.pasos.length - 1) { s.i++; this.pintarGuiaPartida(); } else this.cerrarGuiaPartida();
+  }
+  /** ENTENDIDO en el último paso o SALTAR: un toque y se cierra (ya quedó guardada como vista al abrirse). */
+  private cerrarGuiaPartida() {
+    if (!this.guiaP) return;
+    this.guiaP = null;
+    this.chispaHasta = 0;
+    this.pintarGuiaPartida();
   }
 
   /** Qué señala Chispa. Tutorial: el objetivo del paso. Práctica: lo siguiente por hacer. Partidas (bot, 1v1, Oleadas): nada (sin pistas: justicia entre jugadores). */

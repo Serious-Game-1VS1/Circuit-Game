@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Arbiter } from "../src/arbiter/arbiter.js";
 import { generar, validarPartida, validarZona, type ZonaPod } from "../src/engine/generador.js";
-import { medir } from "../src/engine/medir.js";
+import { medir, piezaPuesta } from "../src/engine/medir.js";
 import { evaluar, jugadas, piezaValida } from "../src/engine/pods.js";
 import type { ServerMsg } from "../src/protocol.js";
 
@@ -35,9 +35,12 @@ describe("cadena: la pieza muerta (nivel 2)", () => {
   it("continuidad por tramo localiza la muerta sin dar la solución; con el repuesto puesto ya pasa", () => {
     const lee = (pieza: string) => [1, 2, 3, 4].map((i) => (medir(Z, pieza, "continuidad", `t${i}`) as { pasa: boolean }).pasa);
     expect(lee("ninguna")).toEqual([true, true, false, true]);
-    expect(lee("3:r470")).toEqual([true, true, true, true]);
+    expect(lee("3:r470")).toEqual([true, true, true, true]); // (motor) el repuesto cierra el corte; el árbitro ya no mide el hueco con repuesto puesto
+    expect(piezaPuesta(Z, "3:r470", "continuidad", "t3", false)).toBe(true);
+    expect(piezaPuesta(Z, "3:r470", "continuidad", "t2", false)).toBe(false); // otro hueco: pieza original, línea sin batería
+    expect(piezaPuesta(Z, "ninguna", "continuidad", "t3", false)).toBe(false);
     expect(medir(Z, "ninguna", "continuidad", "t2")).toEqual({ pasa: true }); // el LED bien puesto deja pasar
-    expect(medir(Z, "ninguna", "continuidad", "t3")).toEqual({ pasa: false, dial: "poco" }); // «abierto»: sin Ω (no dice el valor de la muerta)
+    expect(medir(Z, "ninguna", "continuidad", "t3")).toEqual({ pasa: false }); // «abierto»: sin Ω (no dice el valor de la muerta)
     expect(medir(Z, "ninguna", "continuidad", "t5")).toBeNull();
     // Con tensión no se marca nada en el cliente (con el LED aguas abajo el corte no siempre lee «toda»); solo la continuidad localiza.
     expect(medir(Z, "ninguna", "tension", "t1")).toMatchObject({ tension: "nada" });
@@ -100,6 +103,10 @@ describe("cadena: la pieza muerta (nivel 2)", () => {
     expect(JSON.stringify(ultimo("medida"))).not.toMatch(/correcto|solucion|amps/);
     arb.handle("p1", { t: "medir", seq: ++seq, t0: 0, zone: vista.zona, pieza: "9:led", modo: "continuidad", punto: "t1" });
     expect(ultimo("reject")).toMatchObject({ reason: "medida no válida" });
+    // Repuesto puesto en el hueco medido: la continuidad no lee (sin coste); en otro hueco, sí.
+    t += 1000; arb.handle("p1", { t: "medir", seq: ++seq, t0: 0, zone: vista.zona, pieza: `${real.muerta}:${vista.opciones[0]}`, modo: "continuidad", punto: `t${real.muerta}` });
+    expect(ultimo("reject")).toMatchObject({ reason: "Quita la pieza para medir continuidad.", waitMs: 0 });
+    expect(medida(vista.zona, `t${(real.muerta! % n) + 1}`, `${real.muerta}:${vista.opciones[0]}`)).toMatchObject({ t: "medida", pasa: true });
     // Pieza inválida al probar.
     arb.handle("p1", { t: "test", seq: ++seq, t0: 0, zone: vista.zona, pieza: "led" });
     expect(ultimo("reject")).toMatchObject({ reason: "pieza no válida" });

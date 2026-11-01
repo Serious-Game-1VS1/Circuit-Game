@@ -103,12 +103,11 @@ describe("perfil: desbloqueo del nivel 3", () => {
     expect(cambiarNivel(p, 2)).toBe(3);
     expect(textoNivel(p, 3)).toContain("EXPERTO");
   });
-  it("con el nivel 3 cerrado, el selector cae al 2 (o al 1) y avisa", () => {
-    const p2 = { ...perfilNuevo("a"), nivelDesbloqueado: 2 as const };
-    expect(nivelBotElegido(p2, "3")).toBe(2);
-    expect(nivelElegido(p2, 3)).toBe(2);
-    expect(textoNivel(p2, 2)).toContain("completa el nivel 2");
-    expect(nivelBotElegido(perfilNuevo("a"), "3")).toBe(1);
+  it("con el perfil en nivel 1, igual se puede elegir 2, mixto y 3", () => {
+    const p = perfilNuevo("a");
+    expect(nivelBotElegido(p, "3")).toBe(3);
+    expect(nivelElegido(p, 3)).toBe(3);
+    expect(textoNivel(p, 2)).not.toContain("completa");
   });
   it("etiquetas de nivel en menú y lista de salas", () => {
     expect([1, 2, 3].map((n) => etiquetaNivel(n as 1 | 2 | 3))).toEqual(["NIVEL 1", "NIVEL 2", "EXPERTO"]);
