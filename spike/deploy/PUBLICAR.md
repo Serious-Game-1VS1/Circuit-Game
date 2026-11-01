@@ -292,3 +292,13 @@ El árbitro mantiene una sala libre por nivel (mixto, 1, 2 y 3) hasta `MAX_SALAS
 Restaurar:
 - Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v6 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
 - Cliente: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v6-anterior`; sin `arte/`). Alternativa: reconstruir desde `a8e9ec0` y `swa deploy`.
+
+## Despliegue v7 (1-nov-2026, commit c9ef25c)
+
+Cliente primero (SWA `circuitsync-juego`, bundle `index-DPSJDzzl.js`, antes `index-B3uuH4Pz.js`; `dist/version.json` con commit `c9ef25c` y protocolo 2) y luego árbitro (`src/` y `deploy/` reemplazados, `instalar.sh` ejecutado como en v6; sala libre por nivel mixto, 1, 2 y 3 en Photon us). Cambios: botón «Salir» en el HUD de la partida, pantalla de Logros rediseñada, canvas nítido (`image-rendering`) e insignia «Ganador» que no se otorga por abandono rival.
+
+Protocolo: el mensaje `abandonar` es aditivo (un cliente nuevo lo envía al salir y el árbitro cierra la partida dando la victoria al rival); `PROTOCOL_VERSION` sigue en 2 y un cliente viejo sigue funcionando. No se activó `LIMITE_MIN` ni `DEMO`; `arbitro.env` sin cambios. El SSH por 443 funcionó sin tocar el NSG.
+
+Restaurar:
+- Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v7 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
+- Cliente: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v7-anterior`). Alternativa: reconstruir desde `1a4d749`/`20e7eb5` y `swa deploy`.
