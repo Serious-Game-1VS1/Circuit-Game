@@ -342,6 +342,28 @@ describe("cliente conectado al árbitro", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("abandonar contra el bot o en práctica vuelve al menú sin partida registrada", async () => {
+    vi.useFakeTimers();
+    try {
+      const solo = new Net(new Mem("p7"));
+      await solo.jugarSolo("pepa", 1, "facil");
+      await vi.advanceTimersByTimeAsync(5000);
+      await solo.abandonar();
+      expect(solo.estado).toMatchObject({ fase: "entrar", alias: "pepa" });
+      expect(solo.estado.end).toBeUndefined();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("abandonar en línea: el rival ve «abandono» y gana; el que sale vuelve al menú sin errores", async () => {
+    await empezar();
+    expect(ana.estado.fase).toBe("taller");
+    await ana.abandonar();
+    expect(ana.estado).toMatchObject({ fase: "entrar", alias: "ana" });
+    expect(ana.estado.end).toBeUndefined();
+    expect(beto.estado.end).toMatchObject({ winner: "B", reason: "abandono" });
+    expect(["carrera", "fin"]).toContain(beto.estado.fase);
+  });
+
   it("salas abiertas: solo «esperando», las más llenas primero; texto de la tarjeta", () => {
     const s = (codigo: string, jugadores: number, estado: "esperando" | "llena" | "jugando") => ({ codigo, nivel: 1 as const, jugadores, max: 2 as const, estado });
     const r = salasAbiertas([s("ZZZ222", 0, "esperando"), s("AAA111", 2, "llena"), s("BBB333", 1, "esperando"), s("CCC444", 1, "jugando"), s("AAA999", 0, "esperando")]);

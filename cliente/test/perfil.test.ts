@@ -88,6 +88,11 @@ describe("resultadoDe", () => {
     expect(a.perfil.ganadas).toBe(0);
     expect(ids(a)).not.toContain("ganador");
   });
+  it("duelo ganado por abandono del rival: sin «Ganador»", () => {
+    const r = resultadoDe(taller, { ...taller, fase: "carrera", end: { ...end, reason: "abandono" } })!;
+    expect(r.gano).toBe(false);
+    expect(ids(aplicarPartida(perfilNuevo("a"), r))).not.toContain("ganador");
+  });
   it("End reenviado tras recargar: la misma firma se reconoce y se guarda", () => {
     const f = firmaEnd(end, "ABC123");
     expect(f).toBe(firmaEnd({ ...end }, "ABC123"));

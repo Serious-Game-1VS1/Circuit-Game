@@ -10,7 +10,7 @@ import { anim, cargarArte, img, letras, marco, pintarMontaje, toque } from "./ar
 import { anguloTension, AYUDA_USO, ayudaPrimerasVeces, COLOR_LUZ, LUZ_DIAL, lecturaLista, leerMedida, luzValidacion, TEXTO_LUZ, T as TM, textoMedida, textoModo, TRAMO, type LecturaVista, type Midiendo } from "./multimetro";
 import { generarPuerta, mostrarPuerta } from "./puerta";
 import { agujaEn, dibujarInsignia, dibujarPuntas, extremosPlaca, JACK, puntosMedida } from "./puntas";
-import { avisoVivo, checkActivo, despachable, textoCheck, faltan, pistaDemo, reloj, tarjetaVisible, textoRival, type EcoTipo, type Falta, type Pantalla } from "./pantalla";
+import { avisoVivo, checkActivo, despachable, terminada, textoCheck, faltan, pistaDemo, reloj, tarjetaVisible, textoRival, type EcoTipo, type Falta, type Pantalla } from "./pantalla";
 import { crearChispa, expresionGuia, reaccion, type Chispa } from "./chispa";
 import { AYUDA, avisoEnviado, avisoSabotajeVencido, avisoRecibido, HUMO_BAHIA, HUMO_GAVETA, HUMO_TOQUES, humoVisible, limpiaHumo, PODS_LIMPIOS, sabotajeActivo, sinPista, type Recta } from "./sabotaje";
 import { alternarSilencio, desbloquear, silenciado, sonar } from "./audio";
@@ -156,7 +156,8 @@ export class Taller extends Phaser.Scene {
   private vistasVistas = new Map<string, unknown>();
   private guiaClave = "";
   /** Botón «Salir» del HUD (práctica y Oleadas). */
-  private salirB: Phaser.GameObjects.GameObject[] = [];
+  private salirB!: { marco: Phaser.GameObjects.GameObject; texto: Phaser.GameObjects.BitmapText; base: Phaser.GameObjects.Zone; si: Phaser.GameObjects.Zone; no: Phaser.GameObjects.Zone; panel: Phaser.GameObjects.GameObject[] };
+  private salirPide = 0;
   /** Alto táctil mínimo en unidades del lienzo para que valga 44 px en pantalla; ver ajustarGolpes(). */
   private golpe = 48;
   private guia!: { caja: Bloque; titulo: Letras; texto: Letras; esquema: Phaser.GameObjects.Container; saltar: BotonGuia; fin: BotonGuia[]; zonas: Phaser.GameObjects.Zone[]; resaltes: Phaser.GameObjects.NineSlice[]; chispa: Chispa;
@@ -311,6 +312,7 @@ export class Taller extends Phaser.Scene {
   preload() { cargarArte(this); }
 
   create() {
+    this.salirPide = 0;
     const net = this.net, an = false; // shortcut: siempre vertical (360x640 FIT); el layout apaisado (innerWidth > innerHeight) queda sin uso
     // El Taller usa su propio lienzo (360×800 vertical o 1440×900 apaisado) y devuelve el de las demás escenas al salir.
     const { width, height } = this.scale.gameSize;
@@ -327,9 +329,18 @@ export class Taller extends Phaser.Scene {
     const rival = letras(this, 36, 44, "", 2, 0xe6ecff); // casi blanco: en gris se perdía sobre la barra
     // Práctica: sin rival; su línea del HUD sirve para salir.
     const salir = toque(this, 180, 58, 360, 28, () => { if (net.estado.practica) void net.salir(); });
-    // Botón visible con marco del kit (bajo el contador de pods, sin tapar el HUD); el área táctil mide 44 px de alto.
-    const sx = an ? 1440 - 70 : 292;
-    this.salirB = [marco(this, sx, 52, "boton_secundario", 120, 30, 2), letras(this, sx, 52, "Salir", 2).setOrigin(0.5), toque(this, sx, 50, 120, 44, () => { if (net.estado.practica) void net.salir(); })];
+    // «Salir» en la esquina derecha de la fila del rival (x 298-354); «SABOTAJE ■■■» queda a su izquierda (x 246-294). Zona táctil de 56×44.
+    const sx = an ? 1440 - 70 : 326;
+    // Práctica y tutorial salen al toque; contra bot o en línea pide confirmar (SÍ/NO, sin pausar el reloj) y se cancela solo a los 4 s.
+    const pedir = (v: boolean) => { this.salirPide = v ? Date.now() + 4000 : 0; this.pintarSalir(net.estado); };
+    // Confirmación: panel por encima de cualquier etiqueta (depth 1100+), «¿Salir?» a escala 2 y SÍ/NO de 56×44.
+    const D = 1100, confirma = [this.add.rectangle(253, 52, 206, 44, 0x1b2132, 1).setStrokeStyle(2, 0xffd23f).setDepth(D), letras(this, 202, 52, "¿Salir?", 2).setOrigin(0.5).setDepth(D + 1),
+      marco(this, 276, 52, "boton_secundario", 52, 30, 2).setDepth(D + 1), letras(this, 276, 52, "SÍ", 2).setOrigin(0.5).setDepth(D + 2),
+      marco(this, 328, 52, "boton_secundario", 52, 30, 2).setDepth(D + 1), letras(this, 328, 52, "NO", 2).setOrigin(0.5).setDepth(D + 2)];
+    const alto = (z: Phaser.GameObjects.Zone) => z.setDepth(D + 3);
+    this.salirB = { marco: marco(this, sx, 52, "boton_secundario", 56, 30, 2), texto: letras(this, sx, 52, "Salir", 1.5).setOrigin(0.5),
+      base: toque(this, sx, 52, 56, 44, () => { if (net.estado.practica) void net.salir(); else pedir(true); }),
+      si: alto(toque(this, 276, 52, 56, 44, () => void net.abandonar())), no: alto(toque(this, 328, 52, 56, 44, () => pedir(false))), panel: confirma };
 
     // Escena: pestañas, globo con el reto, cola, bahía y pod.
     const escena = this.add.container(an ? 200 : 0, an ? 290 : 72);
@@ -542,9 +553,9 @@ export class Taller extends Phaser.Scene {
     this.crearSabotajes(escena, panel);
 
     // Esquina superior del HUD (entre «Pod n/5» y el contador): 36×36 visibles, zona táctil 44×44 sin tocar «Salir».
-    const mudo = this.add.text(212, 21, "", { fontSize: "22px", color: "#fff", fixedWidth: 36, fixedHeight: 36, align: "center", padding: { y: 4 } }).setOrigin(0.5).setDepth(1000);
+    const mudo = this.add.text(210, 21, "", { fontSize: "22px", color: "#fff", fixedWidth: 36, fixedHeight: 36, align: "center", padding: { y: 4 } }).setOrigin(0.5).setDepth(1000);
     const pintarMudo = () => mudo.setText(silenciado() ? "×" : "♪").setBackgroundColor(silenciado() ? "#8a2f3a" : "#3a4466");
-    this.add.zone(212, 21, 44, 44).setDepth(1001).setInteractive({ useHandCursor: true }).on("pointerdown", () => { desbloquear(); alternarSilencio(); pintarMudo(); });
+    this.add.zone(210, 21, 44, 44).setDepth(1001).setInteractive({ useHandCursor: true }).on("pointerdown", () => { desbloquear(); alternarSilencio(); pintarMudo(); });
     pintarMudo();
     this.ui = {
       escena, panel, estado, rival, salir, reloj: relojT, contador, podT, llamas, mejorasT, pestanas, globo, bocadillo, cola: colaC, bahia, circuito, carga, aguja, aviso, gaveta, opciones, tarjeta,
@@ -586,6 +597,7 @@ export class Taller extends Phaser.Scene {
   update(_t: number, dt: number) {
     const p = this.net.estado, z = this.zonaActual(), ahora = Date.now();
     this.ajustarGolpes();
+    if (this.salirPide && ahora > this.salirPide) { this.salirPide = 0; this.pintarSalir(p); } // la confirmación caduca
     const k = this.apagado && !REDUCIDO ? 0.65 + 0.35 * Math.sin(ahora / 300) : 1; // parpadeo suave de Tensión / Continuidad mientras está apagado
     for (const m of this.ui.modos) { m.fondo.setAlpha(k); m.icono.setAlpha(k); m.rotulo.setAlpha(k); }
     this.pintarSabotaje(p, ahora);
@@ -686,6 +698,16 @@ export class Taller extends Phaser.Scene {
       letras(this, 0, 0, `¡Pieza quemada!\n${elegida ? textoRotulo(elegida, c) : ""}`, 3).setOrigin(0.5).setCenterAlign()]);
   }
 
+  /** «Salir» visible mientras se juega; armado muestra «SÍ / NO». */
+  private pintarSalir(p: Pantalla) {
+    const { marco: marcoB, texto, base, si, no, panel } = this.salirB;
+    const vivo = !terminada(p), armado = vivo && !p.practica && Date.now() < this.salirPide;
+    (marcoB as unknown as Phaser.GameObjects.Components.Visible).setVisible(vivo && !armado);
+    texto.setVisible(vivo && !armado);
+    panel.forEach((o) => (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(armado));
+    base.input!.enabled = vivo && !armado; si.input!.enabled = armado; no.input!.enabled = armado;
+  }
+
   pintar(p: Pantalla) {
     const u = this.ui, pod = p.pod, z = this.zonaActual();
     if (!pod || !z) return;
@@ -699,8 +721,7 @@ export class Taller extends Phaser.Scene {
     for (const [t, k] of [[largo, 16], [largo.replace(" pods", ""), 16], [largo, 12], [largo.replace(" pods", ""), 12], [largo.replace(" pods", ""), 8]] as const) { u.rival.setText(t).setFontSize(k); if (u.rival.width <= 204) break; }
     u.mejorasT.setText(etiquetas(this.net.mejoras));
     u.salir.input!.enabled = p.practica;
-    this.salirB.forEach((o) => (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(p.practica));
-    this.salirB[2]!.input!.enabled = p.practica;
+    this.pintarSalir(p);
     // En modo demo solo se muestran las pestañas de las zonas que trae el pod (Radar, o Cabina/Turbina).
     pestanasArte(pod, this.zona, sinPista(p, Date.now())).forEach((t, i) => u.pestanas[i]!.setTexture(t.sprite).setAlpha(t.zona == null && !sinPista(p, Date.now()) ? 0.6 : 1).setVisible(!p.demo || t.zona != null));
     u.globo.setText(textoGlobo(z, pod));
@@ -1146,7 +1167,7 @@ export class Taller extends Phaser.Scene {
     const fondoAviso = this.add.rectangle(0, 0, 344, 44, 0x8a2f3a, 0.96).setStrokeStyle(2, 0xffd23f);
     const titulo = letras(this, 0, -9, "", 2).setOrigin(0.5), ayuda = letras(this, 0, 10, "", 1.5, 0xe8f6ff).setOrigin(0.5);
     const aviso = this.add.container(180, 392, [fondoAviso, titulo, ayuda]).setDepth(12).setVisible(false);
-    const pods = this.add.graphics().setDepth(20), etiqueta = letras(this, 294, 51, "SABOTAJE", 1.5, 0xe6ecff).setOrigin(1, 0.5).setDepth(20); // HUD, fila del rival
+    const pods = this.add.graphics().setDepth(20), etiqueta = letras(this, 270, 40, "SABOTAJE", 1, 0xe6ecff).setOrigin(0.5).setDepth(20); // HUD, sobre los 3 cuadros (x 246-294), a la izquierda de «Salir»
     this.sab = { humo: [a.nube, g.nube], fondos: [a.fondo, g.fondo], texto, aviso, fondoAviso, titulo, ayuda, pods, etiqueta };
   }
 
@@ -1184,7 +1205,7 @@ export class Taller extends Phaser.Scene {
     const ver = !!p.rival && !p.practica && !this.tut?.activo && p.fase === "taller";
     s.pods.clear(); s.etiqueta.setVisible(ver);
     if (!ver) return;
-    for (let i = 0; i < PODS_LIMPIOS; i++) s.pods.fillStyle(i < p.limpios ? PISTA : 0x6b7599).fillRect(300 + i * 16, 45, 12, 12).lineStyle(2, OSCURO).strokeRect(300 + i * 16, 45, 12, 12);
+    for (let i = 0; i < PODS_LIMPIOS; i++) s.pods.fillStyle(i < p.limpios ? PISTA : 0x6b7599).fillRect(246 + i * 16, 47, 12, 12).lineStyle(2, OSCURO).strokeRect(246 + i * 16, 47, 12, 12);
   }
 
   /** Rayos de la racha (HUD, partidas y práctica): 1-3 despachos seguidos sin fallar; con 3, el bono listo. */

@@ -6,8 +6,8 @@ import * as Phaser from "phaser";
 import { sonar } from "./audio";
 import { letras, marco } from "./arte";
 import type { Nivel } from "../../spike/src/protocol";
-import { claves, estrellasTxt, habilidad, nombreDe } from "./dominio";
-import { INSIGNIAS, NAVES, navesDesbloqueadas, progresoRango, type Eventos, type Perfil } from "./perfil";
+import { filasHabilidades, filasInsignias, filasNaves, resumenLogros } from "./logros";
+import { progresoRango, type Eventos, type Perfil } from "./perfil";
 import { tarjetasRecompensa, type Fantasma } from "./podio";
 
 const W = 360, H = 640, PROFUNDIDAD = 2000;
@@ -101,15 +101,15 @@ export function panelRecompensas(s: Phaser.Scene, ev: Eventos, perfil: Perfil, o
 }
 
 export function panelLogros(s: Phaser.Scene, perfil: Perfil) {
-  const { t } = capa(s, "Logros");
-  let y = 84;
-  const bloque = (titulo: string, lineas: string[], color: string) => {
-    t(y, titulo, 15, "#e0a43c"); y += 22;
-    const x = t(y, lineas.join("\n"), 13, color) as Phaser.GameObjects.Text;
-    y += x.height + 10;
+  const { t, poner } = capa(s, "Logros"); // «Continuar» queda fijo en y=590; el contenido termina antes de y≈545
+  t(78, resumenLogros(perfil), 12, "#9ad");
+  const paginas = [["Insignias", filasInsignias(perfil)], ["Habilidades", filasHabilidades(perfil)], ["Naves", filasNaves(perfil)]] as const;
+  const cuerpo = poner(s.add.text(24, 170, "", { fontSize: "14px", color: "#fff", lineSpacing: 8, wordWrap: { width: W - 48 } }));
+  const pestanas = paginas.map(([nombre], k) => poner(s.add.text(24 + k * 108, 112, nombre, { fontSize: "13px", color: "#fff", fixedWidth: 104, align: "center", padding: { y: 12 } }).setInteractive({ useHandCursor: true })
+    .on("pointerdown", () => { sonar("clic"); ver(k); })));
+  const ver = (k: number) => {
+    cuerpo.setText(paginas[k]![1].join("\n"));
+    pestanas.forEach((p, j) => p.setBackgroundColor(j === k ? "#3a4466" : "#1b2132").setColor(j === k ? "#e0a43c" : "#9ab0c8"));
   };
-  bloque(`Insignias ${perfil.insignias.length}/${INSIGNIAS.length}`, INSIGNIAS.map((i) => perfil.insignias.includes(i.id) ? `✔ ${i.nombre}` : `· ${i.nombre}: ${i.descripcion}`), "#fff");
-  bloque("Habilidades", claves.map((k) => { const h = habilidad(perfil.dominio[k]); return `${nombreDe(k)} ${estrellasTxt(h.estrellas)}${h.puntuada ? "" : ` (${h.intentos}/3 intentos)`}`; }), "#9ad");
-  const abiertas = navesDesbloqueadas(perfil);
-  bloque("Naves", NAVES.map((n, k) => abiertas.includes(k + 1) ? `✔ ${n.nombre}` : `🔒 ${n.nombre}: ${n.condicion}`), "#fff");
+  ver(0);
 }

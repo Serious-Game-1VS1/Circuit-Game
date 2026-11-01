@@ -15,6 +15,7 @@ import { despachable, inicial, normalizarCodigo, reducir, terminada, validarEntr
 
 const REINTENTOS = 15;
 const PAUSA_MS = 2000;
+const PAUSA_ABANDONO_MS = 150;
 const dormir = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export interface Config {
@@ -46,6 +47,7 @@ export class Net {
   public usadas: Mejora[] = [];
   public onCambio: (p: Pantalla) => void = () => {};
   private seq = 0;
+  private saliendo = false;
   private listando?: Promise<{ salas: SalaInfo[]; motivo?: string }>;
   private sala?: { codigo: string; alias: string };
   /** Código de la sala del duelo ("" en práctica). */
@@ -179,8 +181,22 @@ export class Net {
     });
   }
 
+  /**
+   * Salir de una partida en marcha. En línea avisa al árbitro (el rival gana al instante y la sala se libera) y cierra limpio;
+   * contra bot o en práctica solo vuelve al menú. Lo que llegue mientras tanto (el End propio) se ignora.
+   */
+  public async abandonar(): Promise<void> {
+    if (this.sala && this.transport === this.duelo && !terminada(this.estado)) {
+      this.saliendo = true;
+      this.enviar({ t: "abandonar" });
+      await dormir(PAUSA_ABANDONO_MS); // deja salir el mensaje antes de cerrar la conexión
+    }
+    await this.salir();
+  }
+
   public async salir(): Promise<void> {
     const alias = this.estado.alias;
+    this.saliendo = false;
     this.sala = undefined;
     this.tutorial = false; this.idTutorial = null;
     await this.transport.close();
@@ -221,7 +237,7 @@ export class Net {
   }
 
   public onMessage(message: unknown): void {
-    if (!message || typeof message !== "object") return;
+    if (this.saliendo || !message || typeof message !== "object") return;
     const msgObj = message as Record<string, unknown>;
     if (!("t" in msgObj) || typeof msgObj.t !== "string") return;
 

@@ -250,6 +250,21 @@ describe("fin, desempate y reconexión (SCRUM-89)", () => {
     expect(last("p1", "end")).toEqual(last("p2", "end"));
   });
 
+  it("abandonar: el rival gana al instante, el que sale pierde, y se puede repetir sin efecto", () => {
+    solvePod("p1");
+    arb.handle("p1", { t: "abandonar" });
+    expect(arb.outcome).toMatchObject({ phase: "fin", winner: "B", reason: "abandono" });
+    expect(last("p2", "end")).toMatchObject({ winner: "B", reason: "abandono" });
+    arb.handle("p2", { t: "abandonar" });
+    expect(arb.outcome).toMatchObject({ winner: "B" });
+  });
+
+  it("abandonar con ventaja no evita la derrota ni fuera de juego hace nada", () => {
+    for (let i = 0; i < 4; i++) solvePod("p1");
+    arb.handle("p1", { t: "abandonar" });
+    expect(arb.outcome).toMatchObject({ winner: "B", reason: "abandono" });
+  });
+
   it("despachos casi simultáneos del último pod: gana el que llega primero al árbitro", () => {
     for (let i = 0; i < 4; i++) { solvePod("p1"); solvePod("p2"); }
     repairPod("p1");

@@ -169,8 +169,8 @@ export function resultadoDe(prev: Pantalla, next: Pantalla): Resultado | null {
   const est = prev.station ?? next.station ?? (e.score.A ? "A" : "B"), s = e.score[est];
   if (!s) return null;
   const c = e.carrera?.[est];
-  // gano: la práctica termina con winner "A" del árbitro y no es victoria
-  return { puntos: puntosDe(s, c), pods: s.despachados, total: prev.oleadas ? Infinity : prev.total, quemadas: s.quemadas, limpios: c?.llamas ?? 0, gano: !prev.practica && e.winner === est, nivel: prev.nivel };
+  // gano: la práctica termina con winner "A" del árbitro y no es victoria; ganar porque el rival abandona (+0 XP) tampoco da «Ganador»
+  return { puntos: puntosDe(s, c), pods: s.despachados, total: prev.oleadas ? Infinity : prev.total, quemadas: s.quemadas, limpios: c?.llamas ?? 0, gano: !prev.practica && e.winner === est && e.reason !== "abandono", nivel: prev.nivel };
 }
 
 // --- Almacenamiento: localStorage dentro de try/catch; si falla, solo memoria de la página ---

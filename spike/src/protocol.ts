@@ -85,7 +85,9 @@ export interface Dispatch { t: "despachar"; seq: number; t0: number }
 export type ModoMedir = "continuidad" | "tension";
 /** `fuera` (aditivo, continuidad): la pieza del hueco está quitada del circuito; `pieza` es la quitada o «ninguna». Sin él, el árbitro rechaza «Quita la pieza para medir continuidad» (salvo luces, interruptor, placa3 y los huecos de cadena sin repuesto). */
 export interface MedirMsg { t: "medir"; seq: number; t0: number; zone: number; pieza: string; modo: ModoMedir; punto: string; fuera?: boolean }
-export type ClientMsg = Hello | Ready | TestMsg | Dispatch | MedirMsg;
+/** Aditivo (sin subir PROTOCOL_VERSION): el jugador abandona la partida en curso. Un árbitro anterior lo ignora. */
+export interface Abandonar { t: "abandonar" }
+export type ClientMsg = Hello | Ready | TestMsg | Dispatch | MedirMsg | Abandonar;
 
 /** Lo que el jugador ve de una zona dañada: nunca cuál de las opciones es la correcta. */
 export interface ZonaView { zona: number; nombre: ZonaNombre; circuito: Circuito; volts: number; opciones: string[]; reparada: boolean;

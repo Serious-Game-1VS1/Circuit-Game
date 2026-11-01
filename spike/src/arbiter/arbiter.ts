@@ -25,6 +25,7 @@ export const costeMedir = (medirMs: number, medidasEnZona: number): number =>
 /** Sala en «esperando»/«listo» sin actividad (ni jugador nuevo ni Listo) caduca a los 120 s y se libera. */
 export const SALA_OCIOSA_MS = 120_000;
 export const RAZON_SALA_OCIOSA = "sala inactiva";
+export const RAZON_ABANDONO = "abandono";
 /** Mensajes por jugador en cualquier ventana de 1 s; el exceso se ignora sin responder. */
 export const LIMITE_MSG_POR_S = 30;
 const MEDIR_TOLERANCIA_MS = 250; // red y reloj del cliente: no rechazar a quien espera lo que muestra la barra
@@ -193,6 +194,11 @@ export class Arbiter {
     s.recientes.push(t);
     if (s.recientes.length > LIMITE_MSG_POR_S) s.recientes.shift();
     if (m?.t === "ready") return this.ready(s);
+    if (m?.t === "abandonar") { // quien se va pierde; la práctica no tiene rival y se cierra desde el cliente
+      const rival = this.seats.find((x) => x !== s);
+      if (this.phase === "jugando" && !this.practica && rival) this.finish(RAZON_ABANDONO, rival.station);
+      return;
+    }
     const seq = typeof m?.seq === "number" ? m.seq : 0;
     const t0 = typeof m?.t0 === "number" ? m.t0 : 0;
     if (m?.t === "despachar") return this.dispatch(s, seq, t0);
