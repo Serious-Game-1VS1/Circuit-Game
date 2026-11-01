@@ -302,3 +302,9 @@ Protocolo: el mensaje `abandonar` es aditivo (un cliente nuevo lo envía al sali
 Restaurar:
 - Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v7 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
 - Cliente: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v7-anterior`). Alternativa: reconstruir desde `1a4d749`/`20e7eb5` y `swa deploy`.
+
+## Despliegue v8 (solo cliente, 1-nov-2026, commit 5469e89)
+
+Solo cliente (SWA `circuitsync-juego`, bundle `index-CzcuUKZL.js`, antes `index-DPSJDzzl.js`; `dist/version.json` con commit `5469e89` y protocolo 2). El árbitro y la VM no se tocaron. Cambios: texto de abandono más claro y nivel de Partida rápida; el test de fusibles del nivel 3 sube su timeout a 20 s. Mismo procedimiento que v6/v7 (build con `VITE_TRANSPORT=photon`, `staticwebapp.config.json` y `version.json` en `dist/`, `swa deploy` con el token en variable de entorno).
+
+Restaurar: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v8-anterior`). Alternativa: reconstruir desde `c108206` y `swa deploy`.
