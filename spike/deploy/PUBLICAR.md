@@ -282,3 +282,13 @@ Cliente primero (SWA `circuitsync-juego`, bundle `index-Qq8fi6jD.js`, antes `ind
 Restaurar:
 - Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v5 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
 - Cliente: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v5`; sin `arte/`). Alternativa: reconstruir desde `4ad2a17` y `swa deploy`.
+
+## Despliegue v6 (1-nov-2026, commit 1a4d749)
+
+Cliente primero (SWA `circuitsync-juego`, bundle `index-B3uuH4Pz.js`, antes `index-Qq8fi6jD.js`; `dist/version.json` con commit `1a4d749` y protocolo 2) y luego árbitro (`src/` y `deploy/` reemplazados, `package*.json` y `tsconfig.json` copiados, `instalar.sh` ejecutado desde `/opt/circuitsync/spike/deploy/azure`; endurecimiento activo). Cambios: los niveles se abren, medir continuidad exige quitar la pieza y hay guía por mecánica. `PROTOCOL_VERSION` sigue en 2.
+
+El árbitro mantiene una sala libre por nivel (mixto, 1, 2 y 3) hasta `MAX_SALAS=6`; el log muestra «sala nueva (nivel N)» y «salas abiertas». En Photon la variable `NIVEL` ya no limita los niveles (se dejó en `arbitro.env` sin cambios). No se activó `LIMITE_MIN` ni `DEMO`.
+
+Restaurar:
+- Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v6 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
+- Cliente: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v6-anterior`; sin `arte/`). Alternativa: reconstruir desde `a8e9ec0` y `swa deploy`.
