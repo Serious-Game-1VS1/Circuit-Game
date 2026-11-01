@@ -11,7 +11,7 @@ export const TXT = {
   decidido: "Ganó {alias}.",
   regla: "Gana quien despacha 5 pods primero.\nSin tiempo: más pods; luego menos quemados", // 2 líneas de ≤ 42 letras a escala 2
   decididoEmpate: "Empate: mismos pods y mismos quemados.",
-  porQueAbandono: "{alias} se quedó sin rival: el otro jugador abandonó.",
+  porQueAbandono: "{rival} abandonó la partida. ¡Ganas!",
   porQue5: "{alias} despachó sus 5 pods primero.",
   porQueMas: "{alias} despachó más pods cuando se acabó el tiempo.",
   porQueQuemados: "Mismos pods, pero {alias} quemó menos piezas.",
@@ -78,7 +78,7 @@ export function decision(e: End): string {
   if (!e.winner || !g) return TXT.decididoEmpate;
   const r = e.score[otra(e.winner)];
   const porQue = e.reason === "abandono" ? TXT.porQueAbandono : e.reason === "5 pods despachados" ? TXT.porQue5 : r && r.despachados === g.despachados ? TXT.porQueQuemados : TXT.porQueMas;
-  return `${f(TXT.decidido, { alias: g.alias })}\n${f(porQue, { alias: g.alias })}`;
+  return `${f(TXT.decidido, { alias: g.alias })}\n${f(porQue, { alias: g.alias, rival: r?.alias ?? "El rival" })}`;
 }
 
 export interface Fila { puntos: number; puesto: string; alias: string; gana: boolean; tiempo: string; pods: number; limpios: number; quemados: number; yo: boolean }

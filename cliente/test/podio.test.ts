@@ -110,3 +110,11 @@ describe("tarjetas de recompensas y regla del podio", () => {
     expect(t[4]!.titulo).toBe("Y 3 insignias más");
   });
 });
+
+describe("decision por abandono", () => {
+  it("nombra al que abandonó, no mezcla desconexión", () => {
+    const t = decision({ t: "end", phase: "fin", winner: "B", reason: "abandono", score: { A: { alias: "qa-a", despachados: 0, quemadas: 0 }, B: { alias: "qa-b", despachados: 1, quemadas: 0 } } } as never);
+    expect(t).toBe("Ganó qa-b.\nqa-a abandonó la partida. ¡Ganas!");
+    expect(t).not.toMatch(/señal/);
+  });
+});

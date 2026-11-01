@@ -339,6 +339,10 @@ export const textoSala = (s: SalaInfo) => `${s.codigo}  ${s.nivel === 3 ? "EXPER
 /** Partida rápida: la sala «esperando» con más jugadores (empate: código menor). Con `nivel`, solo las de ese nivel. */
 export const elegirSalaRapida = (salas: SalaInfo[], nivel?: SalaInfo["nivel"]): SalaInfo | null => salasAbiertas(salas, nivel)[0] ?? null;
 
+/** Nivel que usa «Partida rápida»: el filtro de SALAS; con TODOS (null), el nivel guardado de «Jugar solo» (por defecto mixto). */
+export const nivelRapida = (filtro: SalaInfo["nivel"] | null, guardado: string = "mixto"): SalaInfo["nivel"] =>
+  filtro ?? (guardado === "1" ? 1 : guardado === "2" ? 2 : guardado === "3" ? 3 : "mixto");
+
 /** Solo A-Z0-9, mayúsculas, máximo 6. */
 export const sanearCodigo = (c: string) => c.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
 

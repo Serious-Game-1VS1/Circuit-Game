@@ -510,3 +510,14 @@ describe("listarSalas", () => {
     expect(llamadas).toBe(2);
   });
 });
+
+describe("nivelRapida", () => {
+  it("usa el filtro de SALAS; con TODOS el nivel guardado o mixto", async () => {
+    const { nivelRapida } = await import("../src/net");
+    expect(nivelRapida(2, "mixto")).toBe(2);
+    expect(nivelRapida(3)).toBe(3);
+    expect(nivelRapida(null)).toBe("mixto");
+    expect(nivelRapida(null, "1")).toBe(1);
+    expect(nivelRapida(null, "3")).toBe(3);
+  });
+});

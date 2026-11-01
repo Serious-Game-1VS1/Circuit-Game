@@ -5,7 +5,7 @@
  */
 import * as Phaser from "phaser";
 import type { Nivel } from "../../spike/src/protocol";
-import { elegirSalaRapida, salaDeUrl, salasAbiertas, textoSala, type Net, type SalaInfo } from "./net";
+import { elegirSalaRapida, nivelRapida, salaDeUrl, salasAbiertas, textoSala, type Net, type SalaInfo } from "./net";
 import type { DificultadBot } from "./contraBot";
 import { anim, letras, marco } from "./arte";
 import { alternarSilencio, desbloquear, silenciado, sonar } from "./audio";
@@ -158,15 +158,16 @@ export function menu(s: Phaser.Scene, net: Net) {
   // Filtro de nivel de la lista de salas y de «Partida rápida»: null = todos. Arranca en el nivel de «Jugar solo» (por defecto mixto).
   let filtro: SalaInfo["nivel"] | null = "mixto";
   const FILTROS: (SalaInfo["nivel"] | null)[] = [null, 1, 2, "mixto", 3];
-  const textoFiltro = () => `SALAS: ${filtro === null ? "TODOS" : filtro === 3 ? "EXPERTO" : filtro === "mixto" ? "MIXTO" : `NIVEL ${filtro}`}`;
+  const nomNivel = (n: SalaInfo["nivel"]) => (n === 3 ? "EXPERTO" : n === "mixto" ? "MIXTO" : `NIVEL ${n}`);
+  const textoFiltro = () => `SALAS: ${filtro === null ? `TODOS (rap: ${nomNivel(nivelRapida(null, nivBot))})` : nomNivel(filtro)}`;
   const rapida = async () => {
     if (ocupado) return;
     if (!alias()) { aviso.setText("Escribe tu alias para entrar"); aliasIn.focus(); return; }
     ocupado = true; recordarAlias(alias()); aviso.setText("");
     try {
       for (let intento = 0; intento < 2; intento++) {
-        const sala = elegirSalaRapida((await net.listarSalas(8000)).salas, filtro ?? undefined);
-        if (!sala) { aviso.setText(filtro === null ? "No hay salas abiertas ahora" : "Sin sala libre en ese nivel"); return; }
+        const sala = elegirSalaRapida((await net.listarSalas(8000)).salas, nivelRapida(filtro, nivBot));
+        if (!sala) { aviso.setText("Sin sala libre en ese nivel"); return; }
         await net.entrar(sala.codigo, aliasIn.value);
         if (net.codigo === sala.codigo) return; // entró; si falló, entrar() ya dejó el aviso legible
       }
@@ -177,7 +178,7 @@ export function menu(s: Phaser.Scene, net: Net) {
   // Salas abiertas: hasta 3 tarjetas, «MAS» pasa de página; se consultan cada 4 s mientras el duelo está abierto.
   const PAG = 3;
   const etFiltro = letras(s, 34, 296, "", 2, CIAN);
-  duelo.add([etFiltro, s.add.zone(110, 299, 150, 22).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { filtro = FILTROS[(FILTROS.indexOf(filtro) + 1) % FILTROS.length]!; pagina = 0; aviso.setText(""); pintarSalas(); }))]);
+  duelo.add([etFiltro, s.add.zone(134, 299, 200, 22).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { filtro = FILTROS[(FILTROS.indexOf(filtro) + 1) % FILTROS.length]!; pagina = 0; aviso.setText(""); pintarSalas(); }))]);
   let salas: SalaInfo[] = [], pagina = 0, motivo: string | undefined, consulta = 0, buscando = true; // buscando: hasta la primera respuesta
   const vacio = letras(s, W / 2, 360, "", 2, GRIS).setOrigin(0.5).setMaxWidth(296).setCenterAlign();
   duelo.add(vacio);
@@ -239,7 +240,7 @@ export function menu(s: Phaser.Scene, net: Net) {
     return { m, v };
   });
   const cNiv = fila(468, NIVS, (v) => {
-    aviso.setText(""); nivBot = v; try { localStorage.setItem("circuitsync.nivelbot", v); } catch { /* sin disco */ } pintarBot();
+    aviso.setText(""); nivBot = v; pintarSalas(); try { localStorage.setItem("circuitsync.nivelbot", v); } catch { /* sin disco */ } pintarBot();
   });
   const cDif = fila(508, DIFS, (v) => { dif = v; try { localStorage.setItem("circuitsync.dificultad", v); } catch { /* sin disco */ } pintarBot(); });
   const pintarBot = () => {

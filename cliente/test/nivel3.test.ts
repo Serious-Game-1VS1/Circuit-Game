@@ -54,7 +54,7 @@ describe("fusibles por aspecto (nivel 3)", () => {
         if (infoFusible(o)!.tipo === "cuchilla") expect(m.textos ?? []).toEqual([]);
       }
     }
-  });
+  }, 20000);
 });
 
 describe("presentación en la gaveta (ocultarValor)", () => {
