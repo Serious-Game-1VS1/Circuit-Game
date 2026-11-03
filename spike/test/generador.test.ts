@@ -203,27 +203,34 @@ describe("falla encadenada (solo Oleadas)", () => {
 });
 
 describe("pods del segundo jugador (podsRival)", () => {
-  it("mismas zonas y presupuesto, partida válida, determinista y con otra solución o familia", () => {
+  it("misma cantidad de zonas y presupuesto por pod, partida válida y determinista", () => {
     for (const perfil of ["mixto", 1, 2, 3] as const) {
       for (let s = 0; s < 40; s++) {
         const a = generar(s, perfil), b = podsRival(a, s, perfil);
         expect(validarPartida(b, perfil), `${perfil} ${s}`).toBeNull();
         expect(podsRival(a, s, perfil)).toEqual(b);
         a.forEach((p, i) => {
-          expect(b[i]!.zonas.map((z) => z.zona)).toEqual(p.zonas.map((z) => z.zona));
+          expect(b[i]!.zonas.length).toBe(p.zonas.length);
           expect(presupuesto(b[i]!)).toBe(presupuesto(p));
         });
       }
     }
   });
 
-  it("en el nivel 2 casi todas las zonas con varias familias cambian de circuito", () => {
-    let cambian = 0, total = 0;
-    for (let s = 0; s < 100; s++) {
-      const a = generar(s, 2), b = podsRival(a, s, 2);
-      a.forEach((p, i) => p.zonas.forEach((z, k) => { if (["led", "interruptor", "fusible"].includes(z.circuito)) { total++; if (b[i]!.zonas[k]!.circuito !== z.circuito) cambian++; } }));
+  it("pods 1-3 conservan zona y familia (otros valores) salvo en el nivel 3; los pods 4-5 suelen cambiar de mecánica", () => {
+    const clave = (pod: Pod) => pod.zonas.map((z) => `${z.zona}${z.circuito}`).join();
+    let distintos = 0, total = 0;
+    for (const perfil of ["mixto", 1, 2, 3] as const) {
+      for (let s = 0; s < 40; s++) {
+        const a = generar(s, perfil), b = podsRival(a, s, perfil);
+        a.forEach((p, i) => {
+          if (i < 3 && perfil !== 3) { expect(clave(b[i]!)).toBe(clave(p)); return; }
+          if (perfil !== 1 && (i >= 3 || perfil === 3)) { total++; if (clave(p) !== clave(b[i]!)) distintos++; }
+          if (i < 3) expect(b[i]!.zonas).toHaveLength(1);
+        });
+      }
     }
-    expect(cambian / total).toBeGreaterThan(0.3);
+    expect(distintos / total).toBeGreaterThan(0.6);
   });
 
   it("en el nivel 1 (una familia por zona) cambia la solución o la batería", () => {

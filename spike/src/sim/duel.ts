@@ -32,8 +32,8 @@ export async function simulateDuel(make: () => Transport): Promise<{ arbiter: Ar
     const counts = ana.log.flatMap((m) => (m.t === "countdown" ? [m.n] : []));
     assert.deepEqual(counts, [3, 2, 1]);
 
-    // Ambos reciben el mismo primer pod en zonas (otros circuitos/valores); ninguno recibe la solución.
-    assert.deepEqual(ana.pod!.zonas.map((z) => z.zona), beto.pod!.zonas.map((z) => z.zona));
+    // Ambos reciben un primer pod con las mismas zonas dañadas en número (otras zonas, circuitos y valores); ninguno recibe la solución.
+    assert.equal(ana.pod!.zonas.length, beto.pod!.zonas.length);
     assert.ok(!JSON.stringify(ana.log).includes("solucion"));
 
     // Despachar con zonas sin reparar se rechaza (RF-03).

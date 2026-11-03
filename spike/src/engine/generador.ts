@@ -211,21 +211,57 @@ export function generar(semilla: number, nivel: Perfil, demo: Demo = false): Pod
 
 const CON_VARIOS_VALORES: readonly Circuito[] = ["led", "cabina", "divisor", "protegido", "combinar"];
 
+/** Pods del inicio que conservan zona y familia (solo cambian los valores): los 3 primeros salvo en el nivel 3 (experto), donde todos los pods varían. */
+const podsFijos = (perfil: Perfil) => (perfil === 3 ? 0 : 3);
+
+/** Misma zona y familia que en `base`: otra solución solo donde el sorteo puede variarla (luces, interruptor y fusible tienen una sola, fija; cadena, fusible3 y placa3 son aleatorias). */
+const zonaRival = (rnd: Rnd, base: ZonaPod[], zona: number, c: Circuito) => {
+  const igual = base.find((x) => x.zona === zona && x.circuito === c);
+  return sortearZona(rnd, zona, c, false, igual && CON_VARIOS_VALORES.includes(c) ? igual.solucion : undefined);
+};
+
 /**
- * Pods del segundo jugador de un duelo: las mismas zonas dañadas en cada pod (y el mismo presupuesto de dificultad), pero con otra familia
- * de circuito cuando la zona tiene una de la misma dificultad (p. ej. Radar: LED con resistencia, pieza muerta en cadena o resistencias combinadas)
- * y siempre con otros valores y otra solución. Así nadie puede copiar la respuesta del rival. Determinista por (semilla, perfil).
- * Si la zona solo tiene una familia (nivel 1) cambia la batería y la resistencia correcta, no el tipo de circuito.
+ * Un intento de pods con OTRAS zonas y mecánicas: en cada pod, la misma cantidad de zonas y el mismo presupuesto de dificultad que `base`, con las
+ * familias permitidas para ese pod (los pods 1-3 siguen sin cables y con una zona; la rampa «mixto» LED, LED, Cabina se respeta). `null` si no sale.
+ */
+function otrasZonas(base: Pod[], rnd: Rnd, perfil: Perfil, distinto: boolean): Pod[] | null {
+  const pods: Pod[] = [];
+  for (const [i, p] of base.entries()) {
+    if (i < podsFijos(perfil)) { pods.push({ numero: p.numero, zonas: p.zonas.map((z) => zonaRival(rnd, p.zonas, z.zona, z.circuito)) }); continue; }
+    const nivel = nivelDePod(perfil, i), cables = i >= 3, meta = presupuesto(p);
+    const usadas = i < 3 ? pods.flatMap((q) => q.zonas.map((z) => z.zona)) : [];
+    const libres = (perfil === "mixto" && i < 3 ? (i < 2 ? [0, 2, 3] : [1]) : [0, 1, 2, 3]).filter((z) => !usadas.includes(z));
+    const clave = (zs: { zona: number; circuito: Circuito }[]) => zs.map((z) => `${z.zona}${z.circuito}`).sort().join();
+    let zonas: ZonaPod[] | undefined;
+    for (let t = 0; t < 80 && !zonas; t++) {
+      const elegidas = shuffle(rnd, libres).slice(0, p.zonas.length).sort((x, y) => x - y);
+      if (elegidas.length < p.zonas.length) return null;
+      const fams = elegidas.map((z) => pick(rnd, familias(z, nivel, cables)));
+      if (fams.reduce((n, c) => n + DIFICULTAD[c], 0) !== meta) continue;
+      if (distinto && t < 60 && clave(elegidas.map((zona, k) => ({ zona, circuito: fams[k]! }))) === clave(p.zonas)) continue;
+      zonas = elegidas.map((z, k) => zonaRival(rnd, p.zonas, z, fams[k]!));
+    }
+    if (!zonas) return null;
+    pods.push({ numero: p.numero, zonas });
+  }
+  return faltaCobertura(perfil, pods.map((p) => p.zonas.map((z) => z.circuito))) ? null : pods;
+}
+
+/**
+ * Pods del segundo jugador de un duelo, para que nadie copie al rival. Mismo presupuesto de dificultad en cada pod y misma cobertura de conceptos, pero:
+ *  1. pods 1-3 (salvo en el nivel 3): la misma zona y familia que A, con otros valores y otra solución;
+ *  2. pods 4-5 (y todos en el nivel 3): otras zonas y mecánicas en el mismo pod (A: fusible en el Reactor; B: placa en la Cabina) cuando el nivel lo permite;
+ *  3. si eso no sale (nivel 1), las mismas zonas con otra familia de la misma dificultad, y siempre otros valores y otra solución cuando la familia puede variarla.
+ * Determinista por (semilla, perfil).
  */
 export function podsRival(base: Pod[], semilla: number, perfil: Perfil): Pod[] {
   const rnd = mulberry32((semilla ^ 0x7e57ab1e) >>> 0);
+  for (let i = 0; i < 40; i++) { const pods = otrasZonas(base, rnd, perfil, i < 30); if (pods) return pods; }
   const sortear = (cambiar: number) => base.map((p, i) => ({
     numero: p.numero,
     zonas: p.zonas.map((z) => {
-      const hermanas = familias(z.zona, nivelDePod(perfil, i), i >= 3).filter((c) => c !== z.circuito && DIFICULTAD[c] === DIFICULTAD[z.circuito]);
-      const c = hermanas.length && rnd() < cambiar ? pick(rnd, hermanas) : z.circuito;
-      // Misma familia: otra solución solo donde el sorteo puede variarla (luces, interruptor y fusible tienen una sola, fija; cadena, fusible3 y placa3 son aleatorias).
-      return sortearZona(rnd, z.zona, c, false, c === z.circuito && CON_VARIOS_VALORES.includes(c) ? z.solucion : undefined);
+      const hermanas = i < podsFijos(perfil) ? [] : familias(z.zona, nivelDePod(perfil, i), i >= 3).filter((c) => c !== z.circuito && DIFICULTAD[c] === DIFICULTAD[z.circuito]);
+      return zonaRival(rnd, p.zonas, z.zona, hermanas.length && rnd() < cambiar ? pick(rnd, hermanas) : z.circuito);
     }),
   }));
   // La cobertura de familias del perfil debe cumplirse también para este jugador; si no sale, solo se cambian los valores (siempre cumple).

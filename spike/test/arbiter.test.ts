@@ -661,11 +661,11 @@ describe("Oleadas: falla encadenada", () => {
 });
 
 describe("pods distintos por jugador", () => {
-  it("el asiento B ve las mismas zonas que A pero su propia lista, y su solución es la suya", () => {
+  it("el asiento B ve la misma cantidad de zonas que A pero su propia lista, y su solución es la suya", () => {
     arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA });
     play();
     for (let i = 0; i < 5; i++) {
-      expect(podOf("p2").zonas.map((z) => z.zona)).toEqual(podOf("p1").zonas.map((z) => z.zona));
+      expect(podOf("p2").zonas).toHaveLength(podOf("p1").zonas.length);
       for (const peer of ["p1", "p2"]) {
         for (const z of podOf(peer).zonas) {
           const pods = peer === "p1" ? arb.pods : arb.podsB;
