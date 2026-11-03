@@ -314,3 +314,11 @@ Restaurar: copia del `index.html` y el bundle anterior en el scratchpad de la se
 Solo cliente (SWA `circuitsync-juego`, bundle `index-Bha5lFdx.js`, antes `index-CzcuUKZL.js`; `dist/version.json` con commit `f7998cb` y protocolo 2). El árbitro y la VM no se tocaron. Cambios: JUGAR abre un panel con alias, Jugar solitario y Jugar multijugador (código o salas públicas); música ambiental en el menú (`/musica/ambiental.mp3`, 3,2 MB; el taller y la carrera conservan el 8-bit generado); fuente Pixel Game solo en títulos de panel. Mismo procedimiento que v8.
 
 Restaurar: copia del `dist` anterior en el scratchpad de la sesión (`dist-v9-anterior`). Alternativa: reconstruir desde `bdc516c` y `swa deploy`.
+
+## Despliegue v10 (cliente y árbitro, 3-nov-2026, commit 60940c9)
+
+Cliente en SWA `circuitsync-juego` (bundle `index-C1aeC4UO.js`, antes `index-Bha5lFdx.js`; `dist/version.json` con commit `60940c9`, protocolo 2) y árbitro en `arbitro-vm` (servicio `arbitro` activo tras `instalar.sh`). Cambio: en el duelo cada jugador recibe sus propios pods (`podsRival`): mismas zonas y presupuesto de dificultad, otra familia de circuito donde hay una de igual dificultad y siempre otros valores. Sin cambios de protocolo (`PROTOCOL_VERSION` sigue en 2). Práctica, demo y Oleadas no cambian. Orden seguido: primero el cliente, luego el árbitro (por SSH en el puerto 443, a mano).
+
+Restaurar:
+- Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v10 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
+- Cliente: copia del `dist` anterior en el scratchpad de la sesión (`dist-v10-anterior`). Alternativa: reconstruir desde `c1ae455` y `swa deploy`.
