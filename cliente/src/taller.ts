@@ -7,10 +7,11 @@ import * as Phaser from "phaser";
 import type { Circuito, Medida, ModoMedir, ZonaNombre, ZonaView } from "../../spike/src/protocol";
 import type { Net } from "./net";
 import { anim, cargarArte, img, letras, marco, pintarMontaje, toque } from "./arte";
-import { anguloTension, AYUDA_USO, ayudaPrimerasVeces, COLOR_LUZ, LUZ_DIAL, lecturaLista, leerMedida, luzValidacion, TEXTO_LUZ, T as TM, textoMedida, textoModo, TRAMO, type LecturaVista, type Midiendo } from "./multimetro";
+import { modoBloqueado, anguloTension, AYUDA_USO, ayudaPrimerasVeces, COLOR_LUZ, LUZ_DIAL, lecturaLista, leerMedida, luzValidacion, TEXTO_LUZ, T as TM, textoMedida, textoModo, TRAMO, type LecturaVista, type Midiendo } from "./multimetro";
 import { generarPuerta, mostrarPuerta } from "./puerta";
 import { agujaEn, dibujarInsignia, dibujarPuntas, extremosPlaca, JACK, puntosMedida } from "./puntas";
 import { avisoVivo, checkActivo, despachable, terminada, textoCheck, faltan, pistaDemo, reloj, tarjetaVisible, textoRival, type EcoTipo, type Falta, type Pantalla } from "./pantalla";
+import { ahoraJuego, pausarJuego } from "./relojJuego";
 import { crearChispa, expresionGuia, reaccion, type Chispa } from "./chispa";
 import { AYUDA, avisoEnviado, avisoSabotajeVencido, avisoRecibido, HUMO_BAHIA, HUMO_GAVETA, HUMO_TOQUES, humoVisible, limpiaHumo, PODS_LIMPIOS, sabotajeActivo, sinPista, type Recta } from "./sabotaje";
 import { alternarSilencio, desbloquear, silenciado, sonar } from "./audio";
@@ -223,6 +224,7 @@ export class Taller extends Phaser.Scene {
   private medir(punto: string) {
     const z = this.zonaActual(), modo = this.modo;
     if (!z || !modo) return;
+    if (modoBloqueado(z.circuito, modo)) { this.modo = null; this.pintar(this.net.estado); return this.avisar(TM.soloContinuidad); }
     if (this.midiendo) return this.avisar(AYUDA_USO.sigue); // misma regla que el árbitro («el multímetro sigue midiendo»); la animación sigue sin reiniciarse
     const puesta = this.eleccion(z);
     // Continuidad: sin tensión y con la pieza fuera (placa de cables y protoboard miden con su montaje). Cadena: el hueco no puede llevar repuesto.
@@ -333,14 +335,14 @@ export class Taller extends Phaser.Scene {
     const sx = an ? 1440 - 70 : 326;
     // Práctica y tutorial salen al toque; contra bot o en línea pide confirmar (SÍ/NO, sin pausar el reloj) y se cancela solo a los 4 s.
     const pedir = (v: boolean) => { this.salirPide = v ? Date.now() + 4000 : 0; this.pintarSalir(net.estado); };
-    // Confirmación: panel por encima de cualquier etiqueta (depth 1100+), «¿Salir?» a escala 2 y SÍ/NO de 56×44.
+    // Confirmación: panel por encima de cualquier etiqueta (depth 1100+), «¿Salir?» a escala 2 y SÍ/NO de 48×44.
     const D = 1100, confirma = [this.add.rectangle(253, 52, 206, 44, 0x1b2132, 1).setStrokeStyle(2, 0xffd23f).setDepth(D), letras(this, 202, 52, "¿Salir?", 2).setOrigin(0.5).setDepth(D + 1),
-      marco(this, 276, 52, "boton_secundario", 52, 30, 2).setDepth(D + 1), letras(this, 276, 52, "SÍ", 2).setOrigin(0.5).setDepth(D + 2),
-      marco(this, 328, 52, "boton_secundario", 52, 30, 2).setDepth(D + 1), letras(this, 328, 52, "NO", 2).setOrigin(0.5).setDepth(D + 2)];
+      marco(this, 272, 52, "boton_secundario", 48, 30, 2).setDepth(D + 1), letras(this, 272, 52, "SÍ", 2).setOrigin(0.5).setDepth(D + 2),
+      marco(this, 332, 52, "boton_secundario", 48, 30, 2).setDepth(D + 1), letras(this, 332, 52, "NO", 2).setOrigin(0.5).setDepth(D + 2)];
     const alto = (z: Phaser.GameObjects.Zone) => z.setDepth(D + 3);
     this.salirB = { marco: marco(this, sx, 52, "boton_secundario", 56, 30, 2), texto: letras(this, sx, 52, "Salir", 1.5).setOrigin(0.5),
       base: toque(this, sx, 52, 56, 44, () => { if (net.estado.practica) void net.salir(); else pedir(true); }),
-      si: alto(toque(this, 276, 52, 56, 44, () => void net.abandonar())), no: alto(toque(this, 328, 52, 56, 44, () => pedir(false))), panel: confirma };
+      si: alto(toque(this, 272, 52, 48, 44, () => void net.abandonar())), no: alto(toque(this, 332, 52, 48, 44, () => pedir(false))), panel: confirma };
 
     // Escena: pestañas, globo con el reto, cola, bahía y pod.
     const escena = this.add.container(an ? 200 : 0, an ? 290 : 72);
@@ -368,7 +370,7 @@ export class Taller extends Phaser.Scene {
     this.senalTag = this.add.container(0, 0, [this.add.rectangle(0, 0, 150, 20, OSCURO, 0.92).setStrokeStyle(2, PISTA), letras(this, 0, 0, AYUDA_USO.senal, 1.5, PISTA).setOrigin(0.5)]).setVisible(false);
     this.senal = { c: this.add.container(0, 0, [...chispitas, flechaS, this.senalTag]).setDepth(895).setVisible(false), flecha: flechaS, chispitas, clave: "" };
     // Rayos de la racha (3 despachos seguidos sin fallar = bono de enfriamiento reducido), justo bajo Chispa.
-    this.rayos = { g: this.add.graphics().setDepth(5), bono: letras(this, 30, 327, "BONO", 1.5, PISTA).setOrigin(0.5).setDepth(5).setVisible(false) };
+    this.rayos = { g: this.add.graphics().setDepth(5), bono: letras(this, 30, 327, "BONO", 2, PISTA).setOrigin(0.5).setDepth(5).setVisible(false) };
 
     // Panel del circuito: batería → pieza elegida → carga; medidor; gaveta; Probar y Despachar.
     const panel = this.add.container(an ? 840 : 0, an ? 290 : 430);
@@ -392,6 +394,7 @@ export class Taller extends Phaser.Scene {
     const modos = (["tension", "continuidad"] as const).map((modo, i) => {
       const x = i ? 326 : 34;
       const fondo = marco(this, x, 178, "boton_secundario", 48, 48).setInteractive({ useHandCursor: true }).on("pointerdown", () => {
+        if (modoBloqueado(this.zonaActual()?.circuito, modo)) return this.avisar(TM.soloContinuidad);
         this.modo = this.modo === modo ? null : modo;
         this.limpiarMedida();
         this.pintar(net.estado);
@@ -523,7 +526,7 @@ export class Taller extends Phaser.Scene {
         tocar: () => { const o = pieza(); if (o) { if (this.zonaActual()?.circuito === "cadena") this.avisar("Arrastra el repuesto a una pieza de la cadena."); else elegir(o); } },
       });
       // Valor impreso ("470 Ω") y, en resistencias, su nombre estable ("Frena medio") debajo, más pequeño.
-      return { fondo, zona, icono: this.add.container(0, GY), clave: "", texto: letras(this, 0, GY, "", 2).setOrigin(0.5), nombre: letras(this, 0, GY, "", 1).setOrigin(0.5) }; // k entero: 1,5 se veía borroso
+      return { fondo, zona, icono: this.add.container(0, GY), clave: "", texto: letras(this, 0, GY, "", 2).setOrigin(0.5), nombre: letras(this, 0, GY, "", 1.25).setOrigin(0.5) }; // 10 px (1,25): el mínimo legible en móvil
     });
     const golpes: Phaser.GameObjects.Zone[] = [];
     const tarjeta = this.add.container(180, 76).setVisible(false);
@@ -576,7 +579,8 @@ export class Taller extends Phaser.Scene {
     this.despachoHasta = 0; this.puertaViva = null; this.puertasVistas = 0; this.puertaRacha = 0; this.puertaSemilla = Math.floor(Math.random() * 2 ** 32);
     this.intento = false;
     this.marcado = false;
-    this.guiaP = null; this.guiaVistos = cargarPerfil(this.aliasPerfil()).tutoriales; this.pintarGuiaPartida();
+    this.guiaP = null; pausarJuego(false); this.guiaVistos = cargarPerfil(this.aliasPerfil()).tutoriales; this.pintarGuiaPartida();
+    this.events.once("shutdown", () => pausarJuego(false)); // salir con la guía abierta no deja el reloj parado
     this.sucio = false;
     this.racha = 0;
     this.reparadasVistas = net.estado.pod?.zonas.filter((z) => z.reparada).length ?? 0;
@@ -595,19 +599,19 @@ export class Taller extends Phaser.Scene {
   }
 
   update(_t: number, dt: number) {
-    const p = this.net.estado, z = this.zonaActual(), ahora = Date.now();
+    const p = this.net.estado, z = this.zonaActual(), ahora = Date.now(), juego = ahoraJuego(); // `juego` se detiene con la guía abierta: todo lo que sale de la Pantalla (reloj, esperas, sabotaje, tarjeta) va con él
     this.ajustarGolpes();
     if (this.salirPide && ahora > this.salirPide) { this.salirPide = 0; this.pintarSalir(p); } // la confirmación caduca
     const k = this.apagado && !REDUCIDO ? 0.65 + 0.35 * Math.sin(ahora / 300) : 1; // parpadeo suave de Tensión / Continuidad mientras está apagado
     for (const m of this.ui.modos) { m.fondo.setAlpha(k); m.icono.setAlpha(k); m.rotulo.setAlpha(k); }
-    this.pintarSabotaje(p, ahora);
+    this.pintarSabotaje(p, juego);
     // Un aviso nuevo (resultado, despacho) manda sobre la lectura del multímetro; sin esto el panel seguía en «Pasa…».
     if (p.aviso !== this.avisoVisto) { this.avisoVisto = p.aviso; if (p.aviso) { this.limpiarMedida(); this.modo = null; this.pintar(p); } }
-    if ((p.esperaHasta > ahora) !== this.bloqueado) { if (this.bloqueado) sonar("listo"); this.bloqueado = !this.bloqueado; this.pintar(p); } // Probar se apaga mientras dura el bloqueo
-    const rotuloCheck = textoCheck(p.esperaHasta, ahora); // cuenta atrás en el botón mientras dura el enfriamiento
+    if ((p.esperaHasta > juego) !== this.bloqueado) { if (this.bloqueado) sonar("listo"); this.bloqueado = !this.bloqueado; this.pintar(p); } // Probar se apaga mientras dura el bloqueo
+    const rotuloCheck = textoCheck(p.esperaHasta, juego); // cuenta atrás en el botón mientras dura el enfriamiento
     if (this.check.texto.text !== rotuloCheck) this.check.texto.setText(rotuloCheck);
-    this.ui.reloj.setText(p.practica ? "--:--" : reloj(p, ahora)); // la práctica no tiene límite de tiempo
-    this.ui.podT.setText(tiempoPod(ahora - this.podDesde));
+    this.ui.reloj.setText(p.practica ? "--:--" : reloj(p, juego)); // la práctica no tiene límite de tiempo
+    this.ui.podT.setText(tiempoPod(juego - this.podDesde));
     // Multímetro: «Midiendo…» (Medida.medirMs: 1 s, 3 s en partidas competitivas) con la aguja buscando; luego la lectura del árbitro.
     if (this.midiendo) {
       const l = lecturaLista(this.midiendo, p.medida, ahora, this.durMedir(p, this.midiendo));
@@ -624,7 +628,7 @@ export class Taller extends Phaser.Scene {
       }
       else if (ahora - this.midiendo.desde > this.durMedir(p, this.midiendo) + 4000) this.midiendo = undefined; // rechazo o red caída (holgura de 4 s para una Medida lenta): se puede volver a medir
     }
-    this.pintarPuntas(p, z, ahora);
+    this.pintarPuntas(p, z, juego);
     const prox = this.modo && !this.midiendo && z && p.proxMedir?.[z.zona] ? AYUDA_USO.prox(p.proxMedir[z.zona]!) : "";
     if (this.multi.prox.text !== prox) this.multi.prox.setText(prox);
     if (this.cartelMulti && this.modo) this.quitarCartelMulti();
@@ -644,7 +648,7 @@ export class Taller extends Phaser.Scene {
     const medidor = !this.modo ? null : this.midiendo ? TM.midiendo : this.lectura ? (this.leida?.estado ?? textoMedida(this.lectura, z?.circuito)) : textoModo(this.modo, z?.circuito);
     const placa = !!z && conPlaca(z.circuito);
     const falta = z ? this.falta(z) : null, pista = z ? pistaDemo(p, this.intento, falta) : null;
-    const texto = this.acabo(p) ? "" : (local ?? (corto && textoCorto(corto, z!.circuito, cargasPuestas(this.puestasZona()))) ?? medidor ?? (pista && PISTA_DEMO[pista]) ?? (z && this.rancio(z) ? null : this.sinRespuesta(z, avisoVivo(p, ahora))) ?? (despachable(p) || z?.reparada ? "Multímetro en verde: pulsa CHECK"
+    const texto = this.acabo(p) ? "" : (local ?? (corto && textoCorto(corto, z!.circuito, cargasPuestas(this.puestasZona()))) ?? medidor ?? (pista && PISTA_DEMO[pista]) ?? (z && this.rancio(z) ? null : this.sinRespuesta(z, avisoVivo(p, juego))) ?? (despachable(p) || z?.reparada ? "Multímetro en verde: pulsa CHECK"
       : z!.circuito === "placa3" && falta === "colocar" ? faltaPlaca3(this.montajeZona())! : placa && falta === "colocar" ? faltaColocar(this.puestasZona(), z!.circuito)! : placa && falta ? ayudaCables(z!.circuito) : `${this.tut?.activo ? "" : `${textoObjetivo(p, sinPista(p, ahora))}. `}${placa ? "Pulsa CHECK para probar" : this.eleccion(z!) ? "Mide si quieres y pulsa CHECK para validar" : z!.circuito === "cadena" ? (this.muertaLocalizada() ? "Arrastra un repuesto al hueco rojo" : "Mide las piezas con Continuidad para hallar la muerta") : `Arrastra ${["led", "cabina", "protegido", "divisor"].includes(z!.circuito) ? "una resistencia" : "una pieza"} al hueco rojo`}`)) as string;
     const tinte = this.modo && this.lectura && !this.midiendo && this.leida && texto === this.leida.estado ? COLOR_LUZ[this.leida.luz] : null; // el aviso lleva el color de la lectura
     const p3 = z?.circuito === "placa3", medirP3 = p3 && this.ui.fila.visible;
@@ -677,7 +681,7 @@ export class Taller extends Phaser.Scene {
     this.pintarGuia(placa);
     this.revisarGuiaPartida(p, z);
     if (z) this.pintarSenal(this.acabo(p) ? null : this.objetivoSenal(p, z, placa), placa, !!this.tut?.activo && actual(this.tut).titulo === "Continuidad"); // el paso del tutorial cambia aquí, no en pintar()
-    const ver = !!z && tarjetaVisible(p, z.zona, ahora);
+    const ver = !!z && tarjetaVisible(p, z.zona, juego);
     if (ver !== this.ui.tarjeta.visible && z) {
       if (ver) this.armarTarjeta(z.circuito, p);
       this.ui.tarjeta.setVisible(ver);
@@ -723,7 +727,7 @@ export class Taller extends Phaser.Scene {
     u.salir.input!.enabled = p.practica;
     this.pintarSalir(p);
     // En modo demo solo se muestran las pestañas de las zonas que trae el pod (Radar, o Cabina/Turbina).
-    pestanasArte(pod, this.zona, sinPista(p, Date.now())).forEach((t, i) => u.pestanas[i]!.setTexture(t.sprite).setAlpha(t.zona == null && !sinPista(p, Date.now()) ? 0.6 : 1).setVisible(!p.demo || t.zona != null));
+    pestanasArte(pod, this.zona, sinPista(p, ahoraJuego())).forEach((t, i) => u.pestanas[i]!.setTexture(t.sprite).setAlpha(t.zona == null && !sinPista(p, ahoraJuego()) ? 0.6 : 1).setVisible(!p.demo || t.zona != null));
     u.globo.setText(textoGlobo(z, pod));
     // El bocadillo mide 3 líneas: con más (retos largos) se estira hacia abajo para que el texto no se corte.
     u.bocadillo.setScale(3, 3 * Math.max(1, (u.globo.height + 26) / 80));
@@ -823,7 +827,7 @@ export class Taller extends Phaser.Scene {
     u.golpes[0]!.input!.enabled = !fin;
     this.check.c.setVisible(!fin).setY(p3 ? 350 : 340);
     u.golpes[0]!.setY(p3 ? 350 : Math.max(340, GY + Math.max(GH, this.golpe) / 2 + this.golpe / 2));
-    const activo = checkActivo(verde, probable, p.esperaHasta, Date.now()); // gris sin pieza o en enfriamiento (ver pantalla.ts)
+    const activo = checkActivo(verde, probable, p.esperaHasta, ahoraJuego()); // gris sin pieza o en enfriamiento (ver pantalla.ts)
     this.check.fondo.setTexture(activo ? "boton_primario" : "boton_secundario");
     this.check.marca.setVisible(activo);
     this.check.texto.setText("CHECK").setTint(activo ? OSCURO : GRIS).setX(activo ? 14 : 0); // tras el último pod de un tutorial el árbitro manda un pod 2 que no existe
@@ -913,7 +917,7 @@ export class Taller extends Phaser.Scene {
         sonar("clic");
         this.net.elegirMejora(m);
         partes.forEach((g) => g.destroy());
-        this.podDesde = Date.now();
+        this.podDesde = ahoraJuego();
         this.pintar(this.net.estado);
       }));
     });
@@ -921,7 +925,7 @@ export class Taller extends Phaser.Scene {
 
   /** Récord personal: guarda el tiempo del pod despachado (`p.despachados` = su número) y muestra la medalla frente a la marca anterior. */
   private anotarTiempo(p: Pantalla) {
-    const ms = Date.now() - this.podDesde, alias = (p.alias ?? "").trim() || "Aprendiz";
+    const ms = ahoraJuego() - this.podDesde, alias = (p.alias ?? "").trim() || "Aprendiz";
     this.net.podMs.push(ms);
     const r = registrarTiempo(cargarPerfil(alias), p.nivel, p.despachados, ms);
     guardarPerfil(r.perfil);
@@ -968,7 +972,7 @@ export class Taller extends Phaser.Scene {
   }
 
   private probarZona(z: ZonaView) {
-    const e = this.eleccion(z), falta = this.net.estado.esperaHasta - Date.now(), placa = conPlaca(z.circuito);
+    const e = this.eleccion(z), falta = this.net.estado.esperaHasta - ahoraJuego(), placa = conPlaca(z.circuito);
     if (!e && z.circuito === "placa3") return this.avisar(faltaPlaca3(this.montajeZona())!);
     if (!e) return this.avisar(placa ? faltaColocar(this.puestasZona(), z.circuito) ?? faltaCablear(this.cablesZona(), z.circuito, cargasPuestas(this.puestasZona())) : z.circuito === "cadena" ? "Arrastra un repuesto al hueco rojo y pulsa CHECK" : "Arrastra una pieza al hueco rojo y pulsa CHECK");
     if (falta > 0) return this.avisar(`Espera ${Math.ceil(falta / 1000)} s y vuelve a pulsar CHECK`);
@@ -1044,13 +1048,14 @@ export class Taller extends Phaser.Scene {
   /** Guía en partida: si la zona a la vista estrena mecánica (o medida) para este perfil, la abre. Nunca en el tutorial de Aprender. */
   private revisarGuiaPartida(p: Pantalla, z: ZonaView | undefined) {
     if (this.guiaP || this.net.tutorial || !z || z.reparada) return;
-    const avisos = guiaPartida(z.circuito, p.pod?.nivel, this.guiaVistos);
+    const avisos = guiaPartida(z.circuito, p.pod?.nivel, this.guiaVistos, this.net.enLinea);
     if (!avisos.length) return;
     this.guiaP = { i: 0, pasos: avisos.flatMap((a) => a.pasos.map((texto) => ({ titulo: a.titulo, texto }))) };
     // Vista al abrirse (no al cerrar): si la partida acaba con la guía abierta tampoco se repite.
     const perfil = avisos.reduce((q, a) => marcarTutorial(q, a.id), cargarPerfil(this.aliasPerfil()));
     guardarPerfil(perfil);
     this.guiaVistos = perfil.tutoriales;
+    pausarJuego(true); // el reloj (y el del bot) se detiene mientras la guía está abierta
     this.chispa.poner("senalando"); this.chispaHasta = Infinity; // pintarChispa no le cambia la cara mientras la guía está abierta
     this.pintarGuiaPartida();
   }
@@ -1073,6 +1078,7 @@ export class Taller extends Phaser.Scene {
   private cerrarGuiaPartida() {
     if (!this.guiaP) return;
     this.guiaP = null;
+    pausarJuego(false);
     this.chispaHasta = 0;
     this.pintarGuiaPartida();
   }
@@ -1088,7 +1094,7 @@ export class Taller extends Phaser.Scene {
     if (z.circuito === "placa3") return f === "colocar" ? "gaveta" : this.eleccion(z) !== this.probadas.get(this.clave()) ? "check" : "pieza";
     if (conHueco(z.circuito, this.elegidas.get(this.clave()), z.reparada)) return "gaveta";
     if (this.eleccion(z) && this.eleccion(z) !== this.probadas.get(this.clave())) return "check"; // colocada y sin validar: lo siguiente es CHECK
-    return p.esperaHasta > Date.now() ? "multimetro" : "gaveta"; // en el enfriamiento, la luz del multímetro; luego, otra pieza
+    return p.esperaHasta > ahoraJuego() ? "multimetro" : "gaveta"; // en el enfriamiento, la luz del multímetro; luego, otra pieza
   }
 
   private pintarChispa(p: Pantalla, z: ZonaView, placa: boolean, fin: boolean, quemado: boolean) {
@@ -1105,7 +1111,7 @@ export class Taller extends Phaser.Scene {
 
   /** Chispa reacciona al aviso del árbitro (racha, bono, fallo): ánimo y enfriamiento, nunca el contenido del pod. */
   private reaccionar(p: Pantalla, tipo: EcoTipo) {
-    const m = reaccion(tipo, p.racha, Math.ceil(Math.max(0, p.esperaHasta - Date.now()) / 1000));
+    const m = reaccion(tipo, p.racha, Math.ceil(Math.max(0, p.esperaHasta - ahoraJuego()) / 1000));
     this.chispa.poner(m.expr);
     this.chispa.decir(m.texto, 2800);
     if (m.expr === "feliz") this.chispa.animar();
@@ -1167,7 +1173,7 @@ export class Taller extends Phaser.Scene {
     const fondoAviso = this.add.rectangle(0, 0, 344, 44, 0x8a2f3a, 0.96).setStrokeStyle(2, 0xffd23f);
     const titulo = letras(this, 0, -9, "", 2).setOrigin(0.5), ayuda = letras(this, 0, 10, "", 1.5, 0xe8f6ff).setOrigin(0.5);
     const aviso = this.add.container(180, 392, [fondoAviso, titulo, ayuda]).setDepth(12).setVisible(false);
-    const pods = this.add.graphics().setDepth(20), etiqueta = letras(this, 270, 40, "SABOTAJE", 1, 0xe6ecff).setOrigin(0.5).setDepth(20); // HUD, sobre los 3 cuadros (x 246-294), a la izquierda de «Salir»
+    const pods = this.add.graphics().setDepth(20), etiqueta = letras(this, 270, 40, "SABOTAJE", 1.25, 0xe6ecff).setOrigin(0.5).setDepth(20); // HUD, sobre los 3 cuadros (x 246-294), a la izquierda de «Salir»
     this.sab = { humo: [a.nube, g.nube], fondos: [a.fondo, g.fondo], texto, aviso, fondoAviso, titulo, ayuda, pods, etiqueta };
   }
 
@@ -1379,7 +1385,7 @@ export class Taller extends Phaser.Scene {
       if (viejo) this.cartel(img(this, 180, 210, "cartel_reparado", 3), 0, CARTEL.reparadoMs);
       if (num) this.cartel(anim(this, 180, 210, "cartel_averia"), viejo ? CARTEL.averiaRetraso : 0, 1500);
       this.podNum = num;
-      this.podDesde = Date.now();
+      this.podDesde = ahoraJuego();
       this.limpiarMedida();
       // El «¡Pod despachado!» ya cumplió: al entrar el pod nuevo vuelve el objetivo.
       if (viejo) this.despachoHasta = Date.now() + CARTEL.avisoDespachoMs;
@@ -1390,7 +1396,7 @@ export class Taller extends Phaser.Scene {
     this.podC.removeAll(true);
     this.ui.escena.bringToTop(this.ui.bocadillo); this.ui.escena.bringToTop(this.ui.globo); // la nave nunca tapa el enunciado
     for (const zona of m.orden) {
-      const estado = estadoZona(pod, zona as ZonaNombre, this.vistasVivas(p), sinPista(p, Date.now())), s = sprite(`${m.id}_${zona}_${estado}`)!;
+      const estado = estadoZona(pod, zona as ZonaNombre, this.vistasVivas(p), sinPista(p, ahoraJuego())), s = sprite(`${m.id}_${zona}_${estado}`)!;
       const o = s.offset ?? { x: 0, y: 0 };
       this.podC.add(img(this, o.x * K, o.y * K, s.nombre).setOrigin(0));
       if (estado === "averiado" || estado === "quemado") {

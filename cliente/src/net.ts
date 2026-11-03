@@ -10,6 +10,7 @@ import { COOLDOWN_CORTO, elegir, sinMejoras, type Mejora } from "./mejoras";
 import { PracticaTransport } from "./practica";
 import { ContraBotTransport, type DificultadBot } from "./contraBot";
 import { DIAGNOSTICO } from "./progreso";
+import { ahoraJuego } from "./relojJuego";
 import { mecanica } from "./tutorial";
 import { despachable, inicial, normalizarCodigo, reducir, terminada, validarEntrada, type Pantalla } from "./pantalla";
 
@@ -50,6 +51,8 @@ export class Net {
   private saliendo = false;
   private listando?: Promise<{ salas: SalaInfo[]; motivo?: string }>;
   private sala?: { codigo: string; alias: string };
+  /** Duelo 1v1 en línea (ni práctica, ni tutorial, ni bot): allí el reloj no se puede pausar. */
+  public get enLinea() { return this.transport === this.duelo; }
   /** Código de la sala del duelo ("" en práctica). */
   public get codigo() { return this.sala?.codigo ?? ""; }
 
@@ -58,7 +61,7 @@ export class Net {
 
   constructor(
     private readonly duelo: Transport,
-    private readonly getTime: () => number = Date.now,
+    private readonly getTime: () => number = ahoraJuego,
     private readonly pausaReconectarMs = PAUSA_MS,
   ) {
     this.transport = duelo;
@@ -101,7 +104,7 @@ export class Net {
     this.tutorial = false; this.idTutorial = null;
     this.mejoras = sinMejoras(); this.extra = 0; this.mejorRacha = 0; this.podMs = []; this.usadas = [];
     this.hayMas = 0; this.segunda = undefined; this.diagnosticos = 0;
-    this.transport = new ContraBotTransport(nivel, undefined, dificultad);
+    this.transport = new ContraBotTransport(nivel, undefined, dificultad, { now: ahoraJuego }); // reloj pausable: la guía «NUEVO» detiene también al bot
     this.conectar(this.transport);
     await this.transport.join("");
     this.enviar({ t: "hello", alias: alias.trim() });

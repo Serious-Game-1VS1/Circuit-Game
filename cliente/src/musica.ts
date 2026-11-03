@@ -7,6 +7,7 @@
 import { contexto, salidaMusica, salidaSfx, silenciado, tocar } from "./audio";
 import type { Pantalla } from "./pantalla";
 
+import { ahoraJuego } from "./relojJuego";
 export type Escena = "menu" | "taller" | "carrera" | "podio";
 /** podio: 0 = sin bucle (la fanfarria la toca audio.ts por medalla). */
 export const BPM: Record<Escena, number> = { menu: 96, taller: 118, carrera: 150, podio: 0 };
@@ -68,7 +69,7 @@ function tick() {
   if (escena === "menu" && pistaOn(c)) return;
   if (proxima < c.currentTime) proxima = c.currentTime + 0.05;
   while (proxima < c.currentTime + 0.1) {
-    const paso16 = 60 / (BPM[escena] * (estado && tensa(estado, Date.now()) ? 1.12 : 1)) / 4, s = pasoDe(escena, paso, compas);
+    const paso16 = 60 / (BPM[escena] * (estado && tensa(estado, ahoraJuego()) ? 1.12 : 1)) / 4, s = pasoDe(escena, paso, compas);
     if (s.bajo) tocar({ en: 0, hz: s.bajo, ms: paso16 * (escena === "menu" ? 1800 : 900), onda: "triangle", vol: 1 }, proxima, true);
     if (s.arp) tocar({ en: 0, hz: s.arp, ms: paso16 * 800, onda: "pulso", vol: 0.45 }, proxima, true);
     if (s.hat) tocar({ en: 0, hz: 8000, ms: 30, onda: "ruido", vol: 0.5 }, proxima, true);

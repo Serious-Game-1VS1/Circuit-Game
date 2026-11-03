@@ -103,8 +103,8 @@ export const MECANICAS: Mecanica[] = [
     { titulo: "Fusible grueso", objetivo: "gaveta", pide: arrastra("3"), hecho: elige("3"), texto: "Arrastra el de 3 A al hueco: solo lo coloca." },
     MODO_TENSION("Mide antes de validar, gratis. Toca Tensión."),
     { titulo: "Mide", objetivo: "pieza", hecho: MIDE_TENSION, texto: "Toca el fusible: casi no cae tensión, es un hilo que deja pasar todo." },
-    VALIDA("Pulsa CHECK: en falla pasan 3 A y se quema. Espera.", QUEMADO),
-    { titulo: "El justo", objetivo: "gaveta", pide: arrastra("1"), hecho: elige("1"), texto: "Arrastra 1 A: aguanta 0,7 A normales y corta antes de 3 A." },
+    VALIDA("Pulsa CHECK: la falla pasa 2,5 A y el 3 A no corta. Espera.", QUEMADO),
+    { titulo: "El justo", objetivo: "gaveta", pide: arrastra("1"), hecho: elige("1"), texto: "Arrastra 1 A: aguanta 0,7 A normales y corta los 2,5 A de la falla." },
     VALIDA("Pulsa CHECK para validar: verde = bien.", SIN_FALLA),
     CHECK,
     LISTO("Un fusible debe aguantar el consumo normal y cortar la falla."),
@@ -177,7 +177,7 @@ export const MECANICAS: Mecanica[] = [
   ] },
   { id: "fusibles", nombre: "Fusibles", ensena: "Elegir el fusible por su tamaño, marca (F rápido, T lento) y color.", nivel: 3, semilla: 27, pod: 2, circuito: "fusible3", pasos: [
     { titulo: "Cuchilla marrón", objetivo: "gaveta", pide: arrastra("car:7.5"), hecho: elige("car:7.5"), texto: "Cuchilla: el color son los amperios. Marrón = 7,5 A. Arrástrala." },
-    VALIDA("Pulsa CHECK: 7,5 A no corta con 1,8 A y se quema. Espera.", QUEMADO),
+    VALIDA("Pulsa CHECK: la falla pasa 2,3 A y el 7,5 A no corta. Espera.", QUEMADO),
     { titulo: "Vidrio rápido", objetivo: "gaveta", pide: arrastra("5x20F:2"), hecho: elige("5x20F:2"), texto: "Vidrio 5x20, «F» = rápido. F2 son 2 A. Arrástrala." },
     VALIDA("Pulsa CHECK: ámbar. Con motor, la F se funde al arrancar.", (e) => e.aguja === "poco"),
     { titulo: "Vidrio lento", objetivo: "gaveta", pide: arrastra("5x20T:2"), hecho: elige("5x20T:2"), texto: "«T» = lento: aguanta el arranque. T2 = 2 A, justo sobre 1,8 A." },
@@ -293,7 +293,8 @@ export const idGuiaValido = (id: string) => /^mec-/.test(id) ? Object.hasOwn(GUI
  * Avisos de la guía para la zona (familia `c`, nivel del pod) según lo ya visto, en orden: la mecánica nueva y, solo si es nueva,
  * la medida que estrena si aún no se enseñó. Vacío = nada que mostrar. Aprender cuenta como visto.
  */
-export function guiaPartida(c: Circuito, nivel: number | undefined, vistos: readonly string[]): AvisoGuia[] {
+export function guiaPartida(c: Circuito, nivel: number | undefined, vistos: readonly string[], enLinea = false): AvisoGuia[] {
+  if (enLinea) return []; // en el duelo 1v1 el reloj no se pausa: no hay guía y NO se marca como vista (sale en Jugar solo / Aprender)
   const k = claveMec(c, nivel), a = APRENDER[k];
   if (vistos.includes(`mec-${k}`) || (a && vistos.includes(a))) return [];
   const m = MEDIDA_DE[c], medida = vistos.includes(`med-${m}`) || APRENDER_MEDIDA[m].some((x) => vistos.includes(x)) ? [] : [{ id: `med-${m}`, ...GUIA_MEDIDA(m, c) }];

@@ -7,7 +7,11 @@ import type { Dial, Medida, ModoMedir, Tramo } from "../../spike/src/protocol";
 
 export const MEDIR_MS = 1000;
 
+/** Cadena (pieza muerta): solo se mide continuidad; la tensión con el circuito abierto da una lectura engañosa en el motor. */
+export const modoBloqueado = (circuito: string | undefined, modo: "tension" | "continuidad") => circuito === "cadena" && modo === "tension";
+
 export const T = {
+  soloContinuidad: "En esta falla mide continuidad.",
   tension: "Tensión",
   continuidad: "Continuidad",
   ayuda: "Toca un modo y luego una pieza para medir.",

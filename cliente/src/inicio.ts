@@ -9,7 +9,7 @@ import { elegirSalaRapida, nivelRapida, salaDeUrl, salasAbiertas, textoSala, typ
 import type { DificultadBot } from "./contraBot";
 import { anim, FUENTE_TITULO, letras, marco } from "./arte";
 import { alternarSilencio, desbloquear, silenciado, sonar } from "./audio";
-import { type NivelBot, bienvenida, cargarPerfil, etiquetaNivel, INSIGNIAS, mejorNave, nivelBotElegido, nivelElegido, progresoRango, recordarAlias, textoNivel, tutorialCompletado, tutorialesHechos, ultimoAlias } from "./perfil";
+import { type NivelBot, bienvenida, cargarPerfil, etiquetaNivel, INSIGNIAS, mejorNave, nivelBotElegido, nivelElegido, preferenciasSolo, progresoRango, recordarAlias, textoNivel, tutorialCompletado, tutorialesHechos, ultimoAlias } from "./perfil";
 import type { Pantalla } from "./pantalla";
 import { MECANICAS } from "./tutorial";
 import { COLORES, CUCHILLAS, ORO } from "./colores";
@@ -86,10 +86,10 @@ export function menu(s: Phaser.Scene, net: Net) {
   s.add.zone(W / 2, 386, 328, 118).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => panelLogros(s, refrescar())));
 
   // --- Botones ---
-  const boton = (x: number, y: number, w: number, h: number, t: string, primario: boolean, fn: () => void, k = 3) => {
+  const boton = (x: number, y: number, w: number, h: number, t: string, primario: boolean, fn: () => void, k = 3, color = 0xffffff) => {
     const m = marco(s, x, y, primario ? "boton_primario" : "boton_secundario", w, h, 4);
-    const l = letras(s, x, y, t, k).setOrigin(0.5);
-    const z = s.add.zone(x, y, w, h).setInteractive({ useHandCursor: true }).on("pointerdown", sono(fn));
+    const l = letras(s, x, y, t, k, color).setOrigin(0.5);
+    const z = s.add.zone(x, y, w, Math.max(h, 44)).setInteractive({ useHandCursor: true }).on("pointerdown", sono(fn)); // zona táctil >= 44 px
     return [m, l, z];
   };
   boton(W / 2, 481, 328, 56, "JUGAR", true, () => abrir(modos));
@@ -151,7 +151,7 @@ export function menu(s: Phaser.Scene, net: Net) {
   const solo = panel(16, 400, "SOLITARIO");
   const multi = panel(16, 480, "MULTIJUGADOR");
   for (const p of [modos, solo, multi]) etiqueta(p, 34, 60, "ALIAS");
-  etiqueta(multi, 34, 128, "CODIGO DE SALA (6)");
+  etiqueta(multi, 34, 128, "CÓDIGO DE SALA (6)");
   modos.add(boton(W / 2, 190, 296, 56, "JUGAR SOLITARIO", true, () => abrir(solo), 2.5));
   modos.add(boton(W / 2, 252, 296, 56, "JUGAR MULTIJUGADOR", true, () => abrir(multi), 2.5));
   modos.add(boton(W / 2, 312, 296, 32, "CANCELAR", false, () => abrir(null), 2));
@@ -162,7 +162,7 @@ export function menu(s: Phaser.Scene, net: Net) {
 
   // Partida rápida: entra sola a la sala «esperando» más llena; si se llenó o falló, una segunda consulta y luego el error de siempre.
   let ocupado = false;
-  // Filtro de nivel de la lista de salas y de «Partida rápida»: null = todos. Arranca en el nivel de «Jugar solo» (por defecto mixto).
+  // Filtro de nivel de la lista de salas y de «Partida rápida»: null = todos. Arranca en el nivel de «Jugar solo» (por defecto nivel 1 en un perfil nuevo).
   let filtro: SalaInfo["nivel"] | null = "mixto";
   const FILTROS: (SalaInfo["nivel"] | null)[] = [null, 1, 2, "mixto", 3];
   const nomNivel = (n: SalaInfo["nivel"]) => (n === 3 ? "EXPERTO" : n === "mixto" ? "MIXTO" : `NIVEL ${n}`);
@@ -180,7 +180,7 @@ export function menu(s: Phaser.Scene, net: Net) {
       }
     } finally { ocupado = false; }
   };
-  multi.add(boton(W / 2, 268, 296, 40, "PARTIDA RAPIDA", true, () => void rapida(), 2.5));
+  multi.add(boton(W / 2, 268, 296, 40, "PARTIDA RÁPIDA", true, () => void rapida(), 2.5, 0x0c2a14));
 
   // Salas abiertas: hasta 3 tarjetas, «MAS» pasa de página; se consultan cada 4 s mientras el duelo está abierto.
   const PAG = 3;
@@ -216,7 +216,7 @@ export function menu(s: Phaser.Scene, net: Net) {
       f.m.setVisible(!!sala); f.l.setVisible(!!sala); f.z.input!.enabled = !!sala && abierto === multi;
       if (sala) f.l.setText(textoSala(sala));
     });
-    mas.setText(ab.length > PAG ? `MAS ${pagina + 1}/${Math.ceil(ab.length / PAG)}` : "");
+    mas.setText(ab.length > PAG ? `MÁS ${pagina + 1}/${Math.ceil(ab.length / PAG)}` : "");
     vacio.setText(buscando ? "Buscando salas…" : motivo ? "Sin conexión a salas" : ab.length ? "" : "No hay salas libres de este nivel. Cambia el nivel o juega solo.");
   }
   const consultar = async () => {
@@ -230,20 +230,18 @@ export function menu(s: Phaser.Scene, net: Net) {
   pintarSalas();
 
   // Jugar solo: mismo juego que el duelo (mismos pods y fallas) contra un bot; el jugador elige nivel y dificultad, ambos recordados.
-  const DIFS: [DificultadBot, string][] = [["facil", "FACIL"], ["normal", "NORMAL"], ["dificil", "DIFICIL"]];
+  const DIFS: [DificultadBot, string][] = [["facil", "FÁCIL"], ["normal", "NORMAL"], ["dificil", "DIFÍCIL"]];
   const NIVS: [NivelBot, string][] = [["1", "NIVEL 1"], ["2", "NIVEL 2"], ["mixto", "MIXTO"], ["3", "EXPERTO"]];
-  let dif: DificultadBot = "normal", nivBot: NivelBot = "mixto";
-  try {
-    const g = localStorage.getItem("circuitsync.dificultad"); if (g === "facil" || g === "normal" || g === "dificil") dif = g;
-    const n = localStorage.getItem("circuitsync.nivelbot"); if (n === "1" || n === "2" || n === "mixto" || n === "3") nivBot = n;
-  } catch { /* sin disco */ }
+  let almacen: Storage | null = null;
+  try { almacen = localStorage; } catch { /* sin disco */ }
+  let { dif, nivBot } = preferenciasSolo(almacen); // sin preferencia guardada: Fácil y nivel 1
   filtro = nivBot === "3" ? 3 : nivBot === "mixto" ? "mixto" : (Number(nivBot) as 1 | 2); pintarSalas();
   solo.add(letras(s, W / 2, 150, "Duelo contra un bot", 2, CIAN).setOrigin(0.5, 0));
   const fila = <T extends string>(y: number, opciones: [T, string][], elegir: (v: T) => void) => opciones.map(([v, nombre], k) => {
     const n = opciones.length, paso = n > 3 ? 80 : 100, ancho = n > 3 ? 76 : 92, x = W / 2 + (k - (n - 1) / 2) * paso;
     const m = marco(s, x, y, "boton_secundario", ancho, 36, 4);
     const l = letras(s, x, y, nombre, 1.5, 0x140f1f).setOrigin(0.5);
-    const z = s.add.zone(x, y, ancho, 36).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => elegir(v)));
+    const z = s.add.zone(x, y, ancho, 44).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => elegir(v)));
     solo.add([m, l, z]);
     return { m, v };
   });
@@ -272,10 +270,10 @@ export function menu(s: Phaser.Scene, net: Net) {
   const quien = () => alias() || "Aprendiz";
   const jugar = () => { recordarAlias(quien()); return quien(); }; // el Taller guarda el ✓ en este mismo perfil
   const aprender = panel(60, 450, "APRENDER");
-  aprender.add(boton(W / 2, 190, 296, 56, "MECANICAS", false, () => abrir(mecs)));
+  aprender.add(boton(W / 2, 190, 296, 56, "MECÁNICAS", false, () => abrir(mecs)));
 
   // Mecánicas: 2 columnas x 7 filas (12 tutoriales + la tabla de colores), 50 px de paso.
-  const mecs = panel(40, 480, "MECANICAS");
+  const mecs = panel(40, 480, "MECÁNICAS");
   const tarjetas = MECANICAS.map((m, k) => {
     const x = W / 2 + (k % 2 ? 76 : -76), y = 100 + 50 * Math.floor(k / 2);
     const f = marco(s, x, y, "boton_secundario", 144, 48, 4);

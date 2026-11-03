@@ -1,3 +1,4 @@
+import { ahoraJuego } from "./relojJuego";
 import { Arbiter } from "../../spike/src/arbiter/arbiter";
 import { generar } from "../../spike/src/engine/generador";
 import type { Nivel } from "../../spike/src/protocol";
@@ -17,7 +18,7 @@ export class PracticaTransport implements Transport {
   constructor(nivel: Nivel, semilla?: number, oleadas = false, pod?: number) {
     if (pod !== undefined) semilla ??= Math.floor(Math.random() * 2 ** 32);
     // queueMicrotask: la respuesta llega después de enviar, como por la red.
-    this.arbiter = new Arbiter((_peer, msg) => queueMicrotask(() => this.onMessage(msg, "arbitro")), { nivel, semilla, practica: true, oleadas, ...(pod !== undefined && { pods: generar(semilla!, nivel).slice(pod, pod + 1) }) });
+    this.arbiter = new Arbiter((_peer, msg) => queueMicrotask(() => this.onMessage(msg, "arbitro")), { nivel, semilla, practica: true, oleadas, now: ahoraJuego, ...(pod !== undefined && { pods: generar(semilla!, nivel).slice(pod, pod + 1) }) });
   }
 
   async create(): Promise<void> {}
