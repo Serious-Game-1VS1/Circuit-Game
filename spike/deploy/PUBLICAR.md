@@ -308,3 +308,9 @@ Restaurar:
 Solo cliente (SWA `circuitsync-juego`, bundle `index-CzcuUKZL.js`, antes `index-DPSJDzzl.js`; `dist/version.json` con commit `5469e89` y protocolo 2). El árbitro y la VM no se tocaron. Cambios: texto de abandono más claro y nivel de Partida rápida; el test de fusibles del nivel 3 sube su timeout a 20 s. Mismo procedimiento que v6/v7 (build con `VITE_TRANSPORT=photon`, `staticwebapp.config.json` y `version.json` en `dist/`, `swa deploy` con el token en variable de entorno).
 
 Restaurar: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v8-anterior`). Alternativa: reconstruir desde `c108206` y `swa deploy`.
+
+## Despliegue v9 (solo cliente, 3-nov-2026, commit f7998cb)
+
+Solo cliente (SWA `circuitsync-juego`, bundle `index-Bha5lFdx.js`, antes `index-CzcuUKZL.js`; `dist/version.json` con commit `f7998cb` y protocolo 2). El árbitro y la VM no se tocaron. Cambios: JUGAR abre un panel con alias, Jugar solitario y Jugar multijugador (código o salas públicas); música ambiental en el menú (`/musica/ambiental.mp3`, 3,2 MB; el taller y la carrera conservan el 8-bit generado); fuente Pixel Game solo en títulos de panel. Mismo procedimiento que v8.
+
+Restaurar: copia del `dist` anterior en el scratchpad de la sesión (`dist-v9-anterior`). Alternativa: reconstruir desde `bdc516c` y `swa deploy`.
