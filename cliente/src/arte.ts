@@ -9,6 +9,8 @@ import { ANIMACIONES, type Montaje, sprite, SPRITES } from "./sprites";
 import { aPixel, CONSEJOS } from "./vista"; // glifos que la fuente no trae
 
 export const FUENTE = "pixel";
+/** Fuente de títulos de panel (k = 3, letras claras sobre fondo oscuro): Pixel Game, generada con scripts/generar-fuente.py. Es ilegible en botones claros, en el logo y a tamaño pequeño: ahí se usa FUENTE. */
+export const FUENTE_TITULO = "titulo";
 
 /**
  * Carga el kit en el preload de la escena que lo usa (las texturas quedan para todo el juego). La Sala lo precarga
@@ -25,6 +27,7 @@ export function cargarArte(s: Phaser.Scene, y = 320) {
     file.addToCache = () => { if (file.type !== "image" || !s.textures.exists(file.key)) añadir(); };
   });
   if (!s.cache.bitmapFont.exists(FUENTE)) s.load.bitmapFont(FUENTE, "ui/fuente_pixel.png", "ui/fuente_pixel.xml");
+  if (!s.cache.bitmapFont.exists(FUENTE_TITULO)) s.load.bitmapFont(FUENTE_TITULO, "ui/fuente_titulo.png", "ui/fuente_titulo.xml");
   s.load.setPath("");
   // Sin nada que cargar el preload no emite "complete": el aviso solo se crea si hay archivos en cola.
   const aviso = s.load.list.size ? s.add.text(180, y, "Cargando taller… 0 %", { fontSize: "16px", color: "#9ab" }).setOrigin(0.5) : null;
@@ -75,9 +78,9 @@ export const marco = (s: Phaser.Scene, x: number, y: number, nombre: string, w: 
   return s.add.nineslice(x, y, nombre, undefined, w / k, h / k, n?.izq ?? 0, n?.der ?? 0, n?.arr ?? 0, n?.aba ?? 0).setScale(k);
 };
 
-/** Texto con la fuente pixel del kit (glifos de 8 px de alto × k). Ancho ≈ 4·k px por letra. */
-export const letras = (s: Phaser.Scene, x: number, y: number, t: string, k = 2, color = 0xffffff) => {
-  const b = s.add.bitmapText(x, y, FUENTE, aPixel(t), 8 * k).setTint(color), poner = b.setText.bind(b);
+/** Texto con la fuente pixel del kit (glifos de 8 px de alto × k). Ancho ≈ 4·k px por letra. `fuente`: FUENTE_TITULO solo con k = 3. */
+export const letras = (s: Phaser.Scene, x: number, y: number, t: string, k = 2, color = 0xffffff, fuente = FUENTE) => {
+  const b = s.add.bitmapText(x, y, fuente, aPixel(t), 8 * k).setTint(color), poner = b.setText.bind(b);
   b.setText = (v) => poner(aPixel(String(v))); // los setText posteriores (avisos, globo) también pasan por aPixel
   return b;
 };

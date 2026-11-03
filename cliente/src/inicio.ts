@@ -7,7 +7,7 @@ import * as Phaser from "phaser";
 import type { Nivel } from "../../spike/src/protocol";
 import { elegirSalaRapida, nivelRapida, salaDeUrl, salasAbiertas, textoSala, type Net, type SalaInfo } from "./net";
 import type { DificultadBot } from "./contraBot";
-import { anim, letras, marco } from "./arte";
+import { anim, FUENTE_TITULO, letras, marco } from "./arte";
 import { alternarSilencio, desbloquear, silenciado, sonar } from "./audio";
 import { type NivelBot, bienvenida, cargarPerfil, etiquetaNivel, INSIGNIAS, mejorNave, nivelBotElegido, nivelElegido, progresoRango, recordarAlias, textoNivel, tutorialCompletado, tutorialesHechos, ultimoAlias } from "./perfil";
 import type { Pantalla } from "./pantalla";
@@ -92,7 +92,7 @@ export function menu(s: Phaser.Scene, net: Net) {
     const z = s.add.zone(x, y, w, h).setInteractive({ useHandCursor: true }).on("pointerdown", sono(fn));
     return [m, l, z];
   };
-  boton(W / 2, 481, 328, 56, "JUGAR DUELO", true, () => abrir(duelo));
+  boton(W / 2, 481, 328, 56, "JUGAR", true, () => abrir(modos));
   boton(W / 2 - 84, 541, 160, 48, "APRENDER", false, () => abrir(aprender));
   boton(W / 2 + 84, 541, 160, 48, "LOGROS", false, () => panelLogros(s, refrescar()));
   // Privacidad (S-02): enlace pequeño abajo a la derecha; abre un panel con el aviso.
@@ -112,20 +112,21 @@ export function menu(s: Phaser.Scene, net: Net) {
     const c = s.add.container(0, 0).setDepth(D).setVisible(false);
     c.add(s.add.rectangle(W / 2, 320, W, 640, 0x0b0e16, 0.88).setInteractive()); // tapa y bloquea lo de abajo
     c.add(marco(s, W / 2, y + h / 2, "panel_oscuro", 328, h, 2));
-    c.add(letras(s, W / 2, y + 16, t, 3, AMBAR).setOrigin(0.5, 0));
+    c.add(letras(s, W / 2, y + 16, t, 3, AMBAR, FUENTE_TITULO).setOrigin(0.5, 0));
     return c;
   };
   const etiqueta = (c: Phaser.GameObjects.Container, x: number, y: number, t: string) => c.add(letras(s, x, y, t, 2, GRIS));
   let abierto: Phaser.GameObjects.Container | null = null;
   const abrir = (c: Phaser.GameObjects.Container | null) => {
     abierto?.setVisible(false);
-    if (abierto === duelo && c !== duelo) { consulta++; net.dejarDeListar(); } // fuera del duelo no queda conexión de lobby abierta
+    if (abierto === multi && c !== multi) { consulta++; net.dejarDeListar(); } // fuera de multijugador no queda conexión de lobby abierta
     abierto = c;
     c?.setVisible(true);
-    for (const f of [codigoDom, aliasDom]) f.setVisible(c === duelo);
-    aviso.setY(c === duelo ? 414 : 568); // 568: entre los botones (hasta 565) y el bocadillo de Chispa (desde ~586)
-    if (c === duelo) void consultar();
-    if (c !== duelo) aviso.setText(""); // el error del duelo no sigue visible en otros paneles
+    const juego = c === modos || c === solo || c === multi; // el alias se ve en los tres paneles de JUGAR; el código solo en multijugador
+    aliasDom.setVisible(juego); codigoDom.setVisible(c === multi);
+    aviso.setY(c === multi ? 414 : c === modos ? 340 : c === solo ? 380 : 568); // 568: entre los botones (hasta 565) y el bocadillo de Chispa (desde ~586)
+    if (c === multi) void consultar();
+    if (!juego) aviso.setText(""); // el error de JUGAR no sigue visible en otros paneles
   };
 
   // Duelo: código de sala + alias. Los campos HTML son uno por entrada, sobre el canvas.
@@ -145,12 +146,18 @@ export function menu(s: Phaser.Scene, net: Net) {
   aliasIn.value = net.estado.alias || ultimoAlias(); // «Volver a jugar» y la sesión anterior conservan el alias
   const alias = () => aliasIn.value.trim();
 
-  const duelo = panel(16, 612, "JUGAR DUELO");
-  etiqueta(duelo, 34, 60, "ALIAS");
-  etiqueta(duelo, 34, 128, "CODIGO DE SALA (6)");
+  // JUGAR: alias + elegir modo (solitario / multijugador). Cada modo es su panel; el alias es el mismo campo en los tres.
+  const modos = panel(16, 360, "JUGAR");
+  const solo = panel(16, 400, "SOLITARIO");
+  const multi = panel(16, 480, "MULTIJUGADOR");
+  for (const p of [modos, solo, multi]) etiqueta(p, 34, 60, "ALIAS");
+  etiqueta(multi, 34, 128, "CODIGO DE SALA (6)");
+  modos.add(boton(W / 2, 190, 296, 56, "JUGAR SOLITARIO", true, () => abrir(solo), 2.5));
+  modos.add(boton(W / 2, 252, 296, 56, "JUGAR MULTIJUGADOR", true, () => abrir(multi), 2.5));
+  modos.add(boton(W / 2, 312, 296, 32, "CANCELAR", false, () => abrir(null), 2));
   const entrar = () => { if (alias()) recordarAlias(alias()); void net.entrar(codigoIn.value, aliasIn.value); };
-  duelo.add(boton(W / 2, 220, 296, 44, "ENTRAR", true, entrar, 2.5));
-  for (const i of [codigoIn, aliasIn]) i.addEventListener("keydown", (e) => { if (e.key === "Enter") entrar(); });
+  multi.add(boton(W / 2, 220, 296, 44, "ENTRAR", true, entrar, 2.5));
+  for (const i of [codigoIn, aliasIn]) i.addEventListener("keydown", (e) => { if (e.key === "Enter" && abierto === multi) entrar(); });
   aliasIn.addEventListener("input", () => refrescar());
 
   // Partida rápida: entra sola a la sala «esperando» más llena; si se llenó o falló, una segunda consulta y luego el error de siempre.
@@ -173,15 +180,15 @@ export function menu(s: Phaser.Scene, net: Net) {
       }
     } finally { ocupado = false; }
   };
-  duelo.add(boton(W / 2, 268, 296, 40, "PARTIDA RAPIDA", true, () => void rapida(), 2.5));
+  multi.add(boton(W / 2, 268, 296, 40, "PARTIDA RAPIDA", true, () => void rapida(), 2.5));
 
   // Salas abiertas: hasta 3 tarjetas, «MAS» pasa de página; se consultan cada 4 s mientras el duelo está abierto.
   const PAG = 3;
   const etFiltro = letras(s, 34, 296, "", 2, CIAN);
-  duelo.add([etFiltro, s.add.zone(134, 299, 200, 22).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { filtro = FILTROS[(FILTROS.indexOf(filtro) + 1) % FILTROS.length]!; pagina = 0; aviso.setText(""); pintarSalas(); }))]);
+  multi.add([etFiltro, s.add.zone(134, 299, 200, 22).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { filtro = FILTROS[(FILTROS.indexOf(filtro) + 1) % FILTROS.length]!; pagina = 0; aviso.setText(""); pintarSalas(); }))]);
   let salas: SalaInfo[] = [], pagina = 0, motivo: string | undefined, consulta = 0, buscando = true; // buscando: hasta la primera respuesta
   const vacio = letras(s, W / 2, 360, "", 2, GRIS).setOrigin(0.5).setMaxWidth(296).setCenterAlign();
-  duelo.add(vacio);
+  multi.add(vacio);
   const filas = [0, 1, 2].map((k) => {
     const y = 326 + 34 * k;
     const m = marco(s, W / 2, y, "boton_secundario", 296, 32, 4);
@@ -193,19 +200,20 @@ export function menu(s: Phaser.Scene, net: Net) {
       if (alias()) entrar();
       else { aviso.setText("Escribe tu alias para entrar"); aliasIn.focus(); }
     }));
-    duelo.add([m, l, z]);
+    multi.add([m, l, z]);
     return { m, l, z };
   });
   const mas = letras(s, W - 34, 296, "", 2, CIAN).setOrigin(1, 0);
-  duelo.add(mas);
-  duelo.add(s.add.zone(W - 60, 304, 60, 28).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { pagina++; pintarSalas(); })));
+  multi.add(mas);
+  multi.add(boton(W / 2, 466, 296, 32, "VOLVER", false, () => abrir(modos), 2));
+  multi.add(s.add.zone(W - 60, 304, 60, 28).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => { pagina++; pintarSalas(); })));
   function pintarSalas() {
     etFiltro.setText(textoFiltro());
     const ab = salasAbiertas(salas, filtro ?? undefined);
     if (pagina * PAG >= ab.length) pagina = 0;
     filas.forEach((f, k) => {
       const sala = ab[pagina * PAG + k];
-      f.m.setVisible(!!sala); f.l.setVisible(!!sala); f.z.input!.enabled = !!sala && abierto === duelo;
+      f.m.setVisible(!!sala); f.l.setVisible(!!sala); f.z.input!.enabled = !!sala && abierto === multi;
       if (sala) f.l.setText(textoSala(sala));
     });
     mas.setText(ab.length > PAG ? `MAS ${pagina + 1}/${Math.ceil(ab.length / PAG)}` : "");
@@ -214,10 +222,10 @@ export function menu(s: Phaser.Scene, net: Net) {
   const consultar = async () => {
     const mia = ++consulta;
     const r = await net.listarSalas(8000);
-    if (mia !== consulta || abierto !== duelo) return; // llegó tarde: se cerró el duelo o hay una consulta más nueva
+    if (mia !== consulta || abierto !== multi) return; // llegó tarde: se cerró multijugador o hay una consulta más nueva
     salas = r.salas; motivo = r.motivo; buscando = false; pintarSalas();
   };
-  s.time.addEvent({ delay: 4000, loop: true, callback: () => { if (abierto === duelo) void consultar(); } });
+  s.time.addEvent({ delay: 4000, loop: true, callback: () => { if (abierto === multi) void consultar(); } });
   s.events.once("shutdown", () => { consulta = Infinity; net.dejarDeListar(); });
   pintarSalas();
 
@@ -230,27 +238,27 @@ export function menu(s: Phaser.Scene, net: Net) {
     const n = localStorage.getItem("circuitsync.nivelbot"); if (n === "1" || n === "2" || n === "mixto" || n === "3") nivBot = n;
   } catch { /* sin disco */ }
   filtro = nivBot === "3" ? 3 : nivBot === "mixto" ? "mixto" : (Number(nivBot) as 1 | 2); pintarSalas();
-  duelo.add(letras(s, W / 2, 436, "Jugar solo: duelo contra un bot", 2, CIAN).setOrigin(0.5, 0));
+  solo.add(letras(s, W / 2, 150, "Duelo contra un bot", 2, CIAN).setOrigin(0.5, 0));
   const fila = <T extends string>(y: number, opciones: [T, string][], elegir: (v: T) => void) => opciones.map(([v, nombre], k) => {
     const n = opciones.length, paso = n > 3 ? 80 : 100, ancho = n > 3 ? 76 : 92, x = W / 2 + (k - (n - 1) / 2) * paso;
     const m = marco(s, x, y, "boton_secundario", ancho, 36, 4);
     const l = letras(s, x, y, nombre, 1.5, 0x140f1f).setOrigin(0.5);
     const z = s.add.zone(x, y, ancho, 36).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => elegir(v)));
-    duelo.add([m, l, z]);
+    solo.add([m, l, z]);
     return { m, v };
   });
-  const cNiv = fila(468, NIVS, (v) => {
+  const cNiv = fila(190, NIVS, (v) => {
     aviso.setText(""); nivBot = v; pintarSalas(); try { localStorage.setItem("circuitsync.nivelbot", v); } catch { /* sin disco */ } pintarBot();
   });
-  const cDif = fila(508, DIFS, (v) => { dif = v; try { localStorage.setItem("circuitsync.dificultad", v); } catch { /* sin disco */ } pintarBot(); });
+  const cDif = fila(236, DIFS, (v) => { dif = v; try { localStorage.setItem("circuitsync.dificultad", v); } catch { /* sin disco */ } pintarBot(); });
   const pintarBot = () => {
     const nb = String(nivelBotElegido(pf, nivBot));
     for (const c of cNiv) c.m.setTexture(c.v === nb ? "boton_primario" : "boton_secundario");
     for (const c of cDif) c.m.setTexture(c.v === dif ? "boton_primario" : "boton_secundario");
   };
-  duelo.add(letras(s, W / 2, 536, "Mismos pods y fallas que el duelo", 1.5, GRIS).setOrigin(0.5, 0));
-  duelo.add(boton(W / 2, 572, 296, 44, "JUGAR SOLO", true, () => { if (alias()) recordarAlias(alias()); void net.jugarSolo(alias() || ultimoAlias(), nivelBotElegido(pf, nivBot), dif); }, 2.5));
-  duelo.add(boton(W / 2, 612, 296, 32, "CANCELAR", false, () => abrir(null), 2));
+  solo.add(letras(s, W / 2, 266, "Mismos pods y fallas que el duelo", 1.5, GRIS).setOrigin(0.5, 0));
+  solo.add(boton(W / 2, 312, 296, 44, "JUGAR SOLO", true, () => { if (alias()) recordarAlias(alias()); void net.jugarSolo(alias() || ultimoAlias(), nivelBotElegido(pf, nivBot), dif); }, 2.5));
+  solo.add(boton(W / 2, 360, 296, 32, "VOLVER", false, () => abrir(modos), 2));
 
   const privacidad = panel(30, 560, "PRIVACIDAD");
   let pag = 0;
@@ -348,11 +356,11 @@ export function menu(s: Phaser.Scene, net: Net) {
   }
   refrescar();
 
-  // Enlace compartido (?sala=CODIGO): abre el duelo con el código puesto y el foco en el alias.
+  // Enlace compartido (?sala=CODIGO): abre multijugador con el código puesto y el foco en el alias.
   const compartida = salaDeUrl(location.search);
   if (compartida) {
     codigoIn.value = compartida;
-    abrir(duelo);
+    abrir(multi);
     s.time.addEvent({ delay: 200, repeat: 9, callback: () => { if (document.activeElement !== aliasIn) aliasIn.focus(); } }); // el campo HTML aparece en el primer fotograma visible
   }
 
@@ -361,7 +369,7 @@ export function menu(s: Phaser.Scene, net: Net) {
     /** Avisos de la red (errores de entrada o «Práctica terminada…»). */
     pintar(p: Pantalla) {
       aviso.setText(p.aviso ?? "").setTint(p.aviso?.startsWith("Práctica terminada") ? VERDE : ROJO);
-      chispa.cont.setVisible(!(p.aviso && abierto !== duelo && aviso.height > 24)); // un aviso de 2+ líneas no lo tapa el bocadillo
+      chispa.cont.setVisible(!(p.aviso && abierto !== modos && abierto !== solo && abierto !== multi && aviso.height > 24)); // un aviso de 2+ líneas no lo tapa el bocadillo
     },
   };
 }

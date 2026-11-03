@@ -118,6 +118,9 @@ export const audioListo = (): boolean => ctx?.state === "running";
 /** Contexto para la música y la turbina (musica.ts), solo si ya suena. */
 export const contexto = (): AudioContext | undefined => (audioListo() ? ctx : undefined);
 
+/** Bus de música (la pista ambiental de musica.ts cuelga de aquí: respeta silencio, volumen y ducking). */
+export const salidaMusica = (): GainNode | undefined => mus;
+
 /** Bus de efectos (la turbina de musica.ts cuelga de aquí). */
 export const salidaSfx = (): GainNode | undefined => sfx;
 

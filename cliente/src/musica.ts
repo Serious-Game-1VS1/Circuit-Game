@@ -4,7 +4,7 @@
  * en La menor pentatónica; el arpegio varía cada 4 compases. Solo suena cuando el audio está listo y no hay silencio.
  * pasoDe/escenaDe/tensa son puras (test/audio.test.ts).
  */
-import { contexto, salidaSfx, silenciado, tocar } from "./audio";
+import { contexto, salidaMusica, salidaSfx, silenciado, tocar } from "./audio";
 import type { Pantalla } from "./pantalla";
 
 export type Escena = "menu" | "taller" | "carrera" | "podio";
@@ -37,9 +37,35 @@ export const tensa = (p: Pantalla, ahora: number): boolean =>
 let escena: Escena | undefined, estado: Pantalla | undefined, reloj: ReturnType<typeof setInterval> | undefined;
 let paso = 0, compas = 0, proxima = 0, oculto = false, vigila = false;
 
+// Menú: pista ambiental (public/musica/ambiental.mp3) en bucle. Si no carga, el menú suena con el bucle 8-bit de siempre.
+const PISTA = "musica/ambiental.mp3", VOL_PISTA = 0.8;
+let pista: AudioBuffer | undefined, cargaPista = false, fuentePista: AudioBufferSourceNode | undefined;
+
+function pistaOff() { try { fuentePista?.stop(); } catch { /* ya parada */ } fuentePista = undefined; }
+
+/** Devuelve true si la pista suena (o está por sonar); false si hay que usar el bucle 8-bit. */
+function pistaOn(c: AudioContext): boolean {
+  if (!pista) {
+    if (!cargaPista) {
+      cargaPista = true;
+      fetch(PISTA).then((r) => r.arrayBuffer()).then((b) => c.decodeAudioData(b)).then((a) => { pista = a; }).catch(() => { cargaPista = false; pista = undefined; });
+    }
+    return false;
+  }
+  const bus = salidaMusica();
+  if (!fuentePista && bus) {
+    const f = c.createBufferSource(), g = c.createGain();
+    f.buffer = pista; f.loop = true; g.gain.value = VOL_PISTA;
+    f.connect(g); g.connect(bus); f.start();
+    fuentePista = f;
+  }
+  return true;
+}
+
 function tick() {
   const c = contexto();
-  if (!escena || !BPM[escena] || !c || silenciado() || oculto) { proxima = 0; return; } // al volver, se reengancha sin acumular
+  if (!escena || !BPM[escena] || !c || silenciado() || oculto) { if (oculto) pistaOff(); proxima = 0; return; } // al volver, se reengancha sin acumular
+  if (escena === "menu" && pistaOn(c)) return;
   if (proxima < c.currentTime) proxima = c.currentTime + 0.05;
   while (proxima < c.currentTime + 0.1) {
     const paso16 = 60 / (BPM[escena] * (estado && tensa(estado, Date.now()) ? 1.12 : 1)) / 4, s = pasoDe(escena, paso, compas);
@@ -57,6 +83,7 @@ export function ponerMusica(p: Pantalla, nueva: Escena = escenaDe(p)): void {
   if (!vigila && typeof document !== "undefined") { vigila = true; document.addEventListener("visibilitychange", () => { oculto = document.hidden; proxima = 0; }); }
   if (nueva === escena) return;
   escena = nueva; paso = compas = proxima = 0;
+  if (nueva !== "menu") pistaOff();
   if (BPM[nueva] && !reloj) reloj = setInterval(tick, 25);
   else if (!BPM[nueva] && reloj) { clearInterval(reloj); reloj = undefined; }
 }
