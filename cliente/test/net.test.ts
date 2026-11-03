@@ -262,6 +262,7 @@ describe("cliente conectado al árbitro", () => {
     };
     expect(await falla("Photon op 226 error 32758: Game does not exist")).toBe("No hay una sala abierta con ese código");
     expect(await falla("Photon op 226 error 32765: Game full")).toBe("No hay una sala abierta con ese código");
+    expect(await falla("Photon op 226 error 32764: Game closed")).toBe("La sala está cerrada. Pide un código nuevo.");
     expect(await falla("Photon op 230 error 32767: Invalid AppId")).toMatch(/configurado.*docente/);
     expect(await falla("desconectado de Photon")).toBe("No se pudo conectar con el servidor de juego. Revisa tu conexión.");
     expect(await falla("conexión cerrada")).toMatch(/No se pudo conectar/);

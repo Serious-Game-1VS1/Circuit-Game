@@ -292,6 +292,7 @@ export class Net {
 export function avisoDeJoin(e: unknown): string {
   const m = e instanceof Error ? e.message : "";
   if (/no existe|error 32758|error 32765/i.test(m)) return "No hay una sala abierta con ese código";
+  if (/error 32764/i.test(m)) return "La sala está cerrada. Pide un código nuevo.";
   if (/error 32767|error 32756/i.test(m)) return "El servidor de juego no está bien configurado. Avisa al docente.";
   return "No se pudo conectar con el servidor de juego. Revisa tu conexión.";
 }

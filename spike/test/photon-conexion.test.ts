@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Cerrar un socket en ese momento es lo que el navegador y el SDK reportan como 3001/3004 «WebSocket closed before established».
 const h = vi.hoisted(() => {
   const S = { Error: -1, Uninitialized: 0, ConnectingToNameServer: 1, ConnectedToNameServer: 2, ConnectingToMasterserver: 3, ConnectedToMaster: 4, JoinedLobby: 5, ConnectingToGameserver: 6, Joined: 8, Disconnected: 10 };
-  const estado = { instancias: [] as Fake[], cerradosAntesDeAbrir: 0 };
+  const estado = { instancias: [] as Fake[], cerradosAntesDeAbrir: 0, abierta: [] as boolean[] };
   class Fake {
     static State = S;
     private estado_ = S.Uninitialized;
@@ -35,7 +35,7 @@ const h = vi.hoisted(() => {
     createRoom() { this.socket = "conectando"; this.cambia(S.ConnectingToGameserver); return true; }
     joinRoom() { return this.createRoom(); }
     availableRooms() { return []; }
-    myRoom() { return { setCustomProperties() {}, setIsOpen() {} }; }
+    myRoom() { return { setCustomProperties() {}, setIsOpen(v: boolean) { estado.abierta.push(v); } }; }
     myActor() { return { actorNr: 1 }; }
     myRoomMasterActorNr() { return 1; }
     raiseEvent() {}
@@ -61,7 +61,7 @@ const ultimo = () => h.estado.instancias[h.estado.instancias.length - 1]!;
 /** Deja correr los temporizadores a 0 ms (el cierre diferido del SDK). */
 const flush = () => new Promise<void>((r) => setTimeout(r, 5));
 
-beforeEach(() => { h.estado.instancias.length = 0; h.estado.cerradosAntesDeAbrir = 0; });
+beforeEach(() => { h.estado.instancias.length = 0; h.estado.cerradosAntesDeAbrir = 0; h.estado.abierta.length = 0; });
 
 describe("PhotonTransport: nunca cierra un socket que aún se está abriendo", () => {
   it("soltarLobby con la consulta de lobby conectando espera a que abra y entonces cierra", async () => {
@@ -134,5 +134,18 @@ describe("PhotonTransport: nunca cierra un socket que aún se está abriendo", (
     await t.close();
     expect(ultimo().socket).toBe("cerrado");
     expect(h.estado.cerradosAntesDeAbrir).toBe(0);
+  });
+});
+
+describe("PhotonTransport: la sala sigue abierta durante la partida", () => {
+  it("publicar nunca cierra la sala: un jugador caído debe poder volver con joinRoom", async () => {
+    const t = new PhotonTransport("app");
+    const c = t.create("ABC123");
+    ultimo().alLobby();
+    await Promise.resolve();
+    ultimo().llega(); // Joined
+    await c;
+    for (const estado of ["esperando", "llena", "jugando"] as const) t.publicar({ nivel: 1, jugadores: 2, estado });
+    expect(h.estado.abierta).toEqual([true, true, true]);
   });
 });

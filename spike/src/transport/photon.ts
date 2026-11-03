@@ -131,12 +131,16 @@ export class PhotonTransport implements Transport {
     await this.step(() => this.lbc!.createRoom(code, { maxPlayers: 3, isVisible: true, isOpen: true, customGameProperties: { nivel: 1, jug: 0, est: "esperando" }, propsListedInLobby: ["nivel", "jug", "est"] }));
   }
 
-  /** Anfitrión: actualiza lo que muestra el lobby; cerrada (sin entradas nuevas) en cuanto deja de esperar. */
+  /**
+   * Anfitrión: actualiza lo que muestra el lobby. La sala sigue ABIERTA mientras dura la partida: Photon rechaza `joinRoom` en una sala cerrada (error 32764),
+   * y entonces nadie que se cayó puede reconectarse. No entra nadie ajeno: la sala llena (árbitro + 2) no admite más, el lobby solo ofrece las «esperando» y,
+   * si alguien con el código ocupa un hueco libre, el árbitro lo rechaza («sala completa»).
+   */
   publicar({ nivel, jugadores, estado }: SalaPublica) {
     if (!this.inRoom) return;
     const sala = this.lbc?.myRoom();
     sala?.setCustomProperties({ nivel, jug: jugadores, est: estado });
-    sala?.setIsOpen(estado === "esperando");
+    sala?.setIsOpen(true);
   }
 
   /** Salas del lobby con espacio o en juego; solo desde fuera de una sala (en sala el SDK ya no está en el lobby). */
