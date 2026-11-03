@@ -209,6 +209,33 @@ export function generar(semilla: number, nivel: Perfil, demo: Demo = false): Pod
   throw new Error("sin partida con cobertura completa");
 }
 
+const CON_VARIOS_VALORES: readonly Circuito[] = ["led", "cabina", "divisor", "protegido", "combinar"];
+
+/**
+ * Pods del segundo jugador de un duelo: las mismas zonas dañadas en cada pod (y el mismo presupuesto de dificultad), pero con otra familia
+ * de circuito cuando la zona tiene una de la misma dificultad (p. ej. Radar: LED con resistencia, pieza muerta en cadena o resistencias combinadas)
+ * y siempre con otros valores y otra solución. Así nadie puede copiar la respuesta del rival. Determinista por (semilla, perfil).
+ * Si la zona solo tiene una familia (nivel 1) cambia la batería y la resistencia correcta, no el tipo de circuito.
+ */
+export function podsRival(base: Pod[], semilla: number, perfil: Perfil): Pod[] {
+  const rnd = mulberry32((semilla ^ 0x7e57ab1e) >>> 0);
+  const sortear = (cambiar: number) => base.map((p, i) => ({
+    numero: p.numero,
+    zonas: p.zonas.map((z) => {
+      const hermanas = familias(z.zona, nivelDePod(perfil, i), i >= 3).filter((c) => c !== z.circuito && DIFICULTAD[c] === DIFICULTAD[z.circuito]);
+      const c = hermanas.length && rnd() < cambiar ? pick(rnd, hermanas) : z.circuito;
+      // Misma familia: otra solución solo donde el sorteo puede variarla (luces, interruptor y fusible tienen una sola, fija; cadena, fusible3 y placa3 son aleatorias).
+      return sortearZona(rnd, z.zona, c, false, c === z.circuito && CON_VARIOS_VALORES.includes(c) ? z.solucion : undefined);
+    }),
+  }));
+  // La cobertura de familias del perfil debe cumplirse también para este jugador; si no sale, solo se cambian los valores (siempre cumple).
+  for (let i = 0; i < 100; i++) {
+    const pods = sortear(i < 20 ? 1 : 0.5);
+    if (!faltaCobertura(perfil, pods.map((p) => p.zonas.map((z) => z.circuito)))) return pods;
+  }
+  return sortear(0);
+}
+
 /**
  * Pod `numero` (desde 1) del modo Oleadas, determinista por (semilla, nivel, numero): cada 3 pods sube un escalón
  * (1 zona, 2, 3 y tope de 4). Cada zona se valida igual que en `generar`; no hay cobertura ni presupuesto de partida.

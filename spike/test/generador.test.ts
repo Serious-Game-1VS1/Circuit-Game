@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encadena, generar, generarOleada, mulberry32, oleadaDe, presupuesto, validarPartida, validarPodOleada, validarZona, type Pod } from "../src/engine/generador.js";
+import { encadena, generar, generarOleada, mulberry32, podsRival, oleadaDe, presupuesto, validarPartida, validarPodOleada, validarZona, type Pod } from "../src/engine/generador.js";
 import { evaluar, jugadas } from "../src/engine/pods.js";
 import type { Nivel } from "../src/protocol.js";
 
@@ -199,5 +199,39 @@ describe("falla encadenada (solo Oleadas)", () => {
       }
     }
     expect(vistas).toBeGreaterThan(300);
+  });
+});
+
+describe("pods del segundo jugador (podsRival)", () => {
+  it("mismas zonas y presupuesto, partida válida, determinista y con otra solución o familia", () => {
+    for (const perfil of ["mixto", 1, 2, 3] as const) {
+      for (let s = 0; s < 40; s++) {
+        const a = generar(s, perfil), b = podsRival(a, s, perfil);
+        expect(validarPartida(b, perfil), `${perfil} ${s}`).toBeNull();
+        expect(podsRival(a, s, perfil)).toEqual(b);
+        a.forEach((p, i) => {
+          expect(b[i]!.zonas.map((z) => z.zona)).toEqual(p.zonas.map((z) => z.zona));
+          expect(presupuesto(b[i]!)).toBe(presupuesto(p));
+        });
+      }
+    }
+  });
+
+  it("en el nivel 2 casi todas las zonas con varias familias cambian de circuito", () => {
+    let cambian = 0, total = 0;
+    for (let s = 0; s < 100; s++) {
+      const a = generar(s, 2), b = podsRival(a, s, 2);
+      a.forEach((p, i) => p.zonas.forEach((z, k) => { if (["led", "interruptor", "fusible"].includes(z.circuito)) { total++; if (b[i]!.zonas[k]!.circuito !== z.circuito) cambian++; } }));
+    }
+    expect(cambian / total).toBeGreaterThan(0.3);
+  });
+
+  it("en el nivel 1 (una familia por zona) cambia la solución o la batería", () => {
+    let iguales = 0, total = 0;
+    for (let s = 0; s < 100; s++) {
+      const a = generar(s, 1), b = podsRival(a, s, 1);
+      a.forEach((p, i) => p.zonas.forEach((z, k) => { total++; if (b[i]!.zonas[k]!.solucion === z.solucion && b[i]!.zonas[k]!.volts === z.volts) iguales++; }));
+    }
+    expect(iguales / total).toBeLessThan(0.15);
   });
 });

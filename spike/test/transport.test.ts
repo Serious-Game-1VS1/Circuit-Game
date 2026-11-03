@@ -64,7 +64,7 @@ describe("transporte local", () => {
     await Promise.all([a, b].map((x) => x.until((m) => m.t === "start")));
 
     const mark = b.log.length;
-    expect(a.pod).toEqual(b.pod); // misma secuencia de pods para ambos
+    expect(a.pod!.zonas.map((z) => z.zona)).toEqual(b.pod!.zonas.map((z) => z.zona)); // mismas zonas dañadas; los circuitos pueden diferir
     // El pod 1 tiene una sola zona: repararla no basta, cuenta al despacharlo.
     await expect(a.solveNext()).resolves.toMatchObject({ t: "result", veredicto: "correcto", despachados: 0 });
     await expect(a.solveNext()).resolves.toMatchObject({ t: "despachado", despachados: 1 });

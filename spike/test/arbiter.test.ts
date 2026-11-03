@@ -32,7 +32,8 @@ const last = (to: string, k: ServerMsg["t"]) => sent(to).filter((m) => m.t === k
 beforeEach(() => {
   t = 0;
   out = [];
-  arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA });
+  // `pods` inyectados: ambos asientos juegan los mismos (los helpers resuelven con arb.pods); los pods distintos por jugador se prueban aparte.
+  arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA, pods: generar(SEMILLA, 1) });
 });
 
 const lobby = () => { arb.handle("p1", { t: "hello", alias: "ana" }); arb.handle("p2", { t: "hello", alias: "beto" }); };
@@ -656,5 +657,25 @@ describe("Oleadas: falla encadenada", () => {
     play();
     for (let i = 0; i < 5; i++) solvePod("p1");
     expect(sent("p1").some((m) => m.t === "result" && "hayMas" in m)).toBe(false);
+  });
+});
+
+describe("pods distintos por jugador", () => {
+  it("el asiento B ve las mismas zonas que A pero su propia lista, y su solución es la suya", () => {
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA });
+    play();
+    for (let i = 0; i < 5; i++) {
+      expect(podOf("p2").zonas.map((z) => z.zona)).toEqual(podOf("p1").zonas.map((z) => z.zona));
+      for (const peer of ["p1", "p2"]) {
+        for (const z of podOf(peer).zonas) {
+          const pods = peer === "p1" ? arb.pods : arb.podsB;
+          const zs = pods[podOf(peer).numero - 1]!.zonas.find((x) => x.zona === z.zona)!;
+          if (zs.circuito !== "cadena") test(peer, z.zona, jugadas(zs).find((p) => evaluar(zs, p) === "correcto")!);
+        }
+      }
+      if (arb.pods[i]!.zonas.some((z) => z.circuito === "cadena")) break;
+      despachar("p1"); despachar("p2");
+    }
+    expect(JSON.stringify(arb.pods)).not.toEqual(JSON.stringify(arb.podsB));
   });
 });

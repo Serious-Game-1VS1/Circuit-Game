@@ -46,7 +46,7 @@ async function soloBot(dif: DificultadBot, semilla: number, nivel: Perfil = 1) {
   const t0 = t;
   for (let i = 0; i < 40_000 && !fin; i++) { t += 100; tr.tick(); await Promise.resolve(); }
   await tr.close();
-  return { pods: fin?.score.B?.despachados ?? 0, porPod: (t - t0) / 5 / 1000, total: (t - t0) / 1000, quemadas: fin?.score.B?.quemadas ?? 0, circuitos: tr.arbiter.pods.flatMap((p) => p.zonas.map((z) => z.circuito)) };
+  return { pods: fin?.score.B?.despachados ?? 0, porPod: (t - t0) / 5 / 1000, total: (t - t0) / 1000, quemadas: fin?.score.B?.quemadas ?? 0, circuitos: tr.arbiter.podsB.flatMap((p) => p.zonas.map((z) => z.circuito)) };
 }
 
 describe("ContraBotTransport", () => {
@@ -146,7 +146,7 @@ describe("ContraBotTransport", () => {
   }, 240_000);
 
   it("completa 5 pods en nivel 1, nivel 2, nivel 3 y mixto con cada perfil, en tiempo razonable, sin atascarse (todas las familias de nivel 2 aparecen)", async () => {
-    const tope = { facil: 65, normal: 42, dificil: 28 } as const; // s/pod medios
+    const tope = { facil: 70, normal: 42, dificil: 28 } as const; // s/pod medios (el bot es B: sus pods cambian de familia respecto a los del jugador, con más cadenas, más lentas)
     const vistas = new Set<string>();
     for (const nivel of [1, 2, 3, "mixto"] as Perfil[]) {
       for (const dif of ["facil", "normal", "dificil"] as const) {
@@ -179,7 +179,7 @@ describe("ContraBotTransport", () => {
     for (let i = 0; i < 40_000 && !fin; i++) { t += 100; tr.tick(); await Promise.resolve(); }
     await tr.close();
     expect(fin?.score.B?.despachados).toBe(5);
-    const medidas = bot.filter((m) => m.t === "medir"), cadenas = tr.arbiter.pods.flatMap((p) => p.zonas).filter((z) => z.circuito === "cadena");
+    const medidas = bot.filter((m) => m.t === "medir"), cadenas = tr.arbiter.podsB.flatMap((p) => p.zonas).filter((z) => z.circuito === "cadena");
     expect(cadenas.length).toBeGreaterThan(0);
     expect(medidas.length).toBeGreaterThan(0);
     expect(medidas.every((m) => m.modo === "continuidad" && m.pieza === "ninguna" && /^t\d$/.test(String(m.punto)))).toBe(true);
