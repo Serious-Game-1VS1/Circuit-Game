@@ -322,3 +322,9 @@ Cliente en SWA `circuitsync-juego` (bundle `index-C1aeC4UO.js`, antes `index-Bha
 Restaurar:
 - Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v10 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
 - Cliente: copia del `dist` anterior en el scratchpad de la sesión (`dist-v10-anterior`). Alternativa: reconstruir desde `c1ae455` y `swa deploy`.
+
+## Despliegue v11 (solo cliente, 3-nov-2026, commit 3fbfc60)
+
+Solo cliente (SWA `circuitsync-juego`, bundle `index-Jrncl0qg.js`, antes `index-BMxLA_Nj.js`; `dist/version.json` con commit `3fbfc60` y protocolo 2). El árbitro y la VM no se tocaron. Cambios: la guía en solitario se pausa con el reloj de juego (`relojJuego.ts`), aviso para girar el teléfono, acento de «PARTIDA RÁPIDA» con texto oscuro, «3 A» sin cortar en el tutorial del fusible, zonas SÍ/NO del aviso de salir separadas (48×44) y un único texto de la insignia del nivel 1 («Termina el nivel 1»). Mismo procedimiento que v8.
+
+Restaurar: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v11-anterior`). Alternativa: reconstruir desde `eedfa1b` y `swa deploy`.
