@@ -10,7 +10,7 @@ import { BURN_BLOCK_MS, csvField, PenaltyTracker, QUEMADAS_OLEADAS } from "./pen
 export const PODS_TO_WIN = 5;
 // supuesto: límite de 12 min pendiente de confirmar con el tutor; configurable por opción.
 export const MATCH_LIMIT_MS = 12 * 60_000;
-export const RECONNECT_MS = 30_000;
+export const RECONNECT_MS = 300_000; // 5 min para volver a una partida en marcha (mismo alias)
 /** Lo que cuesta medir con el multímetro: ~1 s en tutorial/práctica/oleadas y 3 s en las partidas competitivas (1v1 y bot), para que no se resuelva midiendo todo gratis. */
 export const MEDIR_MS = 1000;
 export const MEDIR_COMPETITIVO_MS = 3000;
@@ -222,7 +222,7 @@ export class Arbiter {
       s.goneAt = this.now();
       return this.syncRival(s);
     }
-    // Tras el fin se guarda el asiento para reenviar el resultado a quien vuelva (30 s).
+    // Tras el fin se guarda el asiento para reenviar el resultado a quien vuelva (mientras la sala siga abierta: `CIERRE_TRAS_FIN_MS` en serve.ts).
     if (this.phase === "fin") { s.peer = null; s.goneAt = this.now(); return; }
     if (this.phase === "anulada") return;
     this.ociosaDesde = this.now();
@@ -252,7 +252,7 @@ export class Arbiter {
     if (!this.practica && t - this.startAt >= this.limitMs) return this.finish("tiempo");
     if (this.seats.every((s) => !s.peer && t - s.goneAt >= this.reconnectMs)) {
       this.phase = "anulada";
-      this.outcome = { t: "end", phase: "anulada", winner: null, reason: "ambos sin conexión 30 s", score: this.score() };
+      this.outcome = { t: "end", phase: "anulada", winner: null, reason: `ambos sin conexión ${this.reconnectMs / 1000} s`, score: this.score() };
       return;
     }
     for (const s of this.seats) this.syncRival(s);

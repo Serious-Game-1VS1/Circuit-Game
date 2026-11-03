@@ -13,8 +13,8 @@ import { DIAGNOSTICO } from "./progreso";
 import { mecanica } from "./tutorial";
 import { despachable, inicial, normalizarCodigo, reducir, terminada, validarEntrada, type Pantalla } from "./pantalla";
 
-const REINTENTOS = 15;
-const PAUSA_MS = 2000;
+const REINTENTOS = 60; // 60 × 5 s = 5 min: la ventana de reconexión del árbitro (RECONNECT_MS)
+const PAUSA_MS = 5000;
 const PAUSA_ABANDONO_MS = 150;
 const dormir = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

@@ -45,7 +45,7 @@
  * Carrera final y podio (propuesta A+D), compatible con el cliente anterior:
  *  - End con phase "fin" suma `carrera` por estación: pod que corre, llamas de turbo, tiempo por pod y
  *    «qué repasar». El ganador sigue siendo `winner` (decidido antes de la carrera, sin azar).
- *  - Quien se reconecta tras el fin (mismo alias, 30 s) recibe Welcome y el mismo End.
+ *  - Quien se reconecta tras el fin (mismo alias, mientras la sala siga abierta: 30 s) recibe Welcome y el mismo End.
  *
  * Modo demo, compatible con el cliente anterior:
  *  - Snapshot suma `demo`: true si el árbitro corre con --demo (cableado en Cabina/Turbina) o con

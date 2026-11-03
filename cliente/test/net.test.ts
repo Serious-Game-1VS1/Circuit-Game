@@ -268,27 +268,27 @@ describe("cliente conectado al árbitro", () => {
     expect(await falla("conexión cerrada")).toMatch(/No se pudo conectar/);
   });
 
-  it("SCRUM-43: al perder el transporte avisa, reintenta cada 2 s (15 veces) y al reconectar quita el aviso", async () => {
+  it("SCRUM-43: al perder el transporte avisa, reintenta cada 5 s (60 veces) y al reconectar quita el aviso", async () => {
     vi.useFakeTimers();
     try {
       const m = new Mem("pr");
-      const n = new Net(m, () => t); // pausa real de 2 s, con timers falsos
+      const n = new Net(m, () => t); // pausa real de 5 s, con timers falsos
       await n.entrar(CODE, "eva");
       let fallos = 0;
       m.join = async () => { if (fallos++ < 3) throw new Error("sin red"); };
       const p = n.reconectar();
       expect(n.estado.aviso).toBe("Conexión perdida: reconectando…");
-      await vi.advanceTimersByTimeAsync(2000 * 3);
+      await vi.advanceTimersByTimeAsync(5000 * 3);
       await p;
       expect(fallos).toBe(4);
       expect(n.estado.aviso).toBeNull();
-      // Nunca vuelve: 15 intentos separados por 2 s y se rinde.
+      // Nunca vuelve: 60 intentos separados por 5 s (5 min) y se rinde.
       let intentos = 0;
       m.join = async () => { intentos++; throw new Error("sin red"); };
       const q = n.reconectar();
-      await vi.advanceTimersByTimeAsync(2000 * 14);
+      await vi.advanceTimersByTimeAsync(5000 * 59);
       await q;
-      expect(intentos).toBe(15);
+      expect(intentos).toBe(60);
       expect(n.estado.aviso).toBe("No se pudo reconectar a la sala");
     } finally { vi.useRealTimers(); }
   });

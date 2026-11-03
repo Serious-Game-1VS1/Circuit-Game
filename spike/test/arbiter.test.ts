@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { Arbiter, MATCH_LIMIT_MS } from "../src/arbiter/arbiter.js";
+import { Arbiter, MATCH_LIMIT_MS, RECONNECT_MS } from "../src/arbiter/arbiter.js";
 import { encadena, generar, generarOleada } from "../src/engine/generador.js";
 import { evaluar, jugadas } from "../src/engine/pods.js";
 import { PROTOCOL_VERSION, type PodView, type ServerMsg } from "../src/protocol.js";
@@ -317,15 +317,15 @@ describe("fin, desempate y reconexión (SCRUM-89)", () => {
     expect(arb.outcome).toMatchObject({ winner: null, reason: "tiempo" });
   });
 
-  it("quien vuelve antes de 30 s recupera su estado; el reloj sigue corriendo", () => {
+  it("quien vuelve antes de 5 min recupera su estado; el reloj sigue corriendo", () => {
     solvePod("p2");
     arb.leave("p2");
     arb.tick();
     expect(last("p1", "rival")).toMatchObject({ estado: "sin-conexion", despachados: 1 });
-    t += 29_999;
+    t += RECONNECT_MS - 1;
     arb.handle("p9", { t: "hello", alias: "beto" });
     expect(last("p9", "welcome")).toMatchObject({ station: "B" });
-    expect(last("p9", "start")).toMatchObject({ despachados: 1, restanteMs: 12 * 60_000 - 29_999, rival: { alias: "ana" } });
+    expect(last("p9", "start")).toMatchObject({ despachados: 1, restanteMs: 12 * 60_000 - (RECONNECT_MS - 1), rival: { alias: "ana" } });
     expect(last("p1", "rival")).toMatchObject({ estado: "reparando" });
     solvePod("p9");
     expect(last("p9", "despachado")).toMatchObject({ despachados: 2 });
@@ -344,19 +344,19 @@ describe("fin, desempate y reconexión (SCRUM-89)", () => {
     expect(arb.toCsv()).toContain("despacho");
   });
 
-  it("después de 30 s ya no se recupera el asiento", () => {
+  it("después de 5 min ya no se recupera el asiento", () => {
     arb.leave("p2");
-    t += 30_000;
+    t += RECONNECT_MS;
     arb.handle("p9", { t: "hello", alias: "beto" });
     expect(last("p9", "full")).toMatchObject({ reason: "tiempo de reconexión agotado" });
     expect(arb.phase).toBe("jugando");
   });
 
-  it("si ambos faltan 30 s la partida se anula", () => {
+  it("si ambos faltan 5 min la partida se anula", () => {
     arb.leave("p1");
     t += 10_000;
     arb.leave("p2");
-    t += 29_999;
+    t += RECONNECT_MS - 1;
     arb.tick();
     expect(arb.phase).toBe("jugando");
     t += 1;
@@ -437,13 +437,13 @@ describe("carrera final y podio (propuesta A+D)", () => {
     expect(arb.outcome).toMatchObject({ winner: "B", reason: "tiempo", carrera: { B: { llamas: 1 }, A: { llamas: 0 } } });
   });
 
-  it("quien vuelve antes de 30 s tras el fin recibe el mismo resultado; después, no", () => {
+  it("quien vuelve antes de 5 min tras el fin recibe el mismo resultado; después, no", () => {
     play();
     for (let i = 0; i < 5; i++) solvePod("p1");
     const end = last("p1", "end");
     arb.leave("p1");
     arb.leave("p2");
-    t += 29_999;
+    t += RECONNECT_MS - 1;
     arb.handle("p9", { t: "hello", alias: "ana" });
     expect(last("p9", "welcome")).toMatchObject({ station: "A" });
     expect(last("p9", "end")).toEqual(end);

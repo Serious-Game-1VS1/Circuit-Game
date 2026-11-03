@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { MEDIR_COMPETITIVO_MS, RAZON_ABANDONO, RAZON_SALA_OCIOSA, RECONNECT_MS, type Arbiter } from "./arbiter/arbiter.js";
+import { MEDIR_COMPETITIVO_MS, RAZON_ABANDONO, RAZON_SALA_OCIOSA, type Arbiter } from "./arbiter/arbiter.js";
 import { borrarVivo, guardarPartida, guardarVivo } from "./docente/almacen.js";
 import { partidaDe, vivoDe } from "./docente/registro.js";
 import { iniciarRetencion } from "./docente/retencion.js";
@@ -8,6 +8,9 @@ import { hostRoom, createRoom, pausaReapertura } from "./transport/room.js";
 import { LocalTransport, startLocalRelay } from "./transport/local.js";
 import { PhotonTransport } from "./transport/photon.js";
 import type { Transport } from "./transport/transport.js";
+
+/** Tras el fin la sala sigue abierta este tiempo para reenviar el resultado a quien vuelva; no depende de la ventana de reconexión (5 min), que ocuparía una de las salas. */
+const CIERRE_TRAS_FIN_MS = 30_000;
 
 /**
  * npm run serve: relé local en ws://localhost:8787 + árbitro con una sala (una por proceso).
@@ -87,7 +90,7 @@ function vigilar(code: string, arbiter: Arbiter, fin: () => void): () => void {
       console.log(`[${code}] resultado: ${o ? `${o.phase}, ganador ${o.winner ?? "ninguno"}, motivo: ${o.reason}` : "sin resultado"} · CSV guardado`);
       // Tras el fin la sala sigue abierta la ventana de reconexión: quien recargue recibe el mismo resultado.
       // Abandono: el rival ya recibió el resultado; la sala se libera enseguida en vez de esperar la ventana de reconexión.
-      setTimeout(() => { docente("borrar el vivo", () => borrarVivo(code)); fin(); }, arbiter.phase === "fin" && o?.reason !== RAZON_ABANDONO ? RECONNECT_MS : 1000);
+      setTimeout(() => { docente("borrar el vivo", () => borrarVivo(code)); fin(); }, arbiter.phase === "fin" && o?.reason !== RAZON_ABANDONO ? CIERRE_TRAS_FIN_MS : 1000);
     }
   }, 200);
   return () => clearInterval(timer);
