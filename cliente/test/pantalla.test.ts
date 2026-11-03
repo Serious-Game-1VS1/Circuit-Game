@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { avisoVivo, despachable, faltan, inicial, textoRechazo, pistaDemo, tarjetaVisible, reducir, reloj, textoFin, textoRival, validarEntrada } from "../src/pantalla";
-import type { PodView, ServerMsg } from "../../spike/src/protocol";
+import { avisoVivo, checkActivo, despachable, textoCheck, faltan, inicial, textoRechazo, pistaDemo, tarjetaVisible, reducir, reloj, textoFin, textoRival, validarEntrada } from "../src/pantalla";
+import { PROTOCOL_VERSION, type PodView, type ServerMsg } from "../../spike/src/protocol";
 import { vistaDeVeredicto } from "../src/vista";
 import { eventosDe } from "../src/audio";
 
@@ -57,7 +57,16 @@ describe("lógica de pantalla", () => {
 
   it("texto del rival sin piezas ni soluciones", () => {
     expect(textoRival({ alias: "beto", despachados: 2, estado: "sin-conexion" })).toBe("beto: 2/5 pods · sin conexión");
+    expect(textoRival({ alias: "beto", despachados: 2, estado: "penalizado" })).toBe("beto: 2/5 pods · enfriando");
     expect(textoRival(null)).toBe("Rival: —");
+  });
+  it("avisa en cuanto el rival termina primero (no en práctica ni si ya terminaste)", () => {
+    const rival = (n: number): ServerMsg => ({ t: "rival", alias: "beto", despachados: n, estado: "reparando" });
+    const p = { ...inicial(), fase: "taller" as const, despachados: 4, total: 5 };
+    expect(reducir(p, rival(5), 0).aviso).toBe("beto terminó sus 5 pods primero: la partida terminó.");
+    expect(reducir(p, rival(4), 0).aviso).toBeNull();
+    expect(reducir({ ...p, practica: true }, rival(5), 0).aviso).toBeNull();
+    expect(reducir({ ...p, despachados: 5 }, rival(5), 0).aviso).toBeNull();
   });
 
   it("reloj mm:ss que no baja de cero", () => {
@@ -188,5 +197,65 @@ describe("falla encadenada (Oleadas)", () => {
 
   it("suena como «correcto» y no como rechazo", () => {
     expect(eventosDe(antes, reducir(antes, result(segunda, true), 5))).toEqual(["correcto"]);
+  });
+});
+
+describe("racha y bono del árbitro (indicador y aviso)", () => {
+  const pod: PodView = { numero: 1, zonas: [{ zona: 0, nombre: "radar", circuito: "led", volts: 9, opciones: ["a", "b"], reparada: false }] };
+  const res = (veredicto: "correcto" | "poco", racha: number, bono?: "listo" | "usado" | "perdido"): ServerMsg => ({ t: "result", seq: 1, t0: 0, zona: 0, veredicto, waitMs: 0, despachados: 0, pod, racha, ...(bono && { bono }) });
+
+  it("el start repone la racha (reconexión) y sin campo queda en 0", () => {
+    const st = (racha?: number) => ({ t: "start", despachados: 0, total: 5, pod, rival: null, restanteMs: 1, nivel: 1, demo: false, ...(racha !== undefined && { racha }) }) as ServerMsg;
+    expect(reducir(inicial(), st(2), 0).racha).toBe(2);
+    expect(reducir({ ...inicial(), racha: 3 }, st(), 0).racha).toBe(0);
+  });
+  it("cada aviso del árbitro suma un eco: acierto con racha, bono listo, fallo, bono usado y perdido", () => {
+    let p = reducir(inicial(), res("correcto", 1), 0);
+    expect([p.racha, p.eco]).toEqual([1, { n: 1, tipo: "acierto" }]);
+    p = reducir(p, res("correcto", 3, "listo"), 0);
+    expect([p.racha, p.eco]).toEqual([3, { n: 2, tipo: "listo" }]);
+    p = reducir(p, res("poco", 0, "usado"), 0);
+    expect([p.racha, p.eco]).toEqual([0, { n: 3, tipo: "usado" }]);
+    p = reducir(p, res("poco", 0), 0);
+    expect(p.eco).toEqual({ n: 4, tipo: "fallo" });
+    expect(reducir(p, res("poco", 0, "perdido"), 0).eco?.tipo).toBe("perdido");
+  });
+  it("una zona acertada sin subir la racha (falla encadenada) no avisa", () => {
+    const p = reducir(inicial(), res("correcto", 0), 0);
+    expect(p.eco).toBeUndefined();
+  });
+});
+
+describe("ronda del 30-oct: versión de protocolo y rechazos sin espera", () => {
+  const w = { t: "welcome", station: "A", alias: "ana" } as const;
+  it("avisa si el árbitro no manda versión (anterior) o manda otra; con la misma, nada", () => {
+    expect(reducir(inicial(), w, 0).versionAviso).toMatch(/recarga la página/);
+    expect(reducir(inicial(), { ...w, version: 99 }, 0).versionAviso).toMatch(/Versión distinta/);
+    expect(reducir(inicial(), { ...w, version: 1 }, 0).versionAviso).toBeDefined();
+    const ok = reducir(inicial(), { ...w, version: PROTOCOL_VERSION }, 0);
+    expect(ok.versionAviso).toBeUndefined();
+    expect(ok.fase).toBe("sala"); // compatible: la partida sigue su curso
+    expect(reducir(inicial(), { ...w, version: 99 }, 0).fase).toBe("sala"); // incluso con aviso no se rompe nada
+  });
+  it("un Reject sin espera (medir ocupado) no borra el enfriamiento en curso; uno con espera sí lo fija", () => {
+    const base = { ...inicial(), esperaHasta: 9000 };
+    const ocupado = reducir(base, { t: "reject", seq: 1, t0: 0, reason: "el multímetro sigue midiendo", waitMs: 0 }, 2000);
+    expect(ocupado.esperaHasta).toBe(9000);
+    expect(reducir(base, { t: "reject", seq: 1, t0: 0, reason: "enfriamiento", waitMs: 4000 }, 2000).esperaHasta).toBe(6000);
+  });
+});
+
+describe("rótulo de CHECK", () => {
+  it("cuenta atrás durante el enfriamiento y vuelve a CHECK", () => {
+    expect(textoCheck(0, 1000)).toBe("CHECK");
+    expect(textoCheck(3000, 1000)).toBe("ESPERA 2");
+    expect(textoCheck(3000, 2100)).toBe("ESPERA 1");
+    expect(textoCheck(3000, 3000)).toBe("CHECK");
+  });
+  it("CHECK activo (verde) solo con pieza por validar y sin enfriamiento, o con la zona reparada; gris en el resto", () => {
+    expect(checkActivo(false, true, 0, 1000)).toBe(true);
+    expect(checkActivo(false, true, 3000, 1000)).toBe(false); // enfriando
+    expect(checkActivo(false, false, 0, 1000)).toBe(false); // sin pieza o ya validada
+    expect(checkActivo(true, false, 3000, 1000)).toBe(true); // reparada: despachar
   });
 });

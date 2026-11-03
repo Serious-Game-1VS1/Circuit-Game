@@ -7,6 +7,8 @@ export interface Sesion { codigo: string; nivel: Nivel; creada: string; estado: 
 export interface JugadorPartida {
   estacion: Station;
   alias: string;
+  /** Id opaco del alumno (alumnos.json) si entró con `?alumno=<id>`; opcional: las partidas viejas no lo traen. */
+  alumnoId?: string;
   despachados: number;
   quemadas: number;
   /** Zonas/circuitos con fallos de este jugador (vacío si no falló o la partida se anuló). */
@@ -63,3 +65,8 @@ export interface EstadoVivo {
 }
 
 export interface FilaFallos { zona: string; circuito: string; fallos: number; quemadas: number; jugadores: number }
+
+/** Fila de `alumnos.json` (la mantiene el panel docente). Solo `id`, `nombre` y `alias` salen por `GET /alumno/:id`. */
+export interface Alumno { id: string; nombre: string; alias?: string; curso?: string; sesion?: string }
+/** Respuesta pública de `GET /alumno/:id`: nada más. */
+export interface AlumnoPublico { id: string; nombre: string; alias: string }

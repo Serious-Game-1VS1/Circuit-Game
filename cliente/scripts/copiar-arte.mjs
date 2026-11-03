@@ -25,6 +25,7 @@ const USADOS = [
   /^(led_rojo|foco|calefactor)_(apagado|tenue|encendido|brillante|quemado|fundido)$/,
   /^(resistencia_(100|220|470|1k)|fusible_(fino|medio|grueso)|interruptor_cerrado)$/,
   /^bateria_(4_5v|9v|18v)$/,
+  /^icono_(candado|estrella)$/, // menú: Nivel 2 bloqueado e insignias
   /^(placa_4x4|casilla_(vacia|valida|resaltada|ocupada))$/,
   /^(multimetro_modo_(tension|continuidad)|icono_(pasa|no_pasa))$/,
   /^(flecha_guia_\d|recuadro_resaltado)$/, // pistas del primer pod (modo demo)

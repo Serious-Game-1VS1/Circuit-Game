@@ -2,6 +2,8 @@
 
 Cliente Phaser (Vite + TypeScript) del duelo 1 contra 1. El árbitro corre en Node (`spike/`) y es la única fuente de verdad; el cliente solo envía "Probar" y pinta lo que el árbitro decide.
 
+URL pública del juego: https://juego.circuitsyncjuego.com
+
 ## Transporte
 
 | Modo | Árbitro | Red |
@@ -39,7 +41,7 @@ npm install
 npm run dev            # http://localhost:5173
 ```
 
-Cada jugador abre la página, escribe el código de 6 caracteres y su alias. «Practicar» (con su nivel) juega solo, sin código ni rival: el árbitro corre en el navegador, no hay carrera ni CSV, y se sale tocando la línea «Práctica» del HUD o al despachar los 5 pods. El selector de nivel de Entrar (nivel 2 con candado hasta completar el 1) solo afecta a la práctica; en duelo el nivel lo fija el servidor (`--nivel`/`NIVEL`). Al terminar, "Volver a jugar" regresa a Entrar con el alias puesto; se usa el código de la sala libre que muestra la consola. El botón «Tutorial» abre una práctica guiada e interactiva de 10 pasos sobre un pod fijo (Cabina a 9 V): cada paso pide una acción (elegir 1000 Ω, Probar, elegir 100 Ω y quemarla, medir con Tensión durante el bloqueo, elegir 220 Ω, Probar, Despachar) y solo avanza cuando el juego la confirma. «Saltar» siempre visible deja la práctica libre; el último paso, «Jugar práctica», abre una práctica normal de 5 pods. Vive en `cliente/src/tutorial.ts` (`avanzar`, `permite`; pruebas en `test/tutorial.test.ts`).
+Cada jugador abre la página, escribe el código de 6 caracteres y su alias. «Practicar» (con su nivel) juega solo, sin código ni rival: el árbitro corre en el navegador, no hay carrera ni CSV, y se sale con el botón «Salir» del HUD (recuadro del kit, arriba a la derecha) o al despachar los 5 pods. El selector de nivel de Entrar (nivel 2 con candado hasta completar el 1) solo afecta a la práctica; en duelo el nivel lo fija el servidor (`--nivel`/`NIVEL`). Al terminar, "Volver a jugar" regresa a Entrar con el alias puesto; se usa el código de la sala libre que muestra la consola. El botón «Tutorial» abre una práctica guiada e interactiva de 10 pasos sobre un pod fijo (Cabina a 9 V): cada paso pide una acción (elegir 1000 Ω, Probar, elegir 100 Ω y quemarla, medir con Tensión durante el bloqueo, elegir 220 Ω, Probar, Despachar) y solo avanza cuando el juego la confirma. «Saltar» siempre visible deja la práctica libre; el último paso ofrece «Tutorial 2» o «Jugar práctica» (práctica normal de 5 pods). El botón «Tutorial 2» del menú (o el del último paso) abre la parte opcional «fallas avanzadas» de 16 pasos, nivel 2 con semilla fija 78: fusible (3 A no protege, 1 A es el justo; el calefactor gasta ~0,7 A normal y ~3 A si falla), placa con cables (Cabina, «paralelo»), LED girado y empalme del corte (Radar y Turbina del pod 5); termina al despachar el pod 5. Vive en `cliente/src/tutorial.ts` (`avanzar`, `permite`; pruebas en `test/tutorial.test.ts`).
 
 Si se pierde la conexión durante la partida, el cliente vuelve solo a la misma sala con el mismo alias cada 2 s; el árbitro guarda el asiento 30 s.
 
@@ -100,9 +102,11 @@ Abre esa URL en el celular (misma Wi-Fi que el computador). Para jugar desde otr
 
 ## Audio
 
-Suena con clic de botón, elegir/soltar pieza, cable, veredictos (correcto, poco, demasiado, rechazo), quemada, zona reparada, despacho, cuenta 3-2-1 y «¡Ya!», ganaste/perdiste y práctica terminada (`src/audio.ts`).
-El botón ♪/× (Entrar y Taller) silencia y se recuerda en el navegador; el volumen es bajo (0,15) y el audio se activa con el primer toque (móviles).
-Los sonidos son PROVISIONALES: se sintetizan con la Web Audio API (sin archivos) hasta tener sonidos propios; la tabla `SONIDOS` los define.
+Identidad «Taller de 8 bits» (`src/audio.ts`, `src/musica.ts`): La menor pentatónica (A C D E G); triangle para bajo y melodía, pulso 25 % para acentos, ruido filtrado para chispa/relé/tick, seno para el ding del LED, sierra solo en fusible y turbina. Regla de gesto: acierto = ascendente; fallo = descendente o con ruido.
+Efectos: clic, elegir pieza (clic suave), poner pieza (thunk de relé), cable, veredictos (correcto, poco «pff», demasiado, fusible, quemada; un solo veredicto por actualización con prioridad quemada > fusible > demasiado > poco > reparada > correcto), rechazo «bzzt», reparada (ding), insignia, despacho, rival despachando (sutil, máx. 1 cada 2 s), cuenta 3-2-1 (ticks que suben) y «¡Ya!», «listo» al acabar la espera, ganaste/perdiste y fanfarria de podio (oro/plata/bronce).
+Música por escena (scheduler con lookahead de 0,1 s, 16 pasos): menú 96 BPM, taller 118 (más rápido con <2 min o 2 quemadas en Oleadas), carrera 150 con turbina, podio solo fanfarria. Arranca cuando el audio ya está desbloqueado, se pausa con la pestaña oculta y baja ~6 dB 400 ms en quemada/ganaste/perdiste.
+Mezcla: música ~12 dB bajo los efectos, compresor en el master, máx. 6 voces y 3 efectos por segundo. El botón ♪/× (Entrar y Taller) silencia todo y se recuerda (`circuitsync-mudo`); el volumen (0,15 por defecto, `setVolumen`, `circuitsync-volumen`) y el audio se activan con el primer toque (móviles).
+Los sonidos siguen siendo PROVISIONALES en el sentido de afinables: se sintetizan con la Web Audio API (sin archivos) y sus tonos y duraciones se ajustan en la tabla `SONIDOS` escuchándolos.
 Sin soporte de Web Audio el juego funciona igual, en silencio.
 
 ## Comandos

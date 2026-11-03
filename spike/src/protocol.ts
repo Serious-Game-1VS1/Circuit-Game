@@ -17,6 +17,23 @@
  *  - PodView suma `nivel` (opcional): el nivel de ese pod. En el perfil "mixto" el pod 5 es de nivel 2 y el Snapshot
  *    trae el nivel base (1).
  *
+ * Nivel 2, tres familias nuevas: "combinar" (Radar: gaveta una|serie|paralelo de dos resistencias de 220 Ω), "divisor" (Reactor: R2 contra la R1 fija
+ *  que llega en `ZonaView.fija`) y "protegido" (Turbina: resistencia en serie con un diodo de protección). `fija` es opcional.
+ *
+ * Nivel 2, «cadena» (cambiar la pieza muerta; sustituye a invertido/abierto en los sorteos, que siguen en el motor): ZonaView suma `cadena`
+ *  (aditivo). `opciones` son los repuestos de la gaveta ("cable", "led", "ledInv", "r220"…). TestMsg/MedirMsg.pieza es «hueco:repuesto»
+ *  (hueco 1..n, p. ej. "2:led") o, solo para medir, "ninguna"; los puntos de medida son "t1".."tn". Misma validación, mismas penalizaciones.
+ *
+ * Nivel 3 «Experto» (aditivo): `Nivel` suma 3. Reutiliza las familias de resistencia (led, cabina) con los mismos id en Ω ("100"…"1000"): el CLIENTE oculta el texto y
+ *  muestra las bandas de color cuando `PodView.nivel` es 3. Familia nueva "fusible3" (Reactor, 12 V): `opciones` son id de fusible «forma:amperios» ("5x20F:1", "5x20T:2",
+ *  "6x32F:10", "car:7.5"); `ZonaView.fija` trae el consumo impreso en el pod («Consumo 0,9 A»; «Motor 1,8 A» = carga con arranque fuerte). La corriente nominal y el veredicto siguen solo en el árbitro.
+ *
+ * Nivel 3, «placa experta» (aditivo; engine/placa3.ts): familia "placa3" (Cabina, pods con cables). ZonaView suma `enunciado` (el problema, p. ej.
+ *  «El interruptor debe apagar solo el LED rojo»); `opciones` son las piezas de las gavetas «tipo:valor:n» ("R:470:1", "L:rojo:1", "D:1N4007:1",
+ *  "S:int:1", "S:pul:1", "C:100uF:1"), con sobrantes y trampas. TestMsg/MedirMsg.pieza es la placa entera «id@f,c[^];…|h1>h2;…» (piezas | cables);
+ *  MedirMsg.punto son dos agujeros «h1~h2» (punta roja ~ negra). Verdict suma "mal" («mal conectado»: no cumple el objetivo, sin decir qué
+ *  conexión falla), que penaliza como «poco». No viajan la solución de referencia, las trampas ni el objetivo estructurado.
+ *
  * Despacho explícito (anteproyecto, RF-03). NO compatible con el cliente anterior:
  *  - Reparar la última zona ya no despacha: el Result trae el pod con todas sus zonas `reparada` y
  *    `despachados` sin cambiar. El jugador manda Dispatch ("despachar") y solo entonces cuenta el pod.
@@ -28,7 +45,7 @@
  * Carrera final y podio (propuesta A+D), compatible con el cliente anterior:
  *  - End con phase "fin" suma `carrera` por estación: pod que corre, llamas de turbo, tiempo por pod y
  *    «qué repasar». El ganador sigue siendo `winner` (decidido antes de la carrera, sin azar).
- *  - Quien se reconecta tras el fin (mismo alias, 30 s) recibe Welcome y el mismo End.
+ *  - Quien se reconecta tras el fin (mismo alias, mientras la sala siga abierta: 30 s) recibe Welcome y el mismo End.
  *
  * Modo demo, compatible con el cliente anterior:
  *  - Snapshot suma `demo`: true si el árbitro corre con --demo (cableado en Cabina/Turbina) o con
@@ -40,7 +57,8 @@
  *    "carga1", "carga2"). No es «Probar»: no penaliza, no cuenta como intento ni entra en el CSV.
  *  - Medida ("medida"): solo lo que mostraría el multímetro: en continuidad, si pasa (batería
  *    desconectada); en tensión, el tramo («nada» | «parte» | «toda») y la fracción de la batería
- *    redondeada a décimas. Nunca el veredicto, la corriente ni la solución. Error: Reject "medida no válida".
+ *    redondeada a décimas. Suma `dial` (poco | correcto | demasiado): la zona del dial de la pieza PUESTA, medida con el criterio físico de cada
+ *    familia (ver engine/medir.ts); es lo mismo que daría CHECK sobre esa pieza, pero sin coste y sin decir cuál otra es la correcta. Nunca la corriente ni la solución. Error: Reject "medida no válida".
  *
  * Modo práctica (SCRUM-151), compatible con el cliente anterior:
  *  - Snapshot suma `practica`: true si el árbitro corre en práctica (un jugador, sin rival, sin límite de tiempo:
@@ -51,40 +69,58 @@ import type { Label } from "./engine/circuit.js";
 export type Station = "A" | "B";
 export type Phase = "esperando" | "listo" | "cuenta" | "jugando" | "fin" | "anulada";
 export type RivalStatus = "reparando" | "penalizado" | "sin-conexion";
-export type Circuito = "led" | "cabina" | "luces" | "interruptor" | "fusible" | "invertido" | "abierto";
+export type Circuito = "led" | "cabina" | "luces" | "interruptor" | "fusible" | "invertido" | "abierto" | "combinar" | "divisor" | "protegido" | "cadena" | "fusible3" | "placa3";
 export type ZonaNombre = "radar" | "cabina" | "turbina" | "reactor";
-export type Nivel = 1 | 2;
-export type Verdict = Label | "corto";
+export type Nivel = 1 | 2 | 3;
+export type Verdict = Label | "corto" | "mal";
+
+/** Sabotajes (bloque 4): los concede y aplica el árbitro al rival; ningún mensaje cliente->árbitro los dispara. */
+export type TipoSabotaje = "humo" | "enfriamiento" | "sin-pista";
+export interface Sabotaje { t: "sabotaje"; tipo: TipoSabotaje; ms: number; de: Station }
 
 export interface Hello { t: "hello"; alias: string }
 export interface Ready { t: "ready" }
 export interface TestMsg { t: "test"; seq: number; t0: number; zone: number; ohms?: number; pieza?: string }
 export interface Dispatch { t: "despachar"; seq: number; t0: number }
 export type ModoMedir = "continuidad" | "tension";
-export interface MedirMsg { t: "medir"; seq: number; t0: number; zone: number; pieza: string; modo: ModoMedir; punto: string }
-export type ClientMsg = Hello | Ready | TestMsg | Dispatch | MedirMsg;
+/** `fuera` (aditivo, continuidad): la pieza del hueco está quitada del circuito; `pieza` es la quitada o «ninguna». Sin él, el árbitro rechaza «Quita la pieza para medir continuidad» (salvo luces, interruptor, placa3 y los huecos de cadena sin repuesto). */
+export interface MedirMsg { t: "medir"; seq: number; t0: number; zone: number; pieza: string; modo: ModoMedir; punto: string; fuera?: boolean }
+/** Aditivo (sin subir PROTOCOL_VERSION): el jugador abandona la partida en curso. Un árbitro anterior lo ignora. */
+export interface Abandonar { t: "abandonar" }
+export type ClientMsg = Hello | Ready | TestMsg | Dispatch | MedirMsg | Abandonar;
 
 /** Lo que el jugador ve de una zona dañada: nunca cuál de las opciones es la correcta. */
-export interface ZonaView { zona: number; nombre: ZonaNombre; circuito: Circuito; volts: number; opciones: string[]; reparada: boolean }
+export interface ZonaView { zona: number; nombre: ZonaNombre; circuito: Circuito; volts: number; opciones: string[]; reparada: boolean;
+  /** Dato fijo del circuito que se imprime en la placa, p. ej. «R1 470 Ω» (divisor). Nunca revela la solución. */
+  fija?: string;
+  /** Cadena (nivel 2): las piezas en serie desde el + ("cable", "led", "r220"…), todas con su valor impreso; cuál está muerta por dentro no viaja. */
+  cadena?: string[];
+  /** placa3 (nivel 3): el problema que hay que resolver en la placa. */
+  enunciado?: string }
 export interface PodView { numero: number; nivel?: Nivel; zonas: ZonaView[] }
 export interface RivalView { alias: string; despachados: number; estado: RivalStatus }
 
-export interface Welcome { t: "welcome"; station: Station; alias: string }
+/** Versión del protocolo: súbela al cambiar mensajes de forma incompatible. Un árbitro anterior a la v2 no la envía. */
+export const PROTOCOL_VERSION = 2;
+export interface Welcome { t: "welcome"; station: Station; alias: string; version?: number }
 export interface Full { t: "full"; reason: string }
 export interface Lobby { t: "lobby"; phase: Phase; players: { station: Station; alias: string; ready: boolean }[] }
 export interface Countdown { t: "countdown"; n: number }
-/** Inicio de partida o estado completo al reconectar. */
-export interface Snapshot { t: "start"; restanteMs: number; despachados: number; total: number; nivel: Nivel; demo: boolean; practica?: boolean; oleadas?: boolean; pod: PodView; rival: RivalView | null }
+/** Inicio de partida o estado completo al reconectar. `limpios`: pods limpios seguidos (0-3); `sabotaje`: el que sigue activo contra ti (`ms` restantes). */
+export interface Snapshot { t: "start"; limpios?: number; sabotaje?: { tipo: TipoSabotaje; ms: number; de: Station }; restanteMs: number; despachados: number; total: number; nivel: Nivel; demo: boolean; practica?: boolean; oleadas?: boolean; /** Racha de despachos del jugador (0-3); con 3 el bono de enfriamiento reducido está listo. */ racha?: number; /** Competitivo, al reconectar: coste (ms) de la próxima medida por zona ya medida en el pod actual. */ proxMedir?: Record<number, number>; /** Competitivo: coste base de medir (ms), para animar la 1.ª medida de cada zona. */ medirBase?: number; pod: PodView; rival: RivalView | null }
 /**
  * `escudo`: la mejora «Escudo» (solo práctica) absorbió la quemada: sin bloqueo de 4 s ni quemada contada.
  * `hayMas`: falla encadenada (solo Oleadas): el veredicto es «correcto» pero la zona sigue sin reparar; `pod` ya trae su segunda falla (otra batería y opciones).
  */
-export interface Result { t: "result"; seq: number; t0: number; zona: number; veredicto: Verdict; waitMs: number; despachados: number; pod: PodView; escudo?: boolean; hayMas?: boolean }
+export interface Result { t: "result"; seq: number; t0: number; zona: number; veredicto: Verdict; waitMs: number; despachados: number; pod: PodView; escudo?: boolean; hayMas?: boolean;
+  /** Racha tras este intento (0-3). `bono`: «listo» al ganarlo, «usado» cuando el fallo lo consumió (waitMs ya viene reducido), «perdido» si una quemada lo borró. */ racha?: number; bono?: "listo" | "usado" | "perdido"; /** Pods limpios seguidos (0-3) tras este intento: un fallo lo pone en 0. */ limpios?: number }
 /** Despacho aceptado: `despachados` ya incluye este pod y `pod` es el siguiente. */
-export interface Dispatched { t: "despachado"; seq: number; t0: number; despachados: number; pod: PodView }
+export interface Dispatched { t: "despachado"; seq: number; t0: number; despachados: number; pod: PodView; limpios?: number; /** Sabotaje que ganaste con este despacho y ya se aplicó al rival. */ enviado?: TipoSabotaje }
 export interface Reject { t: "reject"; seq: number; t0: number; reason: string; waitMs: number }
 export type Tramo = "nada" | "parte" | "toda";
-export interface Medida { t: "medida"; seq: number; t0: number; zona: number; modo: ModoMedir; punto: string; pasa?: boolean; tension?: Tramo; fraccion?: number }
+/** Zona del dial del multímetro: lo que hace la pieza puesta (poco = ámbar, correcto = verde, demasiado = rojo). */
+export type Dial = "poco" | "correcto" | "demasiado";
+export interface Medida { t: "medida"; seq: number; t0: number; zona: number; modo: ModoMedir; punto: string; /** Lo que tarda esta medición (ms): la barra del cliente dura eso. */ medirMs?: number; /** Coste de la próxima medida en esta zona (ms); solo en competitivo. */ proxMs?: number; pasa?: boolean; tension?: Tramo; fraccion?: number; /** V entre los bornes (2 decimales) y Ω de una resistencia: solo lo que mostraría el aparato. */ voltios?: number; ohmios?: number; /** Zona del dial de la pieza puesta; ausente si la medición no la distingue. */ dial?: Dial }
 export interface Rival extends RivalView { t: "rival"; t0?: number }
 export interface Score { alias: string; despachados: number; quemadas: number }
 /** Zona/circuito con fallos del jugador, para «Qué repasar» del podio. */
@@ -102,6 +138,6 @@ export interface Carril {
 }
 /** `carrera` solo viene con phase "fin" (carrera final y podio, propuesta A+D). */
 export interface End { t: "end"; phase: "fin" | "anulada"; winner: Station | null; reason: string; score: Partial<Record<Station, Score>>; carrera?: Partial<Record<Station, Carril>> }
-export type ServerMsg = Welcome | Full | Lobby | Countdown | Snapshot | Result | Dispatched | Reject | Rival | End | Medida;
+export type ServerMsg = Welcome | Full | Lobby | Countdown | Snapshot | Result | Dispatched | Reject | Rival | End | Medida | Sabotaje;
 
 export const validAlias = (a: unknown): a is string => typeof a === "string" && a.trim().length >= 1 && a.trim().length <= 12;

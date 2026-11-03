@@ -4,11 +4,11 @@
  */
 import * as Phaser from "phaser";
 import { sonar } from "./audio";
+import { letras, marco } from "./arte";
 import type { Nivel } from "../../spike/src/protocol";
-import { claves, estrellasTxt, flecha, habilidad, nombreDe } from "./dominio";
-import { INSIGNIAS, NAVES, navesDesbloqueadas, progresoRango, type Eventos, type Perfil } from "./perfil";
-import type { Fantasma } from "./podio";
-import { DIAGNOSTICO } from "./progreso";
+import { filasHabilidades, filasInsignias, filasNaves, resumenLogros } from "./logros";
+import { progresoRango, type Eventos, type Perfil } from "./perfil";
+import { tarjetasRecompensa, type Fantasma } from "./podio";
 
 const W = 360, H = 640, PROFUNDIDAD = 2000;
 
@@ -40,47 +40,76 @@ function capa(s: Phaser.Scene, titulo: string, otra?: () => void) {
   return { t, poner };
 }
 
+const AMBAR = 0xe0a43c, VERDE = 0x8fe3a0, GRIS = 0x99aabb;
+
+/**
+ * Recompensas en la fuente pixel y marcos del kit: arriba el resumen (XP, rango, barra), debajo una tarjeta por recompensa
+ * que aparece cada ~300 ms (todas a la vez con prefers-reduced-motion) y la insignia nueva destacada en ámbar.
+ * Los temporizadores son reales (setTimeout), no del reloj de Phaser, y nunca esconden una tarjeta: solo la desplazan.
+ */
 export function panelRecompensas(s: Phaser.Scene, ev: Eventos, perfil: Perfil, otra?: () => void) {
-  const { t, poner } = capa(s, "Recompensas", otra);
-  let y = 90;
-  t(y, `+${ev.xp} XP`, 40, "#3bb273"); y += 56;
-  if (ev.oleada) {
-    t(y, `Oleadas: ${ev.oleada.pods} pods · racha ${ev.oleada.racha}`, 18); y += 28;
-    t(y, ev.oleada.nuevo ? "¡Nuevo récord de oleadas!" : `Tu récord: ${ev.oleada.record} pods`, 16, ev.oleada.nuevo ? "#e0a43c" : "#9ab"); y += ev.oleada.diag ? 24 : 34;
-    if (ev.oleada.diag) { t(y, `Diagnósticos: ${ev.oleada.diag} (+${ev.oleada.diag * DIAGNOSTICO} XP)`, 16, "#9ad"); y += 34; }
-  }
+  const reducido = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  const raiz = s.add.container(0, 0).setDepth(PROFUNDIDAD);
+  if (s.textures.exists("capa_cielo_movil")) raiz.add(s.add.image(0, 0, "capa_cielo_movil").setOrigin(0).setScale(4));
+  raiz.add(s.add.rectangle(W / 2, H / 2, W, H, 0x0b0e16, 0.8).setInteractive()); // tapa y bloquea lo de abajo
+  const txt = (x: number, y: number, t: string, k: number, color = 0xffffff, ancho = W - 48) => {
+    const l = letras(s, x, y, t, k, color).setOrigin(0.5, 0).setCenterAlign().setMaxWidth(ancho).setDropShadow(1, 1, 0x140f1f, 1);
+    raiz.add(l); return l;
+  };
+  txt(W / 2, 16, "RECOMPENSAS", 3, AMBAR);
+
+  // Resumen
   const r = progresoRango(perfil.xp);
-  t(y, ev.rango ? `¡Nuevo rango: ${r.actual}!` : `Rango: ${r.actual}`, 22, ev.rango ? "#e0a43c" : "#fff"); y += 36;
-  const ancho = W - 80, lleno = r.siguiente ? r.n / r.m : 1;
-  poner(s.add.rectangle(W / 2, y + 8, ancho, 16, 0x3a4466));
-  poner(s.add.rectangle(W / 2 - ancho / 2, y + 8, Math.max(2, ancho * lleno), 16, 0x3bb273).setOrigin(0, 0.5));
-  y += 28;
-  t(y, r.siguiente ? `${r.n}/${r.m} XP hacia ${r.siguiente}` : "Rango máximo", 16, "#9ab"); y += 44;
-  if (ev.naves.length) { y += (t(y, `Nave nueva desbloqueada: ${ev.naves.join(", ")}`, 18, "#e0a43c") as Phaser.GameObjects.Text).height + 10; } // puede ocupar 2 líneas
-  if (ev.nivel2) { y += (t(y, "¡Nivel 2 desbloqueado! Elígelo en Practicar", 18, "#e0a43c") as Phaser.GameObjects.Text).height + 10; }
-  if (ev.habilidades.length) {
-    const x = t(y, ev.habilidades.map((c) => `${c.nombre} ${estrellasTxt(c.estrellas)}${flecha(c)}`).join("\n"), 14, "#9ad") as Phaser.GameObjects.Text;
-    y += x.height + 10;
-  }
-  ev.insignias.forEach((i, k) => {
-    const x = t(y, `Insignia nueva: ${i.nombre}\n${i.descripcion}`, 14, "#fff") as Phaser.GameObjects.Text;
-    s.tweens.add({ targets: x, alpha: { from: 0.2, to: 1 }, duration: 450, delay: 250 * k });
-    s.time.delayedCall(250 * k, () => sonar("reparada"));
-    y += 42;
+  raiz.add(marco(s, W / 2, 112, "panel_oscuro", 328, 124, 2));
+  txt(W / 2, 62, `+${ev.xp} XP`, 4, VERDE);
+  txt(W / 2, 104, ev.rango ? `¡NUEVO RANGO: ${r.actual}!` : `RANGO: ${r.actual}`, 2, ev.rango ? AMBAR : 0xffffff);
+  const ancho = 296, lleno = r.siguiente ? r.n / r.m : 1;
+  raiz.add(s.add.rectangle(W / 2 - ancho / 2, 138, ancho, 12, 0x3a4466).setOrigin(0, 0.5));
+  raiz.add(s.add.rectangle(W / 2 - ancho / 2, 138, Math.max(2, ancho * lleno), 12, 0x3bb273).setOrigin(0, 0.5));
+  txt(W / 2, 152, r.siguiente ? `${r.n}/${r.m} XP hacia ${r.siguiente}` : "Rango máximo", 2, GRIS);
+
+  // Tarjetas: el revelado solo cambia el alpha, con setTimeout real.
+  let vivo = true;
+  const timers: number[] = [];
+  tarjetasRecompensa(ev).forEach((c, k) => {
+    const y = 206 + k * 68, h = 64;
+    const caja = s.add.container(0, 0);
+    caja.add(c.destacada ? marco(s, W / 2, y + h / 2, "boton_primario", 328, h, 4) : marco(s, W / 2, y + h / 2, "panel_oscuro", 328, h, 2));
+    caja.add(letras(s, 36, y + 10, c.titulo, 2, c.destacada ? 0x140f1f : 0xffffff).setMaxWidth(288));
+    if (c.detalle) caja.add(letras(s, 36, y + 32, c.detalle, 2, c.destacada ? 0x3a2a10 : GRIS).setMaxWidth(288));
+    raiz.add(caja);
+    const mostrar = () => { if (!vivo) return; caja.setAlpha(1); if (c.destacada) sonar("insignia"); };
+    if (reducido) mostrar();
+    else { caja.setAlpha(0); timers.push(window.setTimeout(mostrar, 350 + 300 * k)); }
   });
-  if (!ev.insignias.length && !ev.naves.length && !ev.nivel2 && !ev.habilidades.length) t(y, "Sin insignias nuevas esta vez.", 16, "#9ab");
+
+  // Botones
+  const dom = s.game.domContainer; // los campos HTML van sobre el canvas: se esconden mientras el panel está abierto
+  const antes = dom?.style.display ?? "";
+  if (dom) dom.style.display = "none";
+  const cerrarTodo = () => { vivo = false; timers.forEach(window.clearTimeout); sonar("clic"); raiz.destroy(); if (dom) dom.style.display = antes; };
+  const boton = (x: number, w: number, t: string, primario: boolean, fn: () => void) => {
+    raiz.add(marco(s, x, 606, primario ? "boton_primario" : "boton_secundario", w, 48));
+    raiz.add(letras(s, x, 606, t, 2.5, primario ? 0x140f1f : 0xffffff).setOrigin(0.5));
+    raiz.add(s.add.zone(x, 606, w, 48).setInteractive({ useHandCursor: true }).on("pointerdown", fn));
+  };
+  if (otra) {
+    boton(W / 2 - 84, 160, "OTRA", false, () => { cerrarTodo(); otra(); });
+    boton(W / 2 + 84, 160, "CONTINUAR", true, cerrarTodo);
+  } else boton(W / 2, 328, "CONTINUAR", true, cerrarTodo);
+  s.events.once("shutdown", () => { vivo = false; timers.forEach(window.clearTimeout); });
 }
 
 export function panelLogros(s: Phaser.Scene, perfil: Perfil) {
-  const { t } = capa(s, "Logros");
-  let y = 84;
-  const bloque = (titulo: string, lineas: string[], color: string) => {
-    t(y, titulo, 15, "#e0a43c"); y += 22;
-    const x = t(y, lineas.join("\n"), 13, color) as Phaser.GameObjects.Text;
-    y += x.height + 10;
+  const { t, poner } = capa(s, "Logros"); // «Continuar» queda fijo en y=590; el contenido termina antes de y≈545
+  t(78, resumenLogros(perfil), 12, "#9ad");
+  const paginas = [["Insignias", filasInsignias(perfil)], ["Habilidades", filasHabilidades(perfil)], ["Naves", filasNaves(perfil)]] as const;
+  const cuerpo = poner(s.add.text(24, 170, "", { fontSize: "14px", color: "#fff", lineSpacing: 8, wordWrap: { width: W - 48 } }));
+  const pestanas = paginas.map(([nombre], k) => poner(s.add.text(24 + k * 108, 112, nombre, { fontSize: "13px", color: "#fff", fixedWidth: 104, align: "center", padding: { y: 12 } }).setInteractive({ useHandCursor: true })
+    .on("pointerdown", () => { sonar("clic"); ver(k); })));
+  const ver = (k: number) => {
+    cuerpo.setText(paginas[k]![1].join("\n"));
+    pestanas.forEach((p, j) => p.setBackgroundColor(j === k ? "#3a4466" : "#1b2132").setColor(j === k ? "#e0a43c" : "#9ab0c8"));
   };
-  bloque(`Insignias ${perfil.insignias.length}/${INSIGNIAS.length}`, INSIGNIAS.map((i) => perfil.insignias.includes(i.id) ? `✔ ${i.nombre}` : `· ${i.nombre}: ${i.descripcion}`), "#fff");
-  bloque("Habilidades", claves.map((k) => { const h = habilidad(perfil.dominio[k]); return `${nombreDe(k)} ${estrellasTxt(h.estrellas)}${h.puntuada ? "" : ` (${h.intentos}/3 intentos)`}`; }), "#9ad");
-  const abiertas = navesDesbloqueadas(perfil);
-  bloque("Naves", NAVES.map((n, k) => abiertas.includes(k + 1) ? `✔ ${n.nombre}` : `🔒 ${n.nombre}: ${n.condicion}`), "#fff");
+  ver(0);
 }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Arbiter } from "../../spike/src/arbiter/arbiter";
 import type { Transport } from "../../spike/src/transport/transport";
 import { PracticaTransport } from "../src/practica";
-import { crearTransporte, elegirTransporte, Net } from "../src/net";
+import { crearTransporte, elegirSalaRapida, elegirTransporte, Net, salaDeUrl, salasAbiertas, sanearCodigo, textoCompartir, textoSala } from "../src/net";
 import { evaluar } from "../../spike/src/engine/pods";
 import { despachable, reloj } from "../src/pantalla";
 import { DIAGNOSTICO } from "../src/progreso";
@@ -80,7 +80,7 @@ describe("cliente conectado al árbitro", () => {
   it("'medir' devuelve el seq con el que llega su Medida (el Taller espera esa lectura)", async () => {
     await empezar();
     const z = zonaReal(ana, 0);
-    const seq = ana.medir(z.zona, z.solucion, "continuidad", "carga1");
+    const seq = ana.medir(z.zona, "ninguna", "continuidad", "carga1", true); // con la pieza fuera
     expect(ana.estado.medida).toMatchObject({ t: "medida", seq, modo: "continuidad" });
     expect(ana.medir(z.zona, z.solucion, "tension", "carga1")).toBe(seq + 1);
   });
@@ -187,7 +187,7 @@ describe("cliente conectado al árbitro", () => {
       }
       reparar(ana);
     }
-    expect([...vistos].sort()).toEqual(expect.arrayContaining(["fusible", "invertido", "abierto", "led", "luces"]));
+    expect([...vistos].sort()).toEqual(expect.arrayContaining(["fusible", "cadena", "led", "luces"]));
     expect(ana.estado.fin?.titulo).toBe("¡Ganaste!");
   });
 
@@ -262,32 +262,33 @@ describe("cliente conectado al árbitro", () => {
     };
     expect(await falla("Photon op 226 error 32758: Game does not exist")).toBe("No hay una sala abierta con ese código");
     expect(await falla("Photon op 226 error 32765: Game full")).toBe("No hay una sala abierta con ese código");
+    expect(await falla("Photon op 226 error 32764: Game closed")).toBe("La sala está cerrada. Pide un código nuevo.");
     expect(await falla("Photon op 230 error 32767: Invalid AppId")).toMatch(/configurado.*docente/);
     expect(await falla("desconectado de Photon")).toBe("No se pudo conectar con el servidor de juego. Revisa tu conexión.");
     expect(await falla("conexión cerrada")).toMatch(/No se pudo conectar/);
   });
 
-  it("SCRUM-43: al perder el transporte avisa, reintenta cada 2 s (15 veces) y al reconectar quita el aviso", async () => {
+  it("SCRUM-43: al perder el transporte avisa, reintenta cada 5 s (60 veces) y al reconectar quita el aviso", async () => {
     vi.useFakeTimers();
     try {
       const m = new Mem("pr");
-      const n = new Net(m, () => t); // pausa real de 2 s, con timers falsos
+      const n = new Net(m, () => t); // pausa real de 5 s, con timers falsos
       await n.entrar(CODE, "eva");
       let fallos = 0;
       m.join = async () => { if (fallos++ < 3) throw new Error("sin red"); };
       const p = n.reconectar();
       expect(n.estado.aviso).toBe("Conexión perdida: reconectando…");
-      await vi.advanceTimersByTimeAsync(2000 * 3);
+      await vi.advanceTimersByTimeAsync(5000 * 3);
       await p;
       expect(fallos).toBe(4);
       expect(n.estado.aviso).toBeNull();
-      // Nunca vuelve: 15 intentos separados por 2 s y se rinde.
+      // Nunca vuelve: 60 intentos separados por 5 s (5 min) y se rinde.
       let intentos = 0;
       m.join = async () => { intentos++; throw new Error("sin red"); };
       const q = n.reconectar();
-      await vi.advanceTimersByTimeAsync(2000 * 14);
+      await vi.advanceTimersByTimeAsync(5000 * 59);
       await q;
-      expect(intentos).toBe(15);
+      expect(intentos).toBe(60);
       expect(n.estado.aviso).toBe("No se pudo reconectar a la sala");
     } finally { vi.useRealTimers(); }
   });
@@ -325,6 +326,97 @@ describe("cliente conectado al árbitro", () => {
     }
     expect(solo.estado).toMatchObject({ fase: "entrar", alias: "pepa", practica: false, aviso: "Práctica terminada: ¡buen trabajo!" });
     expect((solo as unknown as { transport: unknown }).transport).not.toBe(practica);
+  });
+
+  it("jugar solo: duelo contra el bot (rival, start, 5 pods, no es práctica)", async () => {
+    vi.useFakeTimers();
+    try {
+      const solo = new Net(new Mem("p6"));
+      await solo.jugarSolo("  ");
+      expect(solo.estado.aviso).toMatch(/alias/);
+      await solo.jugarSolo("pepa", 1, "facil");
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(solo.estado).toMatchObject({ fase: "taller", practica: false, alias: "pepa" });
+      expect(solo.estado.rival).toBeTruthy();
+      expect(solo.estado.total).toBe(5);
+      await solo.salir();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("abandonar contra el bot o en práctica vuelve al menú sin partida registrada", async () => {
+    vi.useFakeTimers();
+    try {
+      const solo = new Net(new Mem("p7"));
+      await solo.jugarSolo("pepa", 1, "facil");
+      await vi.advanceTimersByTimeAsync(5000);
+      await solo.abandonar();
+      expect(solo.estado).toMatchObject({ fase: "entrar", alias: "pepa" });
+      expect(solo.estado.end).toBeUndefined();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("abandonar en línea: el rival ve «abandono» y gana; el que sale vuelve al menú sin errores", async () => {
+    await empezar();
+    expect(ana.estado.fase).toBe("taller");
+    await ana.abandonar();
+    expect(ana.estado).toMatchObject({ fase: "entrar", alias: "ana" });
+    expect(ana.estado.end).toBeUndefined();
+    expect(beto.estado.end).toMatchObject({ winner: "B", reason: "abandono" });
+    expect(["carrera", "fin"]).toContain(beto.estado.fase);
+  });
+
+  it("salas abiertas: solo «esperando», las más llenas primero; texto de la tarjeta", () => {
+    const s = (codigo: string, jugadores: number, estado: "esperando" | "llena" | "jugando") => ({ codigo, nivel: 1 as const, jugadores, max: 2 as const, estado });
+    const r = salasAbiertas([s("ZZZ222", 0, "esperando"), s("AAA111", 2, "llena"), s("BBB333", 1, "esperando"), s("CCC444", 1, "jugando"), s("AAA999", 0, "esperando")]);
+    expect(r.map((x) => x.codigo)).toEqual(["BBB333", "AAA999", "ZZZ222"]);
+    expect(textoSala(r[0]!)).toBe("BBB333  NIVEL 1  1/2");
+  });
+
+  it("partida rápida: la más llena, empate por código, null si no hay a qué entrar", () => {
+    const s = (codigo: string, jugadores: number, estado: "esperando" | "llena" | "jugando", nivel: 1 | 2 = 1) => ({ codigo, nivel, jugadores, max: 2 as const, estado });
+    expect(elegirSalaRapida([])).toBeNull();
+    expect(elegirSalaRapida([s("AAA111", 2, "llena"), s("BBB222", 1, "jugando")])).toBeNull();
+    expect(elegirSalaRapida([s("ZZZ222", 0, "esperando"), s("MMM333", 1, "esperando", 2), s("CCC444", 1, "esperando")])?.codigo).toBe("CCC444");
+    expect(elegirSalaRapida([s("BBB222", 0, "esperando"), s("AAA111", 0, "esperando", 2)])?.codigo).toBe("AAA111");
+    expect(elegirSalaRapida([s("CCC444", 1, "esperando"), s("MMM333", 0, "esperando", 2)], 2)?.codigo).toBe("MMM333");
+    expect(elegirSalaRapida([s("CCC444", 1, "esperando")], "mixto")).toBeNull();
+  });
+
+  it("enlace ?sala=: lee y sanea el código; el texto a compartir no lleva alias ni otros parámetros", () => {
+    expect(salaDeUrl("?sala=abc234&intro=0")).toBe("ABC234");
+    expect(salaDeUrl("?sala=ab-c2 3 4xyz")).toBe("ABC234");
+    expect(salaDeUrl("?sala=ABC")).toBe("");
+    expect(salaDeUrl("")).toBe("");
+    expect(sanearCodigo("<b>x1</b>")).toBe("BX1B");
+    const t = textoCompartir("https://x.azurestaticapps.net/juego/?alias=Ana&intro=0#h", "abc234");
+    expect(t).toBe("Juega CircuitSync conmigo: https://x.azurestaticapps.net/juego/?sala=ABC234");
+  });
+
+  it("Tutorial por mecánica: práctica de un solo pod con su id", async () => {
+    const solo = new Net(new Mem("p7"), () => t);
+    await solo.practicar("lola", 1, true, false, "resistencia");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(solo.tutorial).toBe(true);
+    expect(solo.idTutorial).toBe("resistencia");
+    expect(solo.estado.total).toBe(1);
+    await solo.salir();
+    expect(solo.idTutorial).toBeNull();
+  });
+
+  it("Tutorial de un pod: al despachar se queda en el Taller (sin «Práctica terminada») y sigue siendo tutorial", async () => {
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const solo = new Net(new Mem("p8"), () => t);
+    await solo.practicar("lola", 1, true, false, "resistencia");
+    await flush();
+    const arb = (solo as unknown as { transport: PracticaTransport }).transport.arbiter;
+    for (const z of arb.pods[0]!.zonas) solo.probar(z.zona, z.solucion);
+    await flush();
+    solo.despachar();
+    await flush();
+    expect(solo.estado).toMatchObject({ fase: "taller", practica: true, despachados: 1, end: undefined });
+    expect(solo.idTutorial).toBe("resistencia");
+    await solo.salir();
+    expect(solo.estado.fase).toBe("entrar");
   });
 
   it("Oleadas: pasa de 5 pods sin terminar, y el Escudo se gasta cuando el árbitro lo usa", async () => {
@@ -379,5 +471,54 @@ describe("falla encadenada: bono Diagnóstico", () => {
     res("correcto", true); res("correcto"); // no midió
     expect(solo.diagnosticos).toBe(1);
     expect(solo.segunda).toBeUndefined();
+  });
+});
+
+describe("listarSalas", () => {
+  const sala = { codigo: CODE, nivel: 1, jugadores: 1, max: 2, estado: "esperando" } as const;
+  const conLista = (listar?: () => Promise<typeof sala[]>) => new Net({ ...new Mem("x"), listar } as unknown as Transport, () => 0);
+
+  it("devuelve las salas del transporte", async () => {
+    expect(await conLista(async () => [sala]).listarSalas()).toEqual({ salas: [sala] });
+  });
+  it("sin conexión, sin soporte o con timeout: lista vacía y motivo", async () => {
+    for (const net of [conLista(async () => { throw new Error("caído"); }), conLista(), conLista(() => new Promise(() => {}))]) {
+      const r = await net.listarSalas(20);
+      expect(r.salas).toEqual([]);
+      expect(r.motivo).toMatch(/consultar/);
+    }
+  });
+  it("no abre una segunda consulta mientras hay una en curso, y dejarDeListar suelta el lobby", async () => {
+    let abiertas = 0, soltadas = 0, fin!: () => void;
+    const tr = { ...new Mem("x"), listar: () => { abiertas++; return new Promise<typeof sala[]>((r) => { fin = () => r([sala]); }); }, soltarLobby: () => { soltadas++; } };
+    const net = new Net(tr as unknown as Transport, () => 0);
+    const a = net.listarSalas(1000), b = net.listarSalas(1000);
+    expect(abiertas).toBe(1);
+    fin();
+    expect(await a).toEqual({ salas: [sala] });
+    expect(await b).toEqual({ salas: [sala] });
+    void net.listarSalas(1000); expect(abiertas).toBe(2); // terminada la anterior, se puede consultar otra vez
+    net.dejarDeListar();
+    expect(soltadas).toBe(1);
+  });
+  it("el timeout suelta la conexión a medias y la siguiente consulta empieza limpia", async () => {
+    let soltadas = 0, llamadas = 0;
+    const tr = { ...new Mem("x"), listar: () => { llamadas++; return new Promise<typeof sala[]>(() => {}); }, soltarLobby: () => { soltadas++; } };
+    const net = new Net(tr as unknown as Transport, () => 0);
+    expect((await net.listarSalas(10)).motivo).toMatch(/consultar/);
+    expect(soltadas).toBe(1);
+    void net.listarSalas(10);
+    expect(llamadas).toBe(2);
+  });
+});
+
+describe("nivelRapida", () => {
+  it("usa el filtro de SALAS; con TODOS el nivel guardado o mixto", async () => {
+    const { nivelRapida } = await import("../src/net");
+    expect(nivelRapida(2, "mixto")).toBe(2);
+    expect(nivelRapida(3)).toBe(3);
+    expect(nivelRapida(null)).toBe("mixto");
+    expect(nivelRapida(null, "1")).toBe(1);
+    expect(nivelRapida(null, "3")).toBe(3);
   });
 });

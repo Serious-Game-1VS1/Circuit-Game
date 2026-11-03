@@ -8,6 +8,7 @@ import type { End, Nivel } from "../../spike/src/protocol";
 import { terminada, type Pantalla } from "./pantalla";
 import { cambios, habilidad, unir, type Cambio, type Conteo, type Dominio } from "./dominio";
 import { puntosDe } from "./progreso";
+import { idGuiaValido } from "./tutorial";
 
 /** PROVISIONAL: rangos por XP acumulada. Único sitio donde se cambian. */
 export const RANGOS = [
@@ -21,7 +22,9 @@ export const RANGOS = [
 export const UMBRALES_MEDALLA = { oro: 1, plata: 1.25, bronce: 1.5 } as const;
 export type Medalla = keyof typeof UMBRALES_MEDALLA;
 
-export interface Perfil { alias: string; xp: number; partidas: number; ganadas: number; pods: number; limpios: number; nivelDesbloqueado: 1 | 2; insignias: string[];
+export interface Perfil { alias: string; xp: number; partidas: number; ganadas: number; pods: number; limpios: number; nivelDesbloqueado: 1 | 2 | 3; insignias: string[];
+  /** Ids de mini-tutoriales completados (ver marcarTutorial). */
+  tutoriales: string[];
   /** Aciertos y fallos por concepto (ver dominio.ts). */
   dominio: Dominio;
   /** Mejor tiempo (ms) por pod, con clave "nivel-pod" (ver registrarTiempo). */
@@ -31,7 +34,9 @@ export interface Perfil { alias: string; xp: number; partidas: number; ganadas: 
   /** Mejor tiempo total (ms) de una práctica de 5 pods, por nivel (la carrera contra tu récord). */
   totales: Record<string, number>;
   /** Firma del último fin de duelo aplicado: si el árbitro reenvía el mismo End tras recargar, no se suma dos veces. */
-  ultimoEnd?: string }
+  ultimoEnd?: string;
+  /** Id opaco del alumno (lista del docente) si entró con `?alumno=`; opcional: los perfiles viejos no lo traen. */
+  alumnoId?: string }
 
 /** Lo que dejó una partida. En práctica no hay carrera: `limpios` es 0 (y no se gana). */
 export interface Resultado { puntos: number; pods: number; total: number; quemadas: number; limpios: number; gano: boolean; nivel: Nivel;
@@ -48,16 +53,41 @@ export const INSIGNIAS: readonly Insignia[] = [
   { id: "ganador", nombre: "Ganador", descripcion: "Gana un duelo", cumple: (_, r) => r.gano },
   { id: "constante", nombre: "Constante", descripcion: "Juega 5 partidas", cumple: (p) => p.partidas >= 5 },
   { id: "dominio", nombre: "Dominio", descripcion: "3 estrellas en un concepto", cumple: (p) => Object.values(p.dominio).some((c) => habilidad(c).estrellas === 3) },
-  { id: "nivel-2", nombre: "Nivel 2 abierto", descripcion: "Despacha todos los pods del nivel 1", cumple: (p) => p.nivelDesbloqueado === 2 },
+  { id: "nivel-2", nombre: "Nivel 1 completo", descripcion: "Termina el nivel 1", cumple: (p) => p.nivelDesbloqueado >= 2 },
 ];
 
 /** Criterio de desbloqueo (SCRUM-166): una partida de nivel 1, práctica o duelo, que despacha todos sus pods (sin Oleadas, donde total es Infinity). */
 export const completoNivel1 = (r: Resultado) => r.nivel === 1 && r.pods >= r.total;
 
-/** Selector de nivel de la práctica: el 2 sale con candado hasta desbloquearlo. El duelo no lo usa (el servidor fija el nivel con --nivel/NIVEL). */
-export const textoNivel = (p: Perfil, sel: Nivel) => p.nivelDesbloqueado === 2 ? `Nivel de práctica: ${sel} (toca para cambiar)` : "Nivel de práctica: 1\n🔒 Nivel 2: Completa el nivel 1 para abrirlo";
-export const nivelElegido = (p: Perfil, sel: Nivel): Nivel => (p.nivelDesbloqueado === 2 ? sel : 1);
-export const cambiarNivel = (p: Perfil, sel: Nivel): Nivel => (p.nivelDesbloqueado === 2 && sel === 1 ? 2 : 1);
+/** Criterio del nivel 3 «Experto»: completar una partida de nivel 2 (con el nivel 2 ya abierto), con las mismas reglas que el nivel 1. */
+export const completoNivel2 = (r: Resultado) => r.nivel === 2 && r.pods >= r.total;
+/** Etiqueta del nivel en menús, salas y práctica: «NIVEL 1», «NIVEL 2» o «EXPERTO». */
+export const etiquetaNivel = (n: Nivel) => (n === 3 ? "EXPERTO" : `NIVEL ${n}`);
+
+/** Selector de nivel de la práctica: todos los niveles están abiertos (demo). `nivelDesbloqueado` sólo alimenta rangos e insignias. */
+export const textoNivel = (_p: Perfil, sel: Nivel) => `Nivel de práctica: ${sel === 3 ? "3 EXPERTO" : sel} (toca para cambiar)`;
+export const nivelElegido = (_p: Perfil, sel: Nivel): Nivel => sel;
+/** Nivel de «Jugar solo»: 1, 2, mixto (el del duelo) o 3 (Experto); todos disponibles. */
+export type NivelBot = "1" | "2" | "mixto" | "3";
+/** Preferencias de «Jugar solo» guardadas; un perfil nuevo (sin nada guardado) arranca en nivel 1 (y con él el filtro de SALAS) y bot Fácil. */
+export function preferenciasSolo(almacen: Pick<Storage, "getItem"> | null): { dif: "facil" | "normal" | "dificil"; nivBot: NivelBot } {
+  let dif: "facil" | "normal" | "dificil" = "facil", nivBot: NivelBot = "1";
+  try {
+    const g = almacen?.getItem("circuitsync.dificultad"); if (g === "facil" || g === "normal" || g === "dificil") dif = g;
+    const n = almacen?.getItem("circuitsync.nivelbot"); if (n === "1" || n === "2" || n === "mixto" || n === "3") nivBot = n;
+  } catch { /* sin disco */ }
+  return { dif, nivBot };
+}
+export const nivelBotElegido = (_p: Perfil, sel: NivelBot): 1 | 2 | 3 | "mixto" => sel === "mixto" ? "mixto" : (Number(sel) as 1 | 2 | 3);
+/** Siguiente nivel (da la vuelta al 1). */
+export const cambiarNivel = (_p: Perfil, sel: Nivel): Nivel => (sel < 3 ? sel + 1 : 1) as Nivel;
+
+/** Saludo del menú (ajusta al ancho): primer uso, XP que falta para el siguiente rango y aviso del nivel 2. */
+export function bienvenida(p: Perfil): string {
+  if (!p.partidas && !p.xp) return "Bienvenido al taller. Tu primer pod te espera.";
+  const r = progresoRango(p.xp);
+  return `Hola, ${p.alias}. Rango ${r.actual}. ${r.siguiente ? `Te faltan ${r.m - r.n} XP para ${r.siguiente}.` : "Eres de lo mejor del taller."}${p.nivelDesbloqueado === 3 ? " Nivel 2 completo." : p.nivelDesbloqueado === 2 ? " Nivel 1 completo." : ""}`;
+}
 
 /** PROVISIONAL: naves por número de pod (sprites del kit; se cambiarán por los propios). Rangos 1-4 abren las naves 1-4; la 5 pide todas las insignias. */
 export const NAVES = [
@@ -77,9 +107,9 @@ export const mejorNave = (p: Perfil) => Math.max(...navesDesbloqueadas(p));
 
 /** Resumen de Oleadas (lo añade main.ts): pods despachados, mejor racha de llamas, récord y diagnósticos premiados (falla encadenada). */
 export interface ResumenOleada { pods: number; racha: number; record: number; nuevo: boolean; diag?: number }
-export interface Eventos { oleada?: ResumenOleada; xp: number; insignias: Insignia[]; rango: string | null; habilidades: Cambio[]; naves: string[]; nivel2?: boolean }
+export interface Eventos { oleada?: ResumenOleada; xp: number; insignias: Insignia[]; rango: string | null; habilidades: Cambio[]; naves: string[]; nivel2?: boolean; nivel3?: boolean }
 
-export const perfilNuevo = (alias: string): Perfil => ({ alias, xp: 0, partidas: 0, ganadas: 0, pods: 0, limpios: 0, nivelDesbloqueado: 1, insignias: [], dominio: {}, records: {}, oleadas: {}, totales: {} });
+export const perfilNuevo = (alias: string): Perfil => ({ alias, xp: 0, partidas: 0, ganadas: 0, pods: 0, limpios: 0, nivelDesbloqueado: 1, insignias: [], tutoriales: [], dominio: {}, records: {}, oleadas: {}, totales: {} });
 
 /** Medalla del tiempo de un pod frente a tu mejor marca; la primera vez (sin marca) no hay medalla. */
 export const medallaDe = (ms: number, mejor?: number): Medalla | null =>
@@ -103,6 +133,15 @@ export function registrarTotal(perfil: Perfil, nivel: Nivel, ms: number) {
   return { perfil: previo === undefined || ms < previo ? { ...perfil, totales: { ...perfil.totales, [k]: ms } } : perfil, previo };
 }
 
+/** Marca un mini-tutorial como completado: sin duplicar, y un id vacío no cuenta. No guarda: quien llama usa guardarPerfil. */
+export function marcarTutorial(p: Perfil, id: string): Perfil {
+  if (typeof id !== "string" || !id.trim() || !idGuiaValido(id) || p.tutoriales.includes(id)) return p;
+  return { ...p, tutoriales: [...p.tutoriales, id] };
+}
+/** Tutoriales de menú hechos: `Perfil.tutoriales` también guarda ids de la guía en partida (`mec-*`, `med-*`), que no cuentan. */
+export const tutorialesHechos = (p: Perfil): string[] => p.tutoriales.filter((id) => !id.startsWith("mec-") && !id.startsWith("med-"));
+export const tutorialCompletado = (p: Perfil, id: string): boolean => p.tutoriales.includes(id);
+
 export const rangoDe =(xp: number) => RANGOS.reduce((r, x) => (xp >= x.xp ? x : r), RANGOS[0]);
 
 /** Progreso hacia el siguiente rango: n/m de XP (en el último rango, siguiente = null y n = m = 0). */
@@ -118,14 +157,14 @@ export function aplicarPartida(perfil: Perfil, r: Resultado, firma?: string): { 
   const p: Perfil = {
     ...perfil, xp: perfil.xp + r.puntos, partidas: perfil.partidas + 1, ganadas: perfil.ganadas + Number(r.gano),
     pods: perfil.pods + r.pods, limpios: perfil.limpios + r.limpios,
-    nivelDesbloqueado: perfil.nivelDesbloqueado === 2 || completoNivel1(r) ? 2 : 1,
+    nivelDesbloqueado: Math.max(perfil.nivelDesbloqueado, completoNivel1(r) ? 2 : 1, perfil.nivelDesbloqueado >= 2 && completoNivel2(r) ? 3 : 1) as 1 | 2 | 3,
     ultimoEnd: firma ?? perfil.ultimoEnd, dominio: unir(perfil.dominio, r.dominio ?? {}),
   };
   const nuevas = INSIGNIAS.filter((i) => !perfil.insignias.includes(i.id) && i.cumple(p, r));
   p.insignias = [...perfil.insignias, ...nuevas.map((i) => i.id)];
   const antes = rangoDe(perfil.xp).nombre, ahora = rangoDe(p.xp).nombre;
   const antesN = navesDesbloqueadas(perfil), naves = navesDesbloqueadas(p).filter((n) => !antesN.includes(n)).map((n) => NAVES[n - 1]!.nombre);
-  return { perfil: p, eventos: { xp: r.puntos, insignias: nuevas, rango: ahora !== antes ? ahora : null, habilidades: cambios(perfil.dominio, p.dominio), naves, nivel2: p.nivelDesbloqueado > perfil.nivelDesbloqueado } };
+  return { perfil: p, eventos: { xp: r.puntos, insignias: nuevas, rango: ahora !== antes ? ahora : null, habilidades: cambios(perfil.dominio, p.dominio), naves, nivel2: p.nivelDesbloqueado === 2 && perfil.nivelDesbloqueado === 1, nivel3: p.nivelDesbloqueado === 3 && perfil.nivelDesbloqueado < 3 } };
 }
 
 /**
@@ -139,8 +178,8 @@ export function resultadoDe(prev: Pantalla, next: Pantalla): Resultado | null {
   const est = prev.station ?? next.station ?? (e.score.A ? "A" : "B"), s = e.score[est];
   if (!s) return null;
   const c = e.carrera?.[est];
-  // gano: la práctica termina con winner "A" del árbitro y no es victoria
-  return { puntos: puntosDe(s, c), pods: s.despachados, total: prev.oleadas ? Infinity : prev.total, quemadas: s.quemadas, limpios: c?.llamas ?? 0, gano: !prev.practica && e.winner === est, nivel: prev.nivel };
+  // gano: la práctica termina con winner "A" del árbitro y no es victoria; ganar porque el rival abandona (+0 XP) tampoco da «Ganador»
+  return { puntos: puntosDe(s, c), pods: s.despachados, total: prev.oleadas ? Infinity : prev.total, quemadas: s.quemadas, limpios: c?.llamas ?? 0, gano: !prev.practica && e.winner === est && e.reason !== "abandono", nivel: prev.nivel };
 }
 
 // --- Almacenamiento: localStorage dentro de try/catch; si falla, solo memoria de la página ---
@@ -160,14 +199,39 @@ export function cargarPerfil(alias: string, almacen: Almacen | null = disco()): 
     const o = JSON.parse(raw ?? "{}") as Partial<Perfil>;
     return {
       alias: alias.trim(), xp: num(o.xp), partidas: num(o.partidas), ganadas: num(o.ganadas), pods: num(o.pods), limpios: num(o.limpios),
-      nivelDesbloqueado: o.nivelDesbloqueado === 2 ? 2 : 1, insignias: Array.isArray(o.insignias) ? o.insignias.filter((x) => typeof x === "string") : [],
+      nivelDesbloqueado: o.nivelDesbloqueado === 3 ? 3 : o.nivelDesbloqueado === 2 ? 2 : 1, insignias: Array.isArray(o.insignias) ? o.insignias.filter((x) => typeof x === "string") : [],
+      tutoriales: Array.isArray(o.tutoriales) ? Array.from(new Set(o.tutoriales.filter((x): x is string => typeof x === "string" && x.trim() !== "" && idGuiaValido(x)))) : [],
       dominio: limpiarDominio(o.dominio),
       records: Object.fromEntries(Object.entries(o.records && typeof o.records === "object" ? o.records : {}).filter(([, v]) => num(v) > 0) as [string, number][]),
       oleadas: Object.fromEntries(Object.entries(o.oleadas && typeof o.oleadas === "object" ? o.oleadas : {}).filter(([, v]) => num(v) > 0) as [string, number][]),
       totales: Object.fromEntries(Object.entries(o.totales && typeof o.totales === "object" ? o.totales : {}).filter(([, v]) => num(v) > 0) as [string, number][]),
       ultimoEnd: typeof o.ultimoEnd === "string" ? o.ultimoEnd : undefined,
+      alumnoId: typeof o.alumnoId === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(o.alumnoId) ? o.alumnoId : undefined,
     };
   } catch { return perfilNuevo(alias.trim()); }
+}
+
+/** Alias válido (1 a 12) a partir del alumno: su alias si cabe; si no, el nombre, abreviado tipo «Ana P.» si es largo. */
+export function aliasDeAlumno(a: { nombre: string; alias?: string }): string {
+  const limpio = (t: string) => t.replace(/[\u0000-\u001f\u007f]/g, "").trim().replace(/\s+/g, " ");
+  const alias = limpio(a.alias ?? ""), nombre = limpio(a.nombre);
+  if (alias && alias.length <= 12) return alias;
+  if (nombre.length <= 12) return nombre || "Jugador";
+  const [primero = "", segundo] = nombre.split(" ");
+  const corto = segundo ? `${[...primero].slice(0, 9).join("")} ${[...segundo][0]}.` : [...primero].slice(0, 12).join("");
+  return corto;
+}
+
+/** Aplica el alumno al perfil: guarda `alumnoId` y propone el alias. Ojo: el perfil se guarda por alias; quien llama debe cargarPerfil(aliasDeAlumno(a)) y luego aplicarAlumno. */
+export const aplicarAlumno = (perfil: Perfil, a: { id: string; nombre: string; alias?: string }): Perfil => ({ ...perfil, alumnoId: a.id, alias: aliasDeAlumno(a) });
+
+/** Último alias usado en este dispositivo: el menú lo rellena (sin cuentas; solo localStorage, o memoria si falla). */
+export function ultimoAlias(almacen: Almacen | null = disco()): string {
+  try { return memoria.get("circuitsync.alias") ?? almacen?.getItem("circuitsync.alias") ?? ""; } catch { return memoria.get("circuitsync.alias") ?? ""; }
+}
+export function recordarAlias(alias: string, almacen: Almacen | null = disco()): void {
+  memoria.set("circuitsync.alias", alias.trim());
+  try { almacen?.setItem("circuitsync.alias", alias.trim()); } catch { /* sin disco */ }
 }
 
 export function guardarPerfil(p: Perfil, almacen: Almacen | null = disco()): void {

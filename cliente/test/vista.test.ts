@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluar, PIEZAS } from "../../spike/src/engine/pods";
 import type { Circuito, Verdict } from "../../spike/src/protocol";
-import { botonesGaveta, GAVETA, pestanas, probarActivo, reparadas, RETO, textoOpcion, textoVolts, vistaDeVeredicto } from "../src/vista";
+import { aPixel, botonesGaveta, conHueco, GAVETA, pestanas, CARTEL, LEYENDA_ZONAS, reparadas, retrasoCola, RETO, textoOpcion, textoVolts, vistaDeVeredicto } from "../src/vista";
 
 const CIRCUITOS: Circuito[] = ["led", "cabina", "luces", "interruptor", "fusible"];
 const VEREDICTOS: Verdict[] = ["poco", "correcto", "demasiado", "se quema", "corto"];
@@ -28,6 +28,18 @@ describe("vista de una zona", () => {
     }
   });
 
+  it("nivel 2: reto, gaveta, etiquetas y mensajes de combinar, divisor y protegido", () => {
+    for (const c of ["combinar", "divisor", "protegido"] as const) {
+      expect(RETO[c]).toBeTruthy(); expect(GAVETA[c]).toBeTruthy();
+      for (const v of VEREDICTOS) expect(vistaDeVeredicto(v, c).mensaje).toBeTruthy();
+      expect(vistaDeVeredicto("se quema", c).quemado).toBe(true);
+    }
+    expect(PIEZAS.combinar.map((p) => textoOpcion(p, "combinar"))).toEqual(["Una sola", "En serie", "En paralelo"]);
+    expect(textoOpcion("470", "divisor")).toBe("470 Ω");
+    expect(textoOpcion("100", "protegido")).toBe("100 Ω");
+    expect(textoVolts(6)).toBe("6 V");
+  });
+
   it("etiquetas de pieza o montaje, y voltaje de la batería con coma", () => {
     expect(textoOpcion("470", "led")).toBe("470 Ω");
     expect(textoOpcion("0.5", "fusible")).toBe("0,5 A");
@@ -47,13 +59,57 @@ describe("vista de una zona", () => {
   });
 });
 
-describe("botón Probar", () => {
-  it("se apaga sin cambios desde la última prueba y vuelve al cambiar algo", () => {
-    expect(probarActivo("470", undefined, false, false)).toBe(true);
-    expect(probarActivo("470", "470", false, false)).toBe(false);
-    expect(probarActivo("220", "470", false, false)).toBe(true);
-    expect(probarActivo(undefined, undefined, false, false)).toBe(false);
-    expect(probarActivo("220", "470", true, false)).toBe(false);
-    expect(probarActivo("220", "470", false, true)).toBe(false);
+describe("claridad del Taller", () => {
+  it("el «¡REPARADO!» termina antes de que el pod nuevo muestre su avería", () => {
+    expect(150 + CARTEL.reparadoMs + 150).toBeLessThanOrEqual(CARTEL.averiaRetraso);
+    expect(CARTEL.puntosMs).toBeLessThanOrEqual(CARTEL.averiaRetraso + 100);
+  });
+  it("hay leyenda de iconos y el texto del fusible no promete cifras", () => {
+    expect(LEYENDA_ZONAS).toMatch(/Rojo.*Verde.*Cian/);
+    expect(GAVETA.fusible).not.toMatch(/consume/);
   });
 });
+
+describe("aPixel", () => {
+  it("cambia los glifos que la fuente pixel no dibuja", () => {
+    expect(aPixel("el riel + y el riel − hará corto")).toBe("el riel + y el riel - hará corto");
+    expect(aPixel("Elige un fusible (A = lo que aguanta)")).toBe("Elige un fusible (A: lo que aguanta)");
+  });
+});
+
+describe("retrasoCola", () => {
+  it("escalona 250 ms al iniciar y luego entra de inmediato", () => {
+    expect([0, 1, 3].map((i) => retrasoCola(i, true))).toEqual([0, 250, 750]);
+    expect(retrasoCola(3, false)).toBe(0);
+  });
+});
+
+describe("hueco rojo con «?»", () => {
+  it("sale en toda mecánica de gaveta mientras falta la pieza, igual en todos los modos", () => {
+    for (const c of ["led", "cabina", "fusible", "combinar", "divisor", "protegido"] as const) {
+      expect(conHueco(c, undefined, false), c).toBe(true);
+      expect(conHueco(c, "1", false), c).toBe(false); // ya colocada
+      expect(conHueco(c, undefined, true), c).toBe(false); // zona reparada
+    }
+  });
+  it("la cadena marca su propio hueco en la pieza localizada, no el hueco global de la gaveta", () => {
+    expect(conHueco("cadena", undefined, false)).toBe(false);
+  });
+  it("la cadena: textos del repuesto y del veredicto sin revelar cuál pieza ni por qué", () => {
+    expect(["cable", "led", "ledInv", "r220", "3:r470", "1:led"].map((p) => textoOpcion(p, "cadena"))).toEqual(["Cable", "LED", "LED giro", "220 Ω", "470 Ω", "LED"]);
+    for (const l of ["poco", "demasiado", "se quema"] as const) expect(vistaDeVeredicto(l, "cadena").mensaje).not.toMatch(/muert|corta|abiert|al revés|giro|resistencia|cable/i);
+    expect(RETO.cadena).not.toMatch(/resistencia|LED está al revés|cable roto/i);
+  });
+  it("la placa (luces, interruptor) tiene su propia gaveta de piezas", () => {
+    expect(conHueco("luces", undefined, false)).toBe(false);
+    expect(conHueco("interruptor", undefined, false)).toBe(false);
+  });
+  it("soltar la pieza fuera del hueco no la coloca (la ranura es el único destino)", async () => {
+    const { dentro } = await import("../src/arrastre");
+    const ranura = { x: 180, y: 34, w: 140, h: 96 };
+    expect(dentro(ranura, 180, 34)).toBe(true);
+    expect(dentro(ranura, 180, 290)).toBe(false); // de vuelta en la gaveta
+    expect(dentro(ranura, 40, 34)).toBe(false);
+  });
+});
+

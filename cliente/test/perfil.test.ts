@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { inicial, type Pantalla } from "../src/pantalla";
-import { firmaEnd, aplicarPartida, cargarPerfil, guardarPerfil, INSIGNIAS, cambiarNivel, nivelElegido, textoNivel, perfilNuevo, progresoRango, rangoDe, registrarOleada, registrarTiempo, registrarTotal, resultadoDe, UMBRALES_MEDALLA, type Resultado } from "../src/perfil";
+import { firmaEnd, aplicarPartida, cargarPerfil, guardarPerfil, INSIGNIAS, marcarTutorial, tutorialCompletado, tutorialesHechos, cambiarNivel, nivelBotElegido, nivelElegido, textoNivel, perfilNuevo, progresoRango, rangoDe, registrarOleada, registrarTiempo, registrarTotal, resultadoDe, UMBRALES_MEDALLA, type Resultado } from "../src/perfil";
 
 const res = (o: Partial<Resultado> = {}): Resultado => ({ puntos: 0, pods: 0, total: 5, quemadas: 0, limpios: 0, gano: false, nivel: 1, ...o });
 const ids = (r: ReturnType<typeof aplicarPartida>) => r.eventos.insignias.map((i) => i.id);
@@ -48,15 +48,12 @@ describe("aplicarPartida", () => {
     guardarPerfil(aplicarPartida(perfilNuevo("desb"), res({ pods: 5 })).perfil, null);
     expect(cargarPerfil("desb", null).nivelDesbloqueado).toBe(2);
   });
-  it("selector de nivel: el 2 con candado hasta desbloquearlo", () => {
-    const p = perfilNuevo("a"), abierto = { ...p, nivelDesbloqueado: 2 as const };
-    expect(textoNivel(p, 1)).toContain("Completa el nivel 1 para abrirlo");
-    expect(cambiarNivel(p, 1)).toBe(1);
-    expect(nivelElegido(p, 2)).toBe(1);
-    expect(cambiarNivel(abierto, 1)).toBe(2);
-    expect(cambiarNivel(abierto, 2)).toBe(1);
-    expect(nivelElegido(abierto, 2)).toBe(2);
-    expect(textoNivel(abierto, 2)).not.toContain("🔒");
+  it("selector de nivel: todos los niveles abiertos desde el inicio", () => {
+    const p = perfilNuevo("a");
+    expect(textoNivel(p, 1)).not.toContain("bloqueado");
+    expect([1, 2, 3].map((n) => nivelElegido(p, n as 1 | 2 | 3))).toEqual([1, 2, 3]);
+    expect([cambiarNivel(p, 1), cambiarNivel(p, 2), cambiarNivel(p, 3)]).toEqual([2, 3, 1]);
+    expect(["1", "2", "mixto", "3"].map((n) => nivelBotElegido(p, n as "1"))).toEqual([1, 2, "mixto", 3]);
   });
 });
 
@@ -90,6 +87,11 @@ describe("resultadoDe", () => {
     const a = aplicarPartida(perfilNuevo("a"), r);
     expect(a.perfil.ganadas).toBe(0);
     expect(ids(a)).not.toContain("ganador");
+  });
+  it("duelo ganado por abandono del rival: sin «Ganador»", () => {
+    const r = resultadoDe(taller, { ...taller, fase: "carrera", end: { ...end, reason: "abandono" } })!;
+    expect(r.gano).toBe(false);
+    expect(ids(aplicarPartida(perfilNuevo("a"), r))).not.toContain("ganador");
   });
   it("End reenviado tras recargar: la misma firma se reconoce y se guarda", () => {
     const f = firmaEnd(end, "ABC123");
@@ -189,3 +191,65 @@ describe("récord de Oleadas", () => {
   });
 });
 
+
+describe("mini-tutoriales completados", () => {
+  it("perfil nuevo sin tutoriales; perfil viejo sin el campo carga con []", () => {
+    expect(perfilNuevo("ana").tutoriales).toEqual([]);
+    const viejo = cargarPerfil("viejo", { getItem: () => JSON.stringify({ xp: 40, insignias: ["primer-pod"] }), setItem: () => {} });
+    expect(viejo.tutoriales).toEqual([]);
+    expect(tutorialCompletado(viejo, "t1")).toBe(false);
+  });
+  it("marcar dos veces no duplica y no altera el perfil original", () => {
+    const p = perfilNuevo("ana");
+    const a = marcarTutorial(p, "t1");
+    const b = marcarTutorial(a, "t1");
+    expect(b.tutoriales).toEqual(["t1"]);
+    expect(p.tutoriales).toEqual([]);
+    expect(a.tutoriales).toEqual(["t1"]);
+    expect(marcarTutorial(a, "t2").tutoriales).toEqual(["t1", "t2"]);
+    expect(tutorialCompletado(b, "t1")).toBe(true);
+    expect(tutorialCompletado(b, "t2")).toBe(false);
+  });
+  it("id inválido (vacío, solo espacios o no string) no se marca", () => {
+    const p = perfilNuevo("ana");
+    expect(marcarTutorial(p, "").tutoriales).toEqual([]);
+    expect(marcarTutorial(p, "   ").tutoriales).toEqual([]);
+    expect(marcarTutorial(p, 7 as unknown as string).tutoriales).toEqual([]);
+  });
+  it("al cargar descarta valores no string, vacíos y duplicados; se guarda y se lee", () => {
+    const almacen = new Map<string, string>();
+    const disco = { getItem: (k: string) => almacen.get(k) ?? null, setItem: (k: string, v: string) => void almacen.set(k, v) };
+    almacen.set("circuitsync.perfil.sucio", JSON.stringify({ tutoriales: ["a", 3, "a", null, "", "b"] }));
+    expect(cargarPerfil("sucio", disco).tutoriales).toEqual(["a", "b"]);
+    guardarPerfil(marcarTutorial(perfilNuevo("gio"), "t1"), disco);
+    expect(cargarPerfil("gio", disco).tutoriales).toEqual(["t1"]);
+  });
+  it("guía en partida: «mec-»/«med-» conocidos se guardan; los desconocidos se descartan al marcar y al cargar", () => {
+    const almacen = new Map<string, string>();
+    const disco = { getItem: (k: string) => almacen.get(k) ?? null, setItem: (k: string, v: string) => void almacen.set(k, v) };
+    const p = ["mec-led", "med-tension", "mec-nada", "med-voltaje", "mec-constructor"].reduce(marcarTutorial, perfilNuevo("guia"));
+    expect(p.tutoriales).toEqual(["mec-led", "med-tension"]);
+    almacen.set("circuitsync.perfil.vieja", JSON.stringify({ tutoriales: ["resistencia", "mec-cadena", "mec-xyz", "med-continuidad", "med-"] }));
+    expect(cargarPerfil("vieja", disco).tutoriales).toEqual(["resistencia", "mec-cadena", "med-continuidad"]);
+    guardarPerfil(p, disco);
+    expect(cargarPerfil("guia", disco).tutoriales).toEqual(["mec-led", "med-tension"]);
+  });
+});
+
+describe("bienvenida del menú", () => {
+  it("primer uso, con partidas y con nivel 2", async () => {
+    const { bienvenida, perfilNuevo } = await import("../src/perfil");
+    expect(bienvenida(perfilNuevo("ana"))).toBe("Bienvenido al taller. Tu primer pod te espera.");
+    const p = { ...perfilNuevo("ana"), partidas: 2, xp: 180 };
+    expect(bienvenida(p)).toBe("Hola, ana. Rango Aprendiz. Te faltan 120 XP para Técnico.");
+    expect(bienvenida({ ...p, nivelDesbloqueado: 2 })).toContain("Nivel 1 completo.");
+  });
+});
+
+describe("tutorialesHechos", () => {
+  it("no cuenta los ids de la guía en partida", () => {
+    const p = { ...perfilNuevo("a"), tutoriales: ["mec-1", "med-2", "ohm"] };
+    expect(tutorialesHechos(p)).toEqual(["ohm"]);
+    expect(tutorialesHechos(perfilNuevo("a"))).toEqual([]);
+  });
+});

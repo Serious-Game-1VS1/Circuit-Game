@@ -3,7 +3,8 @@
  * los mensajes del árbitro. La prueba vive en test/pantalla.test.ts.
  */
 import { BURN_CARD_MS } from "../../spike/src/arbiter/penalties";
-import { validAlias, type End, type Medida, type Nivel, type PodView, type RivalView, type ServerMsg, type Station } from "../../spike/src/protocol";
+import { PROTOCOL_VERSION, validAlias, type End, type Medida, type Nivel, type PodView, type RivalView, type ServerMsg, type Station, type TipoSabotaje } from "../../spike/src/protocol";
+import { avisoEnviado, avisoRecibido } from "./sabotaje";
 import { NOMBRE_ZONA, vistaDeVeredicto, type Vista } from "./vista";
 
 /** "carrera" y "podio": fin normal con carrera final; "fin": partida anulada (o árbitro sin carrera). */
@@ -13,6 +14,8 @@ export interface Pantalla {
   fase: Fase;
   /** Aviso para el jugador (error de entrada, rechazo del árbitro). */
   aviso: string | null;
+  /** Aviso discreto (Sala) si el árbitro habla otra versión del protocolo; la partida sigue. */
+  versionAviso?: string;
   station?: Station;
   alias?: string;
   jugadores: { station: Station; alias: string; ready: boolean }[];
@@ -34,6 +37,15 @@ export interface Pantalla {
   rival: RivalView | null;
   /** Tarjeta "pieza quemada": zona y hora local hasta la que se muestra (≥ BURN_CARD_MS). */
   tarjeta: { zona: number; hasta: number } | null;
+  /** Racha de despachos del árbitro (0-3; con 3 el bono de enfriamiento reducido está listo) y el último aviso suyo; `n` cuenta los avisos para que la escena reaccione una vez. */
+  racha: number;
+  eco?: { n: number; tipo: EcoTipo };
+  /** Pods limpios seguidos (0-3) según el árbitro: al tercero ganas un sabotaje. */
+  limpios: number;
+  /** Sabotaje que sufres: `hasta` = hora local en que acaba; `n` cuenta los recibidos para que la escena lo muestre una vez. */
+  sabotaje?: { tipo: TipoSabotaje; hasta: number; n: number };
+  /** Sabotaje que enviaste (solo avisa; `n` cuenta los enviados). */
+  enviado?: { tipo: TipoSabotaje; hasta: number; n: number };
   /** Último veredicto del árbitro, por zona. */
   vistas: Record<number, Vista>;
   /** Hora local (ms) en que se acaba el tiempo de partida. */
@@ -45,7 +57,13 @@ export interface Pantalla {
   end?: End;
   /** Última lectura del multímetro (la escena la muestra tras ~1 s; ver multimetro.ts). */
   medida?: Medida;
+  /** Competitivo: coste base de medir y coste de la próxima medida por zona (el árbitro lo fija; la escena solo lo muestra). */
+  medirBase?: number;
+  proxMedir?: Record<number, number>;
 }
+
+/** Qué pasó con la racha en el último intento: lo decide el árbitro, la escena solo reacciona. */
+export type EcoTipo = "acierto" | "listo" | "usado" | "perdido" | "fallo" | "sabotaje" | "ataque";
 
 /** La partida ya terminó: no se reconecta y el resultado se conserva. */
 export const terminada = (p: Pantalla) => p.fase === "fin" || p.fase === "carrera" || p.fase === "podio";
@@ -64,6 +82,8 @@ export function inicial(): Pantalla {
     practica: false,
     oleadas: false,
     quemadas: 0,
+    racha: 0,
+    limpios: 0,
     despachando: false,
     rival: null,
     tarjeta: null,
@@ -100,7 +120,7 @@ export function validarEntrada(codigo: string, alias: string): string | null {
   return null;
 }
 
-const ESTADO: Record<RivalView["estado"], string> = { reparando: "reparando", penalizado: "penalizado", "sin-conexion": "sin conexión" };
+const ESTADO: Record<RivalView["estado"], string> = { reparando: "reparando", penalizado: "enfriando", "sin-conexion": "sin conexión" };
 export const textoRival = (r: RivalView | null, total = 5) => (r ? `${r.alias}: ${r.despachados}/${total} pods · ${ESTADO[r.estado]}` : "Rival: —");
 
 const segundos = (ms: number) => Math.ceil(ms / 1000);
@@ -125,6 +145,12 @@ export const reloj = (p: Pantalla, ahora: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
+/** Rótulo del botón CHECK: «ESPERA 2», «ESPERA 1» durante el enfriamiento y «CHECK» después. */
+export const textoCheck = (esperaHasta: number, ahora: number) => (esperaHasta > ahora ? `ESPERA ${segundos(esperaHasta - ahora)}` : "CHECK");
+
+/** Estado del botón CHECK (no anticipa el veredicto): verde/activo = listo para validar (pieza colocada y distinta de la ya validada, sin enfriamiento) o zona reparada para despachar; gris = sin pieza, ya validada o en enfriamiento. */
+export const checkActivo = (reparada: boolean, probable: boolean, esperaHasta: number, ahora: number) => reparada || (probable && esperaHasta <= ahora);
+
 /** El aviso con el "espera N s" descontando en vivo; al acabar el bloqueo se quita la espera. */
 export function avisoVivo(p: Pantalla, ahora: number): string | null {
   const s = segundos(p.esperaHasta - ahora);
@@ -133,16 +159,23 @@ export function avisoVivo(p: Pantalla, ahora: number): string | null {
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : null;
 }
 
+/** Versión del árbitro distinta de la del cliente (o ausente: árbitro anterior a la v2): pide recargar; null si coincide. */
+export const avisoVersion = (v: number | undefined): string | null => v === PROTOCOL_VERSION ? null : "Versión distinta del servidor: recarga la página";
+
+/** Cuánto se muestra el «Sabotaje enviado». */
+export const ENVIADO_MS = 3000;
+
 export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
   switch (m.t) {
     // Al reconectar en plena partida no se pasa por la Sala: el "start" que sigue repone el taller. En práctica (marcada antes del welcome) tampoco.
-    case "welcome": return { ...p, fase: p.fase === "entrar" && !p.practica ? "sala" : p.fase, aviso: null, station: m.station, alias: m.alias };
+    case "welcome": return { ...p, fase: p.fase === "entrar" && !p.practica ? "sala" : p.fase, aviso: null, versionAviso: avisoVersion(m.version) ?? undefined, station: m.station, alias: m.alias };
     case "full": return { ...p, aviso: m.reason.charAt(0).toUpperCase() + m.reason.slice(1) };
     // Si alguien se va durante la cuenta, el árbitro vuelve a la sala.
     case "lobby": return { ...p, jugadores: m.players, fase: p.fase === "cuenta" ? "sala" : p.fase };
     case "countdown": return { ...p, fase: "cuenta", cuenta: m.n };
     case "start": return {
-      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, nivel: m.nivel ?? 1, demo: m.demo ?? false, practica: m.practica ?? false, oleadas: m.oleadas ?? false, quemadas: m.despachados === 0 ? 0 : p.quemadas, pod: m.pod, rival: m.rival,
+      ...p, fase: "taller", aviso: null, despachados: m.despachados, total: m.total, nivel: m.nivel ?? 1, demo: m.demo ?? false, practica: m.practica ?? false, oleadas: m.oleadas ?? false, quemadas: m.despachados === 0 ? 0 : p.quemadas, racha: m.racha ?? 0, limpios: m.limpios ?? 0, pod: m.pod, rival: m.rival, medirBase: m.medirBase, proxMedir: m.proxMedir ?? {},
+      sabotaje: m.sabotaje && { tipo: m.sabotaje.tipo, hasta: ahora + m.sabotaje.ms, n: (p.sabotaje?.n ?? 0) + 1 }, enviado: undefined,
       despachando: false, vistas: {}, tarjeta: null, terminaEn: ahora + m.restanteMs, end: undefined,
     };
     case "result": {
@@ -154,8 +187,11 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
       // Falla encadenada: la zona sigue dañada, así que la aguja vuelve a cero y el aviso lo dice.
       const otras = { ...p.vistas };
       delete otras[m.zona];
+      const racha = m.racha ?? p.racha, tipo: EcoTipo | null = m.bono ?? (m.veredicto !== "correcto" ? "fallo" : racha > p.racha ? "acierto" : null);
       return {
-        ...p, despachados: m.despachados, pod: m.pod, esperaHasta: ahora + m.waitMs,
+        ...p, despachados: m.despachados, pod: m.pod, esperaHasta: ahora + m.waitMs, racha, limpios: m.limpios ?? p.limpios,
+        // «Sin pista» se recupera al acertar; el enfriamiento largo se gasta en el siguiente fallo (la quemada no lo gasta).
+        ...(((m.veredicto === "correcto" && p.sabotaje?.tipo === "sin-pista") || (m.veredicto !== "correcto" && m.veredicto !== "se quema" && m.veredicto !== "corto" && p.sabotaje?.tipo === "enfriamiento")) && { sabotaje: undefined }), ...(tipo && { eco: { n: (p.eco?.n ?? 0) + 1, tipo } }),
         quemadas: p.quemadas + Number(!m.escudo && (m.veredicto === "se quema" || m.veredicto === "corto")),
         vistas: m.hayMas ? otras : { ...p.vistas, [m.zona]: vista },
         tarjeta: vista.quemado || vista.cortocircuito ? { zona: m.zona, hasta: ahora + Math.max(BURN_CARD_MS, m.waitMs) } : p.tarjeta,
@@ -164,12 +200,19 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
     }
     // El contador sube solo aquí: cuando el árbitro confirma el despacho.
     case "despachado": return {
-      ...p, despachados: m.despachados, pod: m.pod, despachando: false, vistas: {}, tarjeta: null, aviso: "¡Pod despachado!",
+      ...p, despachados: m.despachados, pod: m.pod, despachando: false, vistas: {}, tarjeta: null, limpios: m.limpios ?? p.limpios, proxMedir: {},
+      aviso: m.enviado ? `¡Pod despachado! ${avisoEnviado(m.enviado)}` : "¡Pod despachado!",
+      ...(m.enviado && { enviado: { tipo: m.enviado, hasta: ahora + ENVIADO_MS, n: (p.enviado?.n ?? 0) + 1 }, eco: { n: (p.eco?.n ?? 0) + 1, tipo: "ataque" as const } }),
     };
-    case "reject": return { ...p, despachando: false, aviso: textoRechazo(m.reason, m.waitMs), esperaHasta: ahora + m.waitMs };
+    case "sabotaje": return {
+      ...p, sabotaje: { tipo: m.tipo, hasta: ahora + m.ms, n: (p.sabotaje?.n ?? 0) + 1 }, aviso: avisoRecibido(m.tipo), eco: { n: (p.eco?.n ?? 0) + 1, tipo: "sabotaje" },
+    };
+    // Un rechazo sin espera (medir ocupado, medida no válida) no borra el enfriamiento que ya corre.
+    case "reject": return { ...p, despachando: false, aviso: textoRechazo(m.reason, m.waitMs), esperaHasta: m.waitMs > 0 ? ahora + m.waitMs : p.esperaHasta };
     // Medir no toca avisos ni bloqueos: solo guarda la lectura.
-    case "medida": return { ...p, medida: m };
-    case "rival": return { ...p, rival: { alias: m.alias, despachados: m.despachados, estado: m.estado } };
+    case "medida": return { ...p, medida: m, ...(m.proxMs !== undefined && { proxMedir: { ...p.proxMedir, [m.zona]: m.proxMs } }) };
+    case "rival": return { ...p, rival: { alias: m.alias, despachados: m.despachados, estado: m.estado },
+      aviso: !p.practica && m.despachados >= p.total && p.despachados < p.total ? `${m.alias} terminó sus ${p.total} pods primero: la partida terminó.` : p.aviso };
     case "end":
       if (p.practica) return { ...inicial(), alias: p.alias, aviso: "Práctica terminada: ¡buen trabajo!", end: m };
       return { ...p, fase: m.phase === "fin" && m.carrera ? (p.fase === "podio" ? "podio" : "carrera") : "fin", fin: textoFin(m, p.station), end: m };

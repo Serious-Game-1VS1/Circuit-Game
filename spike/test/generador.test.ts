@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { encadena, generar, generarOleada, mulberry32, oleadaDe, presupuesto, validarPartida, validarPodOleada, validarZona, type Pod } from "../src/engine/generador.js";
-import { evaluar } from "../src/engine/pods.js";
+import { encadena, generar, generarOleada, mulberry32, podsRival, oleadaDe, presupuesto, validarPartida, validarPodOleada, validarZona, type Pod } from "../src/engine/generador.js";
+import { evaluar, jugadas } from "../src/engine/pods.js";
 import type { Nivel } from "../src/protocol.js";
 
 const NIVELES: Nivel[] = [1, 2];
@@ -20,7 +20,7 @@ describe("generador de pods (RF-06)", () => {
     expect(distintas.size).toBeGreaterThan(15);
   });
 
-  it.each(NIVELES)("nivel %i: 500 sorteos válidos (el CI corre 10 000 con npm run validar:sorteos)", (nivel) => {
+  it.each(NIVELES)("nivel %i: 500 sorteos válidos (10 000 a mano con npm run validar:sorteos; el CI no lo corre)", (nivel) => {
     for (let s = 0; s < 500; s++) expect(validarPartida(generar(s, nivel), nivel)).toBeNull();
   });
 
@@ -29,7 +29,7 @@ describe("generador de pods (RF-06)", () => {
     expect(pods.map((p) => p.numero)).toEqual([1, 2, 3, 4, 5]);
     expect(pods.slice(0, 3).every((p) => p.zonas.length === 1)).toBe(true);
     for (const z of pods.flatMap((p) => p.zonas)) {
-      expect(z.opciones.filter((o) => evaluar(z, o) === "correcto")).toEqual([z.solucion]);
+      expect(jugadas(z).filter((o) => evaluar(z, o) === "correcto")).toEqual([z.solucion]);
     }
   });
 
@@ -37,9 +37,18 @@ describe("generador de pods (RF-06)", () => {
     const zonas = Array.from({ length: 200 }, (_, s) => generar(s, 1)).flat().flatMap((p) => p.zonas).filter((z) => z.circuito === "led");
     expect(zonas.every((z) => z.opciones.length === 3)).toBe(true);
     const porVolts = new Map(zonas.map((z) => [z.volts, z.solucion]));
-    expect(Object.fromEntries(porVolts)).toEqual({ 3.7: "100", 4.5: "220", 9: "470" });
+    expect(Object.fromEntries(porVolts)).toEqual({ 3.7: "100", 4.5: "220", 9: "470", 15: "1000" });
     // la correcta no está siempre en la misma posición
     expect(new Set(zonas.map((z) => z.opciones.indexOf(z.solucion))).size).toBe(3);
+  });
+
+  it("la resistencia correcta se reparte parecido entre las 4 (Radar, niveles 1 y 2)", () => {
+    for (const nivel of [1, 2] as const) {
+      const n: Record<string, number> = {};
+      for (let s = 0; s < 400; s++) for (const p of generar(s, nivel)) for (const z of p.zonas) if (z.circuito === "led") n[z.solucion] = (n[z.solucion] ?? 0) + 1;
+      expect(Object.keys(n).sort()).toEqual(["100", "1000", "220", "470"]);
+      const v = Object.values(n); expect(Math.min(...v)).toBeGreaterThan(Math.max(...v) * 0.6);
+    }
   });
 
   it("nivel 2 cubre focos en paralelo, interruptor y fusible con sus veredictos", () => {
@@ -152,10 +161,10 @@ describe("generador en modo demo de cableado (Cabina y Turbina)", () => {
 
 describe("falla encadenada (solo Oleadas)", () => {
   const h = (x: string) => { let a = 5381; for (const c of x) a = (Math.imul(a, 33) ^ c.charCodeAt(0)) >>> 0; return a; };
-  // Huellas (nivel 2 actualizado al añadir LED invertido y circuito abierto); tomadas antes de añadir la encadenada: el duelo, la práctica normal y las zonas de Oleadas no deben cambiar.
+  // Huellas (resistencias: 15 V y reparto de la correcta, ver VOLTS_SORTEO; nivel 2 actualizado al añadir LED invertido, circuito abierto, combinar, divisor y protegido y, en el bloque 5, al cambiar invertido/abierto por la cadena y, en la ronda del 30-oct, al fijar la gaveta de la cadena con todos los tipos); tomadas antes de añadir la encadenada: el duelo, la práctica normal y las zonas de Oleadas no deben cambiar.
   const HUELLAS: [Nivel, number, number, number][] = [
-    [1, 1, 3303168567, 644005380], [1, 7, 350318067, 1267894063], [1, 42, 210100651, 2322169135], [1, 20261019, 1966667399, 4137727553],
-    [2, 1, 3355728347, 2966361371], [2, 7, 3147094937, 3772403275], [2, 42, 2982547121, 2629610711], [2, 20261019, 4235179758, 4285239548],
+    [1, 1, 1741707192, 4276358291], [1, 7, 887873660, 779038811], [1, 42, 1518233202, 907116463], [1, 20261019, 3272820337, 4008486270],
+    [2, 1, 1508765279, 3493224660], [2, 7, 3665630562, 10662436], [2, 42, 634838147, 377073665], [2, 20261019, 1722553660, 452479173],
   ];
   it.each(HUELLAS)("nivel %i, semilla %i: mismos pods que antes (partida y zonas de las 18 primeras oleadas)", (nivel, s, partida, oleada) => {
     expect(h(JSON.stringify(generar(s, nivel)))).toBe(partida);
@@ -190,5 +199,46 @@ describe("falla encadenada (solo Oleadas)", () => {
       }
     }
     expect(vistas).toBeGreaterThan(300);
+  });
+});
+
+describe("pods del segundo jugador (podsRival)", () => {
+  it("misma cantidad de zonas y presupuesto por pod, partida válida y determinista", () => {
+    for (const perfil of ["mixto", 1, 2, 3] as const) {
+      for (let s = 0; s < 40; s++) {
+        const a = generar(s, perfil), b = podsRival(a, s, perfil);
+        expect(validarPartida(b, perfil), `${perfil} ${s}`).toBeNull();
+        expect(podsRival(a, s, perfil)).toEqual(b);
+        a.forEach((p, i) => {
+          expect(b[i]!.zonas.length).toBe(p.zonas.length);
+          expect(presupuesto(b[i]!)).toBe(presupuesto(p));
+        });
+      }
+    }
+  });
+
+  it("pods 1-3 conservan zona y familia (otros valores) salvo en el nivel 3; los pods 4-5 suelen cambiar de mecánica", () => {
+    const clave = (pod: Pod) => pod.zonas.map((z) => `${z.zona}${z.circuito}`).join();
+    let distintos = 0, total = 0;
+    for (const perfil of ["mixto", 1, 2, 3] as const) {
+      for (let s = 0; s < 40; s++) {
+        const a = generar(s, perfil), b = podsRival(a, s, perfil);
+        a.forEach((p, i) => {
+          if (i < 3 && perfil !== 3) { expect(clave(b[i]!)).toBe(clave(p)); return; }
+          if (perfil !== 1 && (i >= 3 || perfil === 3)) { total++; if (clave(p) !== clave(b[i]!)) distintos++; }
+          if (i < 3) expect(b[i]!.zonas).toHaveLength(1);
+        });
+      }
+    }
+    expect(distintos / total).toBeGreaterThan(0.6);
+  });
+
+  it("en el nivel 1 (una familia por zona) cambia la solución o la batería", () => {
+    let iguales = 0, total = 0;
+    for (let s = 0; s < 100; s++) {
+      const a = generar(s, 1), b = podsRival(a, s, 1);
+      a.forEach((p, i) => p.zonas.forEach((z, k) => { total++; if (b[i]!.zonas[k]!.solucion === z.solucion && b[i]!.zonas[k]!.volts === z.volts) iguales++; }));
+    }
+    expect(iguales / total).toBeLessThan(0.15);
   });
 });

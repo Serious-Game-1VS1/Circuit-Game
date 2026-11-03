@@ -4,7 +4,8 @@ import { LocalTransport, startLocalRelay } from "../src/transport/local.js";
 import { Bot } from "../src/sim/bot.js";
 import { simulateDuel } from "../src/sim/duel.js";
 import { createRoom, hostRoom, joinAsPlayer, newCode, pausaReapertura, validAlias } from "../src/transport/room.js";
-import type { Transport } from "../src/transport/transport.js";
+import { eventoAceptable } from "../src/transport/photon.js";
+import { nivelDeSala, type Transport } from "../src/transport/transport.js";
 
 let relay: Awaited<ReturnType<typeof startLocalRelay>>;
 const open: Transport[] = [];
@@ -63,7 +64,7 @@ describe("transporte local", () => {
     await Promise.all([a, b].map((x) => x.until((m) => m.t === "start")));
 
     const mark = b.log.length;
-    expect(a.pod).toEqual(b.pod); // misma secuencia de pods para ambos
+    expect(a.pod!.zonas).toHaveLength(b.pod!.zonas.length); // misma cantidad de zonas dañadas; las zonas y circuitos pueden diferir
     // El pod 1 tiene una sola zona: repararla no basta, cuenta al despacharlo.
     await expect(a.solveNext()).resolves.toMatchObject({ t: "result", veredicto: "correcto", despachados: 0 });
     await expect(a.solveNext()).resolves.toMatchObject({ t: "despachado", despachados: 1 });
@@ -126,5 +127,36 @@ describe("caída del árbitro (Photon cortado)", () => {
 
   it("la espera para reabrir crece 2 s, 4 s, 8 s… con tope de 30 s", () => {
     expect([1, 2, 3, 4, 5, 9].map(pausaReapertura)).toEqual([2000, 4000, 8000, 16000, 30000, 30000]);
+  });
+});
+
+describe("lista de salas (relé local)", () => {
+  it("refleja la sala creada, llena y cerrada", async () => {
+    const arb = local();
+    const code = await createRoom(arb);
+    hostRoom(arb, { nivel: 2 });
+    const mia = async () => (await local().listar!()).find((s) => s.codigo === code);
+    await vi.waitFor(async () => expect(await mia()).toEqual({ codigo: code, nivel: 2, jugadores: 0, max: 2, estado: "esperando" }));
+    await joinAsPlayer(local(), code, "ana");
+    await vi.waitFor(async () => expect((await mia())?.jugadores).toBe(1));
+    await joinAsPlayer(local(), code, "beto");
+    await vi.waitFor(async () => expect(await mia()).toMatchObject({ jugadores: 2, estado: "llena" }));
+    expect(JSON.stringify(await mia())).not.toMatch(/ana|beto/);
+    await arb.close();
+    await vi.waitFor(async () => expect(await mia()).toBeUndefined());
+  });
+});
+
+
+describe("Photon: solo el anfitrión habla como árbitro (S-03)", () => {
+  it("un cliente rechaza eventos de otro cliente y acepta los del anfitrión", () => {
+    expect(eventoAceptable(3, 1, 2)).toBe(false); // jugador 3, anfitrión 1, evento del jugador 2
+    expect(eventoAceptable(3, 1, 1)).toBe(true);
+  });
+  it("el nivel de la lista de salas distingue mixto, 2 y Experto (lo desconocido es 1)", () => {
+    expect(["mixto", 2, "3", 3, 1, undefined, "x"].map(nivelDeSala)).toEqual(["mixto", 2, 3, 3, 1, 1, 1]);
+  });
+  it("el anfitrión acepta eventos de los jugadores", () => {
+    expect(eventoAceptable(1, 1, 2)).toBe(true);
   });
 });

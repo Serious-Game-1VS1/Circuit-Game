@@ -1,4 +1,4 @@
-import type { PeerId, Transport } from "./transport.js";
+import type { PeerId, SalaInfo, SalaPublica, Transport } from "./transport.js";
 
 /**
  * Cliente del relé local con el WebSocket estándar: corre igual en Node (≥ 22) y en el navegador,
@@ -35,6 +35,20 @@ export class LocalTransport implements Transport {
 
   send(data: unknown, to?: PeerId) {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ to, data }));
+  }
+
+  publicar(info: SalaPublica) {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ info }));
+  }
+
+  /** Consulta puntual al relé (conexión aparte, no toca la sala en la que esté este transporte). */
+  listar(): Promise<SalaInfo[]> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`${this.url}/?room=-&op=list`);
+      let salas: SalaInfo[] | undefined;
+      ws.addEventListener("message", (e) => { salas = (JSON.parse(String(e.data)) as { salas: SalaInfo[] }).salas; });
+      ws.addEventListener("close", () => (salas ? resolve(salas) : reject(new Error("no se pudo listar las salas"))), { once: true });
+    });
   }
 
   close(): Promise<void> {

@@ -32,8 +32,8 @@ export async function simulateDuel(make: () => Transport): Promise<{ arbiter: Ar
     const counts = ana.log.flatMap((m) => (m.t === "countdown" ? [m.n] : []));
     assert.deepEqual(counts, [3, 2, 1]);
 
-    // Ambos reciben el mismo primer pod; ninguno recibe la solución.
-    assert.deepEqual(ana.pod, beto.pod);
+    // Ambos reciben un primer pod con las mismas zonas dañadas en número (otras zonas, circuitos y valores); ninguno recibe la solución.
+    assert.equal(ana.pod!.zonas.length, beto.pod!.zonas.length);
     assert.ok(!JSON.stringify(ana.log).includes("solucion"));
 
     // Despachar con zonas sin reparar se rechaza (RF-03).
@@ -54,7 +54,7 @@ export async function simulateDuel(make: () => Transport): Promise<{ arbiter: Ar
     await ana.until((m) => m.t === "rival" && m.estado === "sin-conexion");
     const mark = ana.log.length;
     const beto2 = new Bot(mk());
-    assert.deepEqual(await beto2.enter(code, "beto"), { t: "welcome", station: "B", alias: "beto" });
+    assert.deepEqual(await beto2.enter(code, "beto"), { t: "welcome", station: "B", alias: "beto", version: 2 });
     const snap = await beto2.until((m) => m.t === "start");
     assert.ok(snap.t === "start" && snap.despachados === 2 && snap.rival?.alias === "ana");
     await ana.until((m) => m.t === "rival" && m.estado === "reparando" && m.despachados === 2, mark);

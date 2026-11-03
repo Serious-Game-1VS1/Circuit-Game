@@ -4,17 +4,20 @@
  * Textos copiados de diseno-taller/prototipo-v3/textos.js (fin, podio, conceptos).
  */
 import type { Carril, Circuito, End, Station } from "../../spike/src/protocol";
-import { puntosDe } from "./progreso";
+import { DIAGNOSTICO, puntosDe } from "./progreso";
+import type { Eventos } from "./perfil";
 
 export const TXT = {
-  decidido: "El ganador ya está decidido: {alias}.",
+  decidido: "Ganó {alias}.",
+  regla: "Gana quien despacha 5 pods primero.\nSin tiempo: más pods; luego menos quemados", // 2 líneas de ≤ 42 letras a escala 2
   decididoEmpate: "Empate: mismos pods y mismos quemados.",
+  porQueAbandono: "{rival} abandonó la partida. ¡Ganas!",
   porQue5: "{alias} despachó sus 5 pods primero.",
   porQueMas: "{alias} despachó más pods cuando se acabó el tiempo.",
   porQueQuemados: "Mismos pods, pero {alias} quemó menos piezas.",
   carreraTitulo: "Carrera final",
-  carreraAyuda: "Cada llama = un despacho limpio. La carrera solo celebra: no cambia el ganador.",
-  saltar: "Toca para saltar",
+  carreraAyuda: "Así terminó la partida. Cada llama es un pod despachado sin quemar piezas.",
+  saltar: "Toca la pantalla para saltar",
   podLuce: "Corre: Pod {n}",
   podio: "Podio",
   primero: "1.º", segundo: "2.º",
@@ -41,6 +44,12 @@ export const CONCEPTO: Record<Circuito, string> = {
   fusible: "Elegir el fusible",
   invertido: "El LED conduce en un solo sentido (polaridad)",
   abierto: "Un circuito abierto no deja pasar corriente",
+  combinar: "La serie suma resistencias, el paralelo las reparte",
+  divisor: "El divisor reparte la tensión entre dos resistencias",
+  protegido: "Cada componente en serie se come tensión",
+  cadena: "Localizar la pieza abierta con continuidad",
+  fusible3: "Elegir el fusible por tamaño y color",
+  placa3: "Conectar en la protoboard solo lo que pide el problema",
 };
 
 /** Sprite de carrera del pod N (1-5). supuesto: el pod N de la partida usa el chasis N del kit. */
@@ -68,8 +77,8 @@ export function decision(e: End): string {
   const g = e.winner && e.score[e.winner];
   if (!e.winner || !g) return TXT.decididoEmpate;
   const r = e.score[otra(e.winner)];
-  const porQue = e.reason === "5 pods despachados" ? TXT.porQue5 : r && r.despachados === g.despachados ? TXT.porQueQuemados : TXT.porQueMas;
-  return `${f(TXT.decidido, { alias: g.alias })}\n${f(porQue, { alias: g.alias })}`;
+  const porQue = e.reason === "abandono" ? TXT.porQueAbandono : e.reason === "5 pods despachados" ? TXT.porQue5 : r && r.despachados === g.despachados ? TXT.porQueQuemados : TXT.porQueMas;
+  return `${f(TXT.decidido, { alias: g.alias })}\n${f(porQue, { alias: g.alias, rival: r?.alias ?? "El rival" })}`;
 }
 
 export interface Fila { puntos: number; puesto: string; alias: string; gana: boolean; tiempo: string; pods: number; limpios: number; quemados: number; yo: boolean }
@@ -96,4 +105,24 @@ export function podio(e: End, yo?: Station) {
     repasar: repasar.length ? repasar : [yo && e.score[yo]?.despachados === 0 ? TXT.repasarCero : TXT.repasarNada],
     podLento: lento && lento.n ? f(TXT.podLento, { n: lento.n, t: mmss(lento.ms) }) : null,
   };
+}
+
+/** Una tarjeta de la pantalla de Recompensas: título corto, detalle (≤ 2 líneas) y si destaca (insignia nueva). */
+export interface Tarjeta { titulo: string; detalle?: string; destacada?: boolean }
+const corto = (t: string, n = 72) => (t.length > n ? `${t.slice(0, n - 3)}...` : t);
+
+/** Lista de recompensas de la partida en tarjetas (la pantalla las revela de a una). Máximo `max`; las insignias van al final y mandan. */
+export function tarjetasRecompensa(ev: Eventos, max = 5): Tarjeta[] {
+  const t: Tarjeta[] = [];
+  if (ev.oleada) t.push({ titulo: `Oleadas: ${ev.oleada.pods} pods`, detalle: `Racha ${ev.oleada.racha} - ${ev.oleada.nuevo ? "¡nuevo récord!" : `tu récord: ${ev.oleada.record}`}` });
+  if (ev.oleada?.diag) t.push({ titulo: `Diagnósticos: ${ev.oleada.diag}`, detalle: `+${ev.oleada.diag * DIAGNOSTICO} XP` });
+  if (ev.naves.length) t.push({ titulo: "Nave nueva", detalle: corto(ev.naves.join(", ")) });
+  if (ev.nivel2) t.push({ titulo: "¡Nivel 1 completo!", detalle: "Prueba el nivel 2 en Practicar" });
+  if (ev.nivel3) t.push({ titulo: "¡Nivel 2 completo!", detalle: "Prueba el Experto en Practicar: colores y fusibles" });
+  if (ev.habilidades.length) t.push({ titulo: "Habilidades", detalle: corto(ev.habilidades.map((c) => `${c.nombre} ${c.estrellas}/3${c.estrellas > c.antes ? " ↑" : c.estrellas < c.antes ? " ↓" : ""}`).join(", ")) });
+  const ins = ev.insignias.map((i): Tarjeta => ({ titulo: `Insignia: ${i.nombre}`, detalle: corto(i.descripcion), destacada: true }));
+  if (!t.length && !ins.length) return [{ titulo: "Sin novedades", detalle: "Sigue practicando" }];
+  const libres = Math.max(0, max - Math.min(ins.length, max));
+  const resto = ins.length > max ? ins.length - max + 1 : 0; // si no caben todas, la última resume las demás
+  return [...t.slice(0, libres), ...ins.slice(0, resto ? max - 1 : max), ...(resto ? [{ titulo: `Y ${resto} insignias más`, destacada: true }] : [])];
 }

@@ -1,17 +1,20 @@
 /// <reference types="vite/client" />
 import * as Phaser from "phaser";
-import { crearTransporte, Net, type Config } from "./net";
+import { crearTransporte, Net, textoCompartir, type Config } from "./net";
 import type { Transport } from "../../spike/src/transport/transport";
 import { Carrera, Podio } from "./carrera";
 import type { Fase, Pantalla } from "./pantalla";
 import { Taller } from "./taller";
-import { cargarArte } from "./arte";
-import { botonSilencio, desbloquear, desbloquearEnGestos, eventosDe, sonar } from "./audio";
+import { cargarArte, letras, marco } from "./arte";
+import { desbloquear, desbloquearEnGestos, eventosDe, sonar } from "./audio";
+import { ponerMusica } from "./musica";
 import { inicial } from "./pantalla";
 import type { Nivel } from "../../spike/src/protocol";
-import { aplicarPartida, cargarPerfil, firmaEnd, guardarPerfil, INSIGNIAS, cambiarNivel, nivelElegido, textoNivel, mejorNave, progresoRango, registrarOleada, registrarTotal, resultadoDe } from "./perfil";
-import { hayFantasma, guardarPendiente, panelLogros, panelRecompensas, tomarPendiente } from "./recompensas";
+import { aplicarPartida, cargarPerfil, firmaEnd, guardarPerfil, mejorNave, registrarOleada, registrarTotal, resultadoDe } from "./perfil";
+import { hayFantasma, guardarPendiente, panelRecompensas, tomarPendiente } from "./recompensas";
 import { MEJORAS } from "./mejoras";
+import { menu } from "./inicio";
+import { Intro } from "./intro";
 import { MAX_LLAMAS } from "./progreso";
 
 const W = 360, H = 640; // diseño vertical; Scale.FIT lo ajusta a cualquier pantalla
@@ -42,58 +45,46 @@ abstract class Base extends Phaser.Scene {
 }
 
 class Entrar extends Base {
-  private aviso!: Phaser.GameObjects.Text;
+  private ui?: ReturnType<typeof menu>;
   constructor() { super("Entrar"); }
+  preload() { cargarArte(this); } // el menú usa el kit; Sala lo reutiliza (cargarArte no repite texturas)
   create() {
-    texto(this, W / 2, 40, "CircuitSync", 30);
-    texto(this, W / 2, 84, "Duelo de reparación de pods", 16, "#9ab");
-    const form = this.add.dom(W / 2, 220).createFromHTML(`
-      <div style="display:flex;flex-direction:column;gap:12px;width:280px;font:18px sans-serif">
-        <label style="color:#ddd">Código de sala<input name="codigo" maxlength="6" autocomplete="off"
-          style="width:100%;box-sizing:border-box;font-size:22px;padding:10px;text-transform:uppercase"></label>
-        <label style="color:#ddd">Alias<input name="alias" maxlength="12" autocomplete="off"
-          style="width:100%;box-sizing:border-box;font-size:22px;padding:10px"></label>
-      </div>`);
-    const campo = (n: string) => form.getChildByName(n) as HTMLInputElement | null;
-    const valor = (n: string) => campo(n)?.value ?? "";
-    if (net.estado.alias) campo("alias")!.value = net.estado.alias; // "Volver a jugar" conserva el alias
-    boton(this, W / 2, 360, "Jugar duelo", W - 32, "#3bb273", () => void net.entrar(valor("codigo"), valor("alias")));
-    // Perfil del alias escrito: rango, XP e insignias.
-    const rango = texto(this, W / 2, 104, "", 15, "#9ab");
-    let sel: Nivel = 1, pfActual = cargarPerfil("Aprendiz");
-    const selector = texto(this, W / 2, 560, "", 13, "#9ab"); // solo la práctica usa el nivel: en duelo lo fija el servidor (--nivel/NIVEL)
-    selector.setInteractive({ useHandCursor: true }).on("pointerdown", () => { sel = cambiarNivel(pfActual, sel); selector.setText(textoNivel(pfActual, sel)); });
-    const refrescar = () => {
-      const pf = pfActual = cargarPerfil(valor("alias").trim() || "Aprendiz"), r = progresoRango(pf.xp);
-      sel = nivelElegido(pf, sel); selector.setText(textoNivel(pf, sel));
-      rango.setText(`${r.actual} · ${pf.xp} XP · ${pf.insignias.length}/${INSIGNIAS.length} insignias`);
-      return pf;
-    };
-    campo("alias")?.addEventListener("input", refrescar);
-    const ver = this.add.text(16, 590, "Ver logros", { fontSize: "16px", color: "#9ab", padding: { y: 14 } }).setInteractive({ useHandCursor: true });
-    ver.on("pointerdown", () => panelLogros(this, refrescar()));
-    // Práctica (SCRUM-151): sin código ni rival; el alias es opcional y por defecto "Aprendiz". Oleadas y el selector de nivel siguen en el código (net.practicar), fuera del menú.
-    boton(this, W / 2, 424, "Practicar", W - 32, "#3a4466", () => void net.practicar(valor("alias").trim() || "Aprendiz", nivelElegido(pfActual, sel)));
-    boton(this, W / 2, 488, "Tutorial", W - 32, "#3a4466", () => void net.practicar(valor("alias").trim() || "Aprendiz", 1, true));
-    this.aviso = texto(this, W / 2, 536, "", 16, "#ff6b6b");
-    botonSilencio(this, W - 30, 30);
-    refrescar();
+    this.ui = menu(this, net);
     this.pintar(net.estado);
     const g = tomarPendiente(); // práctica recién terminada
-    if (g) { refrescar(); panelRecompensas(this, g.eventos, g.perfil, g.otra && (() => void net.practicar(g.otra!.alias, g.otra!.nivel, false, g.otra!.oleadas))); }
+    if (g) { this.ui.refrescar(); panelRecompensas(this, g.eventos, g.perfil, g.otra && (() => void net.practicar(g.otra!.alias, g.otra!.nivel, false, g.otra!.oleadas))); }
   }
-  pintar(p: Pantalla) { this.aviso.setText(p.aviso ?? "").setColor(p.aviso?.startsWith("Práctica terminada") ? "#8fe3a0" : "#ff6b6b"); }
+  pintar(p: Pantalla) { this.ui?.pintar(p); }
 }
 
 class Sala extends Base {
   private lista!: Phaser.GameObjects.Text;
   private listo!: Phaser.GameObjects.Text;
+  private version!: Phaser.GameObjects.Text;
   constructor() { super("Sala"); }
   create() {
     texto(this, W / 2, 60, "Sala", 28);
-    texto(this, W / 2, 100, `Código: ${net.codigo}`, 18, "#9ab"); // para compartirlo con el rival
-    this.lista = texto(this, W / 2, 140, "", 20);
-    this.listo = boton(this, W / 2, 520, "Listo", W - 32, "#3bb273", () => { net.listo(); this.listo.setText("Esperando al rival…").disableInteractive(); });
+    // Tarjeta con el código grande para pasárselo a un amigo (copiar / compartir; el enlace lleva solo ?sala=).
+    marco(this, W / 2, 180, "panel_oscuro", 328, 160, 2);
+    letras(this, W / 2, 112, "Comparte este código con un amigo", 1.5, 0x9ab0c8).setOrigin(0.5, 0).setMaxWidth(296).setCenterAlign();
+    letras(this, W / 2, 140, net.codigo, 5, 0xe0a43c).setOrigin(0.5, 0);
+    const compartible = typeof navigator !== "undefined" && typeof navigator.share === "function";
+    const btn = (x: number, w: number, t: string, primario: boolean, fn: (l: ReturnType<typeof letras>) => void) => {
+      marco(this, x, 230, primario ? "boton_primario" : "boton_secundario", w, 44, 4);
+      const l = letras(this, x, 230, t, 2.5).setOrigin(0.5);
+      this.add.zone(x, 230, w, 44).setInteractive({ useHandCursor: true }).on("pointerdown", () => { desbloquear(); sonar("clic"); fn(l); });
+    };
+    btn(compartible ? W / 2 - 80 : W / 2, compartible ? 148 : 296, "COPIAR", true, (l) => {
+      const aviso = (t: string) => { l.setText(t); this.time.delayedCall(1500, () => l.setText("COPIAR")); };
+      if (!navigator.clipboard?.writeText) return aviso("Cópialo a mano");
+      navigator.clipboard.writeText(net.codigo).then(() => aviso("¡Copiado!"), () => aviso("Cópialo a mano"));
+    });
+    if (compartible) btn(W / 2 + 80, 148, "COMPARTIR", false, () => {
+      try { void navigator.share({ text: textoCompartir(location.href, net.codigo) }).catch(() => {}); } catch { /* sin compartir */ }
+    });
+    this.lista = texto(this, W / 2, 290, "", 20);
+    this.listo = boton(this, W / 2, 520, "Listo", W - 32, "#3bb273", () => { net.listo(); this.listo.setText("Esperando al rival…").disableInteractive().setBackgroundColor("#232a44"); });
+    this.version = this.add.text(W / 2, 550, "", { fontSize: "12px", color: "#e0a43c", align: "center", wordWrap: { width: W - 32 } }).setOrigin(0.5, 0);
     boton(this, W / 2, 594, "Salir", W - 32, "#3a4466", () => void net.salir());
     // Precarga el arte del Taller (~244 PNG): «Listo» espera a que termine, así la cuenta 3-2-1 (y el reloj) no
     // arranca con este equipo aún cargando ni deja la pantalla en negro tras la cuenta.
@@ -106,10 +97,12 @@ class Sala extends Base {
     const filas = p.jugadores.map((j) => `${j.alias}${j.station === p.station ? " (tú)" : ""}  ${j.ready ? "✔ listo" : "…"}`);
     this.lista.setText([...filas, ...(p.jugadores.length < 2 ? ["Esperando al rival…"] : [])].join("\n\n"));
     // El botón sigue al árbitro: si te desmarca (el rival se fue o reconectaste) vuelve a «Listo».
+    this.version.setText(p.versionAviso ?? "");
     const yo = p.jugadores.find((j) => j.station === p.station);
     if (yo?.ready) this.listo.setText("Esperando al rival…").disableInteractive();
     else if (this.load.isLoading()) this.listo.setText("Cargando…").disableInteractive();
     else if (yo) this.listo.setText("Listo").setInteractive({ useHandCursor: true });
+    this.listo.setBackgroundColor(this.listo.input?.enabled ? "#3bb273" : "#232a44"); // verde = botón; gris = estado (esperando/cargando)
   }
 }
 
@@ -144,13 +137,15 @@ const game = new Phaser.Game({
   parent: document.body,
   dom: { createContainer: true },
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: W, height: H },
-  scene: [Entrar, Sala, Cuenta, new Taller(net), new Carrera(net), new Podio(net), Fin],
+  scene: [Intro, Entrar, Sala, Cuenta, new Taller(net), new Carrera(net), new Podio(net), Fin],
 });
 if (import.meta.env.DEV) Object.assign(window, { game }); // solo en desarrollo: capturas e inspección
 
 let anterior = inicial();
+ponerMusica(anterior); // arranca sola cuando el audio se desbloquea con el primer gesto
 net.onCambio = (p) => {
   for (const e of eventosDe(anterior, p)) sonar(e);
+  ponerMusica(p);
   const r = net.tutorial ? null : resultadoDe(anterior, p); // el tutorial no da XP
   if (r) {
     const previo = cargarPerfil((p.alias ?? anterior.alias ?? "").trim() || "Aprendiz");

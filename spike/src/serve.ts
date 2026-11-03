@@ -1,12 +1,16 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { RECONNECT_MS, type Arbiter } from "./arbiter/arbiter.js";
+import { MEDIR_COMPETITIVO_MS, RAZON_ABANDONO, RAZON_SALA_OCIOSA, type Arbiter } from "./arbiter/arbiter.js";
 import { borrarVivo, guardarPartida, guardarVivo } from "./docente/almacen.js";
 import { partidaDe, vivoDe } from "./docente/registro.js";
+import { iniciarRetencion } from "./docente/retencion.js";
 import type { Demo, Perfil } from "./engine/generador.js";
 import { hostRoom, createRoom, pausaReapertura } from "./transport/room.js";
 import { LocalTransport, startLocalRelay } from "./transport/local.js";
 import { PhotonTransport } from "./transport/photon.js";
 import type { Transport } from "./transport/transport.js";
+
+/** Tras el fin la sala sigue abierta este tiempo para reenviar el resultado a quien vuelva; no depende de la ventana de reconexión (5 min), que ocuparía una de las salas. */
+const CIERRE_TRAS_FIN_MS = 30_000;
 
 /**
  * npm run serve: relé local en ws://localhost:8787 + árbitro con una sala (una por proceso).
@@ -14,7 +18,9 @@ import type { Transport } from "./transport/transport.js";
  * una se llena, abre otra con un código nuevo; así caben varios duelos a la vez (hasta MAX_SALAS).
  * El cliente (cliente/, npm run dev) entra con el código. Al terminar cada partida guarda su CSV en bench-out/.
  *
- * Opciones (también por variable de entorno): --nivel 1|2|mixto (NIVEL, por defecto mixto: pods 1-3 de nivel 1 (LED, LED, Cabina) y
+ * En Photon mantiene una sala libre POR NIVEL (1, 2, mixto y 3; MAX_SALAS las limita en total, la del nivel por defecto se abre primero).
+ * Opciones (también por variable de entorno): --nivel 1|2|3|mixto (NIVEL, por defecto mixto; en el relé local es el nivel de la sala y en Photon
+ * solo el nivel que se abre primero, pues se ofrecen todos los niveles. mixto: pods 1-3 de nivel 1 (LED, LED, Cabina) y
  * pods 4-5 de nivel 2 con cables, interruptor, fusible, LED invertido o circuito abierto, para la demo de 5 min) y --semilla N (SEMILLA,
  * entero 0..2^32-1, por defecto aleatoria). Ej.: npm run serve -- --nivel 2 --semilla 42.
  * --demo (o DEMO=1): modo demo de cableado (Cabina y Turbina: arrastrar piezas a la placa y unirlas con cables).
@@ -32,8 +38,8 @@ const opcion = (flag: string, env: string) => {
   return i >= 0 ? process.argv[i + 1] : process.env[env];
 };
 const nivelTxt = opcion("--nivel", "NIVEL") ?? "mixto";
-if (nivelTxt !== "1" && nivelTxt !== "2" && nivelTxt !== "mixto") throw new Error(`--nivel debe ser 1, 2 o mixto (llegó "${nivelTxt}")`);
-const nivel: Perfil = nivelTxt === "mixto" ? "mixto" : nivelTxt === "2" ? 2 : 1;
+if (nivelTxt !== "1" && nivelTxt !== "2" && nivelTxt !== "3" && nivelTxt !== "mixto") throw new Error(`--nivel debe ser 1, 2, 3 o mixto (llegó "${nivelTxt}")`);
+const nivel: Perfil = nivelTxt === "mixto" ? "mixto" : nivelTxt === "3" ? 3 : nivelTxt === "2" ? 2 : 1;
 const semillaTxt = opcion("--semilla", "SEMILLA");
 const semilla = semillaTxt === undefined ? undefined : Number(semillaTxt);
 if (semilla !== undefined && !(/^\d+$/.test(semillaTxt!) && semilla < 2 ** 32)) throw new Error(`--semilla debe ser un entero de 0 a 2^32-1 (llegó "${semillaTxt}")`);
@@ -47,6 +53,8 @@ const demo: Demo = demoTxt === "radar" ? "radar" : demoTxt === "1" ? "cableado" 
 // Cada sala Photon usa 3 CCU (árbitro + 2 jugadores); el plan gratuito admite 20 CCU.
 const MAX_SALAS = Number(process.env.MAX_SALAS) || 6;
 const VIVO_MS = 5000;
+
+iniciarRetencion(); // S-11: purga a los 12 meses al arrancar y cada 24 h
 
 /** Escribe para el panel docente sin tumbar el juego si el disco falla. */
 const docente = (que: string, f: () => void) => { try { f(); } catch (e) { console.error(`docente: no se pudo ${que}: ${(e as Error).message}`); } };
@@ -67,15 +75,22 @@ function vigilar(code: string, arbiter: Arbiter, fin: () => void): () => void {
     vivo();
     if (last === "fin" || last === "anulada") {
       clearInterval(timer);
+      if (arbiter.outcome?.reason === RAZON_SALA_OCIOSA) { // sala ociosa: sin partida que registrar, solo se libera
+        console.log(`[${code}] sala inactiva liberada`);
+        setTimeout(() => { docente("borrar el vivo", () => borrarVivo(code)); fin(); }, 1000);
+        return;
+      }
       mkdirSync("bench-out", { recursive: true });
       // El CSV conserva su formato; nivel y semilla van en el nombre para poder reproducir la partida.
       const file = `bench-out/intentos-${code}${arbiter.demo ? "-demo" : ""}-nivel${arbiter.nivel}-semilla${arbiter.semilla}.csv`;
       const csv = arbiter.toCsv();
       writeFileSync(file, csv);
       if (!arbiter.practica) docente("guardar la partida", () => guardarPartida(partidaDe(arbiter, code, inicio || Date.now(), Date.now()), csv));
-      console.log(`[${code}] resultado: ${JSON.stringify(arbiter.outcome)} · CSV: ${file}`);
+      const o = arbiter.outcome; // sin alias ni semilla en el log (S-11b)
+      console.log(`[${code}] resultado: ${o ? `${o.phase}, ganador ${o.winner ?? "ninguno"}, motivo: ${o.reason}` : "sin resultado"} · CSV guardado`);
       // Tras el fin la sala sigue abierta la ventana de reconexión: quien recargue recibe el mismo resultado.
-      setTimeout(() => { docente("borrar el vivo", () => borrarVivo(code)); fin(); }, arbiter.phase === "fin" ? RECONNECT_MS : 1000);
+      // Abandono: el rival ya recibió el resultado; la sala se libera enseguida en vez de esperar la ventana de reconexión.
+      setTimeout(() => { docente("borrar el vivo", () => borrarVivo(code)); fin(); }, arbiter.phase === "fin" && o?.reason !== RAZON_ABANDONO ? CIERRE_TRAS_FIN_MS : 1000);
     }
   }, 200);
   return () => clearInterval(timer);
@@ -91,17 +106,17 @@ async function crearConCodigo(t: Transport, code: string) {
   }
 }
 
-async function abrir(t: Transport, alTerminar: () => void, codigo?: string, alCaer?: () => void) {
+async function abrir(t: Transport, alTerminar: () => void, codigo?: string, alCaer?: () => void, nivelSala: Perfil = nivel) {
   const code = codigo ? await crearConCodigo(t, codigo) : await createRoom(t);
   let parar = () => {};
-  const room = hostRoom(t, { nivel, semilla, demo, limitMs }, () => {
+  const room = hostRoom(t, { nivel: nivelSala, semilla, demo, limitMs, medirMs: MEDIR_COMPETITIVO_MS }, () => {
     parar();
     console.error(`[${code}] se perdió la conexión del árbitro: sala cerrada`);
     docente("borrar el vivo", () => borrarVivo(code));
     alCaer?.();
   });
   parar = vigilar(code, room.arbiter, () => { room.stop(); void t.close().then(alTerminar); });
-  console.log(`[${code}] nivel: ${room.arbiter.nivel}${demo === "radar" ? " · MODO DEMO (solo Radar)" : demo ? " · MODO DEMO (cableado: Cabina y Turbina)" : ""} · semilla: ${room.arbiter.semilla}${limiteMin === undefined ? "" : ` · duración: ${limiteMin} min`}`);
+  console.log(`[${code}] nivel: ${room.arbiter.nivel}${demo === "radar" ? " · MODO DEMO (solo Radar)" : demo ? " · MODO DEMO (cableado: Cabina y Turbina)" : ""}${limiteMin === undefined ? "" : ` · duración: ${limiteMin} min`}`);
   return { code, arbiter: room.arbiter };
 }
 
@@ -110,19 +125,21 @@ if (photon) {
   const appId = process.env.PHOTON_APP_ID?.trim();
   const region = process.env.PHOTON_REGION?.trim() || "us";
   if (!appId) throw new Error("Falta PHOTON_APP_ID en spike/.env");
-  const salas = new Map<string, Arbiter>();
+  const salas = new Map<string, { arbiter: Arbiter; nivel: Perfil }>();
+  const NIVELES: Perfil[] = [nivel, ...([1, 2, "mixto", 3] as Perfil[]).filter((n) => n !== nivel)]; // el nivel por defecto va primero si falta cupo
   let abriendo = false;
   let fallos = 0, noAntesDe = 0; // tras un fallo la reapertura espera (2 s, 4 s… tope 30 s) en vez de insistir cada segundo
   const asegurarSalaLibre = async () => {
-    const libres = [...salas.values()].filter((a) => a.phase === "esperando").length;
-    if (abriendo || libres > 0 || salas.size >= MAX_SALAS || Date.now() < noAntesDe) return;
+    if (abriendo || salas.size >= MAX_SALAS || Date.now() < noAntesDe) return;
+    const falta = NIVELES.find((n) => ![...salas.values()].some((s) => s.nivel === n && s.arbiter.phase === "esperando")); // una sala libre por nivel
+    if (falta === undefined) return;
     abriendo = true;
     try {
       const quitar = () => { salas.delete(code); };
-      const { code, arbiter } = await abrir(new PhotonTransport(appId, region), quitar, undefined, quitar); // si Photon la cae, se quita y el ciclo de 1 s abre otra
+      const { code, arbiter } = await abrir(new PhotonTransport(appId, region), quitar, undefined, quitar, falta); // si Photon la cae, se quita y el ciclo de 1 s abre otra
       fallos = 0;
-      salas.set(code, arbiter);
-      console.log(`Photon (${region}) · sala nueva, código: ${code} · salas abiertas: ${salas.size}`);
+      salas.set(code, { arbiter, nivel: falta });
+      console.log(`Photon (${region}) · sala nueva (nivel ${falta}), código: ${code} · salas abiertas: ${salas.size}`);
     } catch (e) {
       noAntesDe = Date.now() + pausaReapertura(++fallos);
       console.error(`No se pudo abrir sala en Photon: ${(e as Error).message} · reintento en ${pausaReapertura(fallos) / 1000} s`);

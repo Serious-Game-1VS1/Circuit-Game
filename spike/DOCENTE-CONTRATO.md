@@ -76,3 +76,17 @@ Propuesta simple: el árbitro lee `sesiones.json` (por ejemplo cada pocos segund
 3. Las partidas anuladas se guardan (`fase: "anulada"`). ¿Se muestran en la lista?
 4. Retención: no hay borrado automático de `partidas/`; con 2 equipos por aula el volumen es pequeño.
 5. Vincular partida con sesión (qué `Sesion` la originó): hoy se enlazan solo por `sala` = `codigo`.
+
+## Alumnos (nombre desde la base)
+Feedback del tutor: «agregar nombre jugador que jale de la DB». **Sin cuentas ni contraseñas**: el alias sigue siendo local (perfil del dispositivo); si el docente cargó una lista de alumnos, el cliente puede **prellenar** el alias a partir de un id opaco.
+
+- **Archivo** `alumnos.json` en `DOCENTE_DATA`: `Alumno[]` = `{ id, nombre, alias?, curso?, sesion? }` (tipo `Alumno` en `types.ts`). Lo escribe/mantiene **el panel docente (API)** con `escribirJsonAtomico`; el árbitro y el endpoint solo lo leen. `id` opaco `[A-Za-z0-9_-]{1,40}` (sin datos personales dentro; p. ej. aleatorio). `alias` opcional (si falta se usa el primer nombre, máx. 12). `curso`/`sesion` son para el panel y **no** salen por el endpoint.
+- **Endpoint de solo lectura para el cliente**: `GET /alumno/:id` → `200 {id, nombre, alias}` (`AlumnoPublico`) o `404`. Nada de correos, notas, curso ni otros alumnos; no hay listado ni búsqueda por nombre.
+  - Validar `:id` con `idAlumnoValido` (alfanumérico, `-`, `_`, ≤40); inválido o inexistente → 404 (mismo cuerpo, sin pistas).
+  - Lógica lista: `buscarAlumno(dir, id)` en `src/docente/alumnos.ts` (pura, lee `alumnos.json` en cada llamada, tolera archivo ausente o dañado → null).
+  - **CORS controlado**: `Access-Control-Allow-Origin` solo con el origen del juego (variable `CLIENTE_ORIGEN`, p. ej. `https://juego.ejemplo`; en desarrollo `http://localhost:5173`), solo `GET`, sin credenciales. Nunca `*` si hay datos reales.
+  - **Rate-limit simple**: contador en memoria por IP (p. ej. 30 peticiones/minuto; 429 al pasarse) para que nadie enumere ids. Con ids aleatorios de ≥ 8 caracteres enumerar es inviable.
+  - **Estado: PENDIENTE del lado del compañero.** Hoy no hay servidor HTTP del docente (`serve.ts` solo abre el relé y el árbitro); este endpoint debe colgar del mismo Express de la API (`/api/*`), pero **fuera** de `/api` y **sin** token (lo consulta el jugador, que no tiene cuenta). Es una línea sobre `buscarAlumno(dirDatos(), req.params.id)`.
+- **Privacidad**: el enlace/QR que da el docente lleva `?alumno=<id>`; la URL no contiene nombre, correo ni nada personal. El cliente guarda solo `alumnoId` y el alias en su `localStorage`. El nombre completo se pide al servidor y solo se usa para proponer el alias (el jugador lo puede cambiar); no se muestra al rival. Si el servidor no responde (3 s), el juego sigue con el alias local.
+- **Cliente** (`cliente/src/alumno.ts`): `leerAlumnoDeUrl(location.search)` → id o null; `resolverAlumno(id)` llama a `${VITE_DOCENTE_URL}/alumno/:id` (sin la variable → null).
+- **Vínculo con la partida**: `JugadorPartida.alumnoId?: string` (opcional; los JSON viejos no lo traen y siguen siendo válidos). El panel une `partida.jugadores[].alumnoId` con `alumnos.json` para mostrar el nombre en la lista/detalle (el CSV sigue sin alias ni id). **Pendiente**: el cliente manda `alumnoId` en el `hello` (campo opcional `Hello.alumnoId`, validado con `idAlumnoValido`), el árbitro lo guarda junto al alias de cada estación y `partidaDe` (`registro.ts`) lo copia a `jugadores[]`. Mientras eso no exista el campo simplemente no se escribe.

@@ -5,6 +5,7 @@
  */
 import { MOTOR_OHMS, R_INTERNA, classify, solve, type Label, type Part } from "./circuit.js";
 import type { Circuito, Verdict } from "../protocol.js";
+import { CATALOGO, decodificar, evaluarPlaca3 } from "./placa3.js";
 
 // supuesto: calefactor del Reactor de 12,4 Ω (0,698 A a 9 V) que en falla baja a 3,1 Ω (2,50 A) y aguanta 1,5 A.
 export const HEATER_OHMS = { normal: 12.4, falla: 3.1 } as const;
@@ -22,6 +23,49 @@ export const PIEZAS: Record<Circuito, readonly string[]> = {
   // nivel 2: LED montado al revés (se corrige girándolo) y camino cortado (se empalma).
   invertido: ["directa", "inversa"],
   abierto: ["empalmar", "dejar"],
+  // nivel 2: LED con dos resistencias de 220 Ω (una = 220, serie = 440, paralelo = 110); divisor R1 → R2; R + diodo + LED.
+  combinar: ["una", "serie", "paralelo"],
+  divisor: ["100", "220", "470", "1000"],
+  protegido: ["100", "220", "470", "1000"],
+  // nivel 2: repuestos de la gaveta para la pieza muerta de una cadena (cable, LED bien o girado, resistencias).
+  cadena: ["cable", "led", "ledInv", "r100", "r220", "r470", "r1000"],
+  fusible3: [
+    // nivel 3: vidrio 5x20 y 6,3x32 (F rápido, T lento) y cuchilla de coche (el color dice los amperios); id = «forma:amperios».
+    ...[0.5, 1, 2, 5].flatMap((a) => ["F", "T"].map((l) => `5x20${l}:${a}`)),
+    ...[10, 15, 20].flatMap((a) => ["F", "T"].map((l) => `6x32${l}:${a}`)),
+    ...[5, 7.5, 10, 15, 20, 25, 30].map((a) => `car:${a}`),
+  ],
+  // nivel 3, placa experta: piezas de las gavetas (la jugada es la placa entera; ver placa3.ts)
+  placa3: CATALOGO,
+};
+/** Amperios nominales de un fusible: «0.5» (nivel 2) o «5x20T:2» (nivel 3). */
+export const amperios = (pieza: string): number => Number(pieza.split(":").pop());
+
+/** Todas las jugadas que se pueden probar en una zona: sus opciones o, en la cadena, «hueco:repuesto» de cada hueco con cada repuesto. */
+export const jugadas = (z: { opciones: readonly string[]; cadena?: readonly string[] }): string[] =>
+  z.cadena ? z.cadena.flatMap((_, k) => z.opciones.map((o) => `${k + 1}:${o}`)) : [...z.opciones];
+
+/** Zona tal como la ven montar/evaluar/medir; `r1` es la resistencia fija del divisor (Ω). */
+export interface ZonaCircuito { circuito: Circuito; volts: number; r1?: number;
+  /** fusible3: corriente normal del circuito (A) y si la carga es un motor (arranque: solo aguanta un fusible lento «T»). */
+  consumo?: number; arranque?: boolean;
+  /** Cadena: piezas en serie desde el + ("cable", "led" o "r220"…) y cuál (1..n) está muerta por dentro. */
+  cadena?: readonly string[]; muerta?: number;
+  /** placa3: plantilla del problema y piezas de la gaveta (de ellas sale el objetivo; ver placa3.ts). */
+  plantilla?: string; opciones?: readonly string[] }
+
+/** Pieza que el jugador puede mandar: de la gaveta, o en la cadena «hueco:repuesto» («2:led») o «ninguna» (nada puesto, para medir). */
+export const piezaValida = (z: { circuito: Circuito; opciones: readonly string[]; cadena?: readonly string[] }, p: string): boolean =>
+  z.circuito === "placa3" ? decodificar(p, z.opciones) !== null
+  : z.circuito !== "cadena" ? z.opciones.includes(p)
+    : p === "ninguna" || (/^[1-9]:/.test(p) && Number(p[0]) <= (z.cadena?.length ?? 0) && z.opciones.includes(p.slice(2)));
+/** Divisor del Reactor: la tensión del nodo medio entra a un pin de Arduino (máx. 5 V). */
+export const DIVISOR_V = { poco: 4, correcto: 5, quema: 5.5 } as const;
+
+/** Calefactor del Reactor: constantes del nivel 2; en fusible3 se deriva del consumo impreso (12 V fijos: no cambia con el margen de la batería). */
+export const calefactor = (z: ZonaCircuito) => {
+  if (z.circuito !== "fusible3" || !z.consumo) return { ...HEATER_OHMS, maxA: HEATER_MAX_A };
+  return { normal: 12 / z.consumo - R_INTERNA, falla: 12 / (1.3 * z.consumo) - R_INTERNA, maxA: 1.15 * z.consumo };
 };
 
 const RANK: Label[] = ["correcto", "poco", "demasiado", "se quema"];
@@ -32,7 +76,7 @@ const worst = (ls: Label[]) => ls.reduce((a, b) => (RANK.indexOf(b) > RANK.index
  * piezas que el multímetro puede medir: "pieza" (la elegida en la gaveta), "carga1" y "carga2".
  */
 export interface Montaje { parts: Part[]; puntos: Record<string, number> }
-export function montar(z: { circuito: Circuito; volts: number }, pieza: string, calefactorOhms: number = HEATER_OHMS.falla): Montaje {
+export function montar(z: ZonaCircuito, pieza: string, calefactorOhms?: number): Montaje {
   const bat: Part = { kind: "battery", a: 1, b: 0, volts: z.volts };
   switch (z.circuito) {
     case "led":
@@ -42,6 +86,16 @@ export function montar(z: { circuito: Circuito; volts: number }, pieza: string, 
       if (z.circuito === "cabina") parts.push({ kind: "led", a: 2, b: 0 });
       return { parts, puntos: z.circuito === "cabina" ? { pieza: 1, carga1: 2, carga2: 3 } : { pieza: 1, carga1: 2 } };
     }
+    case "combinar": { // LED con dos resistencias de 220 Ω: una sola, en serie o en paralelo.
+      const n = pieza === "serie" ? 3 : 2;
+      const rs: Part[] = (pieza === "una" ? [[1, 2]] : pieza === "serie" ? [[1, 2], [2, 3]] : [[1, 2], [1, 2]]).map(([a, b]) => ({ kind: "resistor", a: a!, b: b!, ohms: 220 }));
+      const parts: Part[] = [bat, ...rs, { kind: "led", a: n, b: 0 }];
+      return { parts, puntos: { pieza: 1, carga1: parts.length - 1 } };
+    }
+    case "divisor": // batería → R1 (fija) → R2 (elegida) → masa; pieza = R2, carga1 = R1; el nodo medio es la tensión de R2.
+      return { parts: [bat, { kind: "resistor", a: 1, b: 2, ohms: z.r1 ?? 470 }, { kind: "resistor", a: 2, b: 0, ohms: Number(pieza) }], puntos: { pieza: 2, carga1: 1 } };
+    case "protegido": // R → diodo de protección → LED: cada pieza en serie se come su tensión.
+      return { parts: [bat, { kind: "resistor", a: 1, b: 2, ohms: Number(pieza) }, { kind: "diode", a: 2, b: 3 }, { kind: "led", a: 3, b: 0 }], puntos: { pieza: 1, carga1: 3, carga2: 2 } };
     case "invertido": // R → LED; "inversa" = el LED con el ánodo a tierra (no conduce).
       return { parts: [bat, { kind: "resistor", a: 1, b: 2, ohms: 470 }, pieza === "inversa" ? { kind: "led", a: 0, b: 2 } : { kind: "led", a: 2, b: 0 }], puntos: { pieza: 1, carga1: 2 } };
     case "abierto": // R → hueco → LED; "empalmar" cierra el hueco con un cable, "dejar" lo deja (resistencia enorme).
@@ -49,6 +103,15 @@ export function montar(z: { circuito: Circuito; volts: number }, pieza: string, 
         parts: [bat, pieza === "empalmar" ? { kind: "wire", a: 1, b: 2 } : { kind: "resistor", a: 1, b: 2, ohms: 1e9 }, { kind: "resistor", a: 2, b: 3, ohms: 470 }, { kind: "led", a: 3, b: 0 }],
         puntos: { pieza: 1, carga1: 3 },
       };
+    case "cadena": { // batería → n piezas en serie → masa; la muerta es un corte (1e9 Ω); el repuesto entra en el hueco `k`. puntos t1..tn = cada pieza.
+      const cad = z.cadena!, [k, rep] = pieza === "ninguna" ? [0, ""] : [Number(pieza[0]), pieza.slice(2)];
+      const parts: Part[] = [bat, ...cad.map((tipo, i): Part => {
+        const a = i + 1, b = i + 1 === cad.length ? 0 : i + 2, id = i + 1 === k ? rep : i + 1 === z.muerta ? "muerta" : tipo;
+        return id === "cable" ? { kind: "wire", a, b } : id === "led" ? { kind: "led", a, b } : id === "ledInv" ? { kind: "led", a: b, b: a }
+          : { kind: "resistor", a, b, ohms: id === "muerta" ? 1e9 : Number(id.slice(1)) };
+      })];
+      return { parts, puntos: Object.fromEntries(cad.map((_, i) => [`t${i + 1}`, i + 1])) };
+    }
     case "luces": {
       const lamps: Part[] = pieza === "serie"
         ? [{ kind: "lamp", a: 1, b: 2 }, { kind: "lamp", a: 2, b: 0 }]
@@ -61,26 +124,44 @@ export function montar(z: { circuito: Circuito; volts: number }, pieza: string, 
       return pieza === "serie"
         ? { parts: [bat, { kind: "wire", a: 1, b: 2 }, { kind: "motor", a: 2, b: 0 }], puntos: { carga1: 2, carga2: 1 } }
         : { parts: [bat, { kind: "motor", a: 1, b: 0 }, { kind: "wire", a: 1, b: 0 }], puntos: { carga1: 1, carga2: 2 } };
+    case "placa3": throw new Error("placa3 se arma con placa3.ts");
     case "fusible":
+    case "fusible3": {
+      const c = calefactor(z);
       return {
-        parts: [bat, { kind: "fuse", a: 1, b: 2, maxA: Number(pieza) }, { kind: "heater", a: 2, b: 0, ohms: calefactorOhms, maxA: HEATER_MAX_A }],
+        parts: [bat, { kind: "fuse", a: 1, b: 2, maxA: amperios(pieza) }, { kind: "heater", a: 2, b: 0, ohms: calefactorOhms ?? c.falla, maxA: c.maxA }],
         puntos: { pieza: 1, carga1: 2 },
       };
+    }
   }
 }
 
 /** Veredicto de una zona con la pieza `pieza` y la batería `volts`. Sin cifras. */
-export function evaluar(z: { circuito: Circuito; volts: number }, pieza: string): Verdict {
+export function evaluar(z: ZonaCircuito, pieza: string): Verdict {
   switch (z.circuito) {
+    case "placa3": return evaluarPlaca3(z, pieza);
     case "led":
     case "cabina": {
       const r = solve(montar(z, pieza).parts);
       return r.short ? "corto" : worst(r.parts.slice(2).map((p) => p.label!));
     }
+    case "divisor": {
+      const { parts, puntos } = montar(z, pieza);
+      const r = solve(parts);
+      if (r.short) return "corto";
+      const v = r.parts[puntos.pieza!]!.volts;
+      return v < DIVISOR_V.poco ? "poco" : v <= DIVISOR_V.correcto ? "correcto" : v <= DIVISOR_V.quema ? "demasiado" : "se quema";
+    }
     case "invertido":
-    case "abierto": {
+    case "abierto":
+    case "combinar":
+    case "protegido": {
       const r = solve(montar(z, pieza).parts);
       return r.short ? "corto" : r.parts.at(-1)!.label!;
+    }
+    case "cadena": { // correcto = el LED enciende bien; sin LED (o con el corte aún abierto) no enciende
+      const { parts } = montar(z, pieza), r = solve(parts), i = parts.findIndex((p) => p.kind === "led");
+      return r.short ? "corto" : i < 0 ? "poco" : r.parts[i]!.label!;
     }
     case "luces": {
       // Meta: paralelo, para que si una luz se funde la otra siga encendida (RF-04: se quita cada carga por turno).
@@ -94,14 +175,16 @@ export function evaluar(z: { circuito: Circuito; volts: number }, pieza: string)
       if (r.short) return "corto";
       return Math.abs(r.parts[puntos.carga1!]!.amps) >= 0.9 * (z.volts / (MOTOR_OHMS + R_INTERNA)) ? "correcto" : "poco";
     }
-    case "fusible": {
-      const run = (ohms: number) => solve(montar(z, pieza, ohms).parts);
-      const falla = run(HEATER_OHMS.falla);
+    case "fusible":
+    case "fusible3": {
+      const c = calefactor(z), run = (ohms: number) => solve(montar(z, pieza, ohms).parts);
+      const falla = run(c.falla);
       if (falla.short) return "corto";
       if (falla.parts[2]!.label === "se quema") return "se quema"; // fusible grueso: no corta la falla
-      const normal = run(HEATER_OHMS.normal);
+      const normal = run(c.normal);
       if (normal.short) return "corto";
-      return normal.parts[1]!.blown ? "poco" : "correcto"; // fusible fino: corta también el consumo normal
+      // fusible fino: corta también el consumo normal; con un motor (arranque) el rápido «F» se funde al arrancar
+      return normal.parts[1]!.blown || (z.arranque && /F:/.test(pieza)) ? "poco" : "correcto";
     }
   }
 }
