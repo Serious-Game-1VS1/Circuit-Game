@@ -45,6 +45,15 @@ describe("sala ociosa (M-3)", () => {
     expect(arb.outcome).toMatchObject({ phase: "anulada", reason: "sala inactiva" });
     expect(de("p1", "end")).toHaveLength(1);
   });
+  it("reenviar «ready» no mantiene viva la sala", () => {
+    const { o, arb } = montar();
+    arb.handle("p1", { t: "hello", alias: "ana" });
+    arb.handle("p1", { t: "ready" });
+    o.t = SALA_OCIOSA_MS - 1000; arb.handle("p1", { t: "ready" }); arb.tick();
+    expect(arb.phase).toBe("esperando");
+    o.t = SALA_OCIOSA_MS; arb.tick();
+    expect(arb.phase).toBe("anulada");
+  });
   it("dos jugadores en «listo» sin pulsar Listo también caducan; una sala vacía no", () => {
     const { o, arb } = montar();
     arb.tick(); o.t = 10 * SALA_OCIOSA_MS; arb.tick();

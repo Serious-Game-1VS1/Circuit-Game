@@ -359,8 +359,8 @@ export class Arbiter {
   private ready(s: Seat): void {
     // Listo pulsado antes de que llegue el rival se recuerda; la cuenta espera a los 2 asientos.
     if (this.phase !== "listo" && this.phase !== "esperando") return;
+    if (!s.ready) this.ociosaDesde = this.now(); // reenviar «ready» no mantiene viva la sala
     s.ready = true;
-    this.ociosaDesde = this.now();
     this.broadcastLobby();
     if (this.phase === "listo" && this.seats.every((x) => x.ready)) {
       this.phase = "cuenta";

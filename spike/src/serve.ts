@@ -80,12 +80,11 @@ function vigilar(code: string, arbiter: Arbiter, fin: () => void): () => void {
         setTimeout(() => { docente("borrar el vivo", () => borrarVivo(code)); fin(); }, 1000);
         return;
       }
-      mkdirSync("bench-out", { recursive: true });
       // El CSV conserva su formato; nivel y semilla van en el nombre para poder reproducir la partida.
       const file = `bench-out/intentos-${code}${arbiter.demo ? "-demo" : ""}-nivel${arbiter.nivel}-semilla${arbiter.semilla}.csv`;
-      const csv = arbiter.toCsv();
-      writeFileSync(file, csv);
-      if (!arbiter.practica) docente("guardar la partida", () => guardarPartida(partidaDe(arbiter, code, inicio || Date.now(), Date.now()), csv));
+      let csv = "";
+      docente("guardar el CSV", () => { csv = arbiter.toCsv(); mkdirSync("bench-out", { recursive: true }); writeFileSync(file, csv); }); // un fallo de disco no debe tumbar el proceso ni dejar la sala sin liberar
+      if (!arbiter.practica && csv) docente("guardar la partida", () => guardarPartida(partidaDe(arbiter, code, inicio || Date.now(), Date.now()), csv));
       const o = arbiter.outcome; // sin alias ni semilla en el log (S-11b)
       console.log(`[${code}] resultado: ${o ? `${o.phase}, ganador ${o.winner ?? "ninguno"}, motivo: ${o.reason}` : "sin resultado"} · CSV guardado`);
       // Tras el fin la sala sigue abierta la ventana de reconexión: quien recargue recibe el mismo resultado.
@@ -107,7 +106,11 @@ async function crearConCodigo(t: Transport, code: string) {
 }
 
 async function abrir(t: Transport, alTerminar: () => void, codigo?: string, alCaer?: () => void, nivelSala: Perfil = nivel) {
-  const code = codigo ? await crearConCodigo(t, codigo) : await createRoom(t);
+  let code: string;
+  try { code = codigo ? await crearConCodigo(t, codigo) : await createRoom(t); } catch (e) {
+    try { await t.close(); } catch { /* no tapar el error original */ }
+    throw e;
+  }
   let parar = () => {};
   const room = hostRoom(t, { nivel: nivelSala, semilla, demo, limitMs, medirMs: MEDIR_COMPETITIVO_MS }, () => {
     parar();
