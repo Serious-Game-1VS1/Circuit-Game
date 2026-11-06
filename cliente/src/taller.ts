@@ -260,10 +260,10 @@ export class Taller extends Phaser.Scene {
    * Animación de medir: las puntas viajan del multímetro a la pieza, tocan, la aguja va a su zona y se retiran, repartido en Medida.medirMs.
    * Es función del tiempo de `midiendo`: si se limpia (otro modo, pieza retirada, aviso, pod nuevo) el siguiente cuadro borra todo; no hay tweens ni timers.
    */
-  private pintarPuntas(p: Pantalla, z: ZonaView | undefined, ahora: number) {
+  private pintarPuntas(p: Pantalla, z: ZonaView | undefined, ahora: number, juego: number) {
     const m = this.midiendo, g = this.puntasG, u = this.ui;
     if (!m || !z || !this.modo) return void g.clear();
-    if (humoVisible(p, ahora, this.humoLimpio)) this.cancelada = m.seq; // el humo cancela la animación (la medición sigue su curso)
+    if (humoVisible(p, juego, this.humoLimpio)) this.cancelada = m.seq; // el humo cancela la animación (la medición sigue su curso)
     const ml = p.medida?.seq === m.seq ? p.medida : undefined;
     if (this.cancelada === m.seq) { g.clear(); return void (this.modo === "tension" && u.aguja.setVisible(true).setAngle(Math.sin(ahora / 90) * 50)); }
     const dy = u.fila.y, placa = conPlaca(z.circuito), origen = u.tablero.c, p3 = z.circuito === "placa3" ? u.tablero3.puntasPanel() : null;
@@ -319,7 +319,11 @@ export class Taller extends Phaser.Scene {
     // El Taller usa su propio lienzo (360×800 vertical o 1440×900 apaisado) y devuelve el de las demás escenas al salir.
     const { width, height } = this.scale.gameSize;
     this.scale.setGameSize(an ? 1440 : 360, an ? 900 : 800);
-    this.events.once("shutdown", () => this.scale.setGameSize(width, height));
+    // Barras laterales (móvil más ancho que 360x800): el mismo fondo, repetido a los lados del lienzo (tesela de 4 px = alto de pantalla, centrada igual que el canvas).
+    const antes = document.body.style.background;
+    document.body.style.background = `#1e1838 url(arte/taller/fondo_taller.png) repeat-x center / auto 100%`;
+    document.body.style.imageRendering = "pixelated";
+    this.events.once("shutdown", () => { this.scale.setGameSize(width, height); document.body.style.background = antes; document.body.style.imageRendering = ""; });
     this.cameras.main.setRoundPixels(true);
     img(this, 0, 0, an ? "fondo_taller_ancho" : "fondo_taller").setOrigin(0);
     img(this, 0, 0, an ? "hud_barra_ancho" : "hud_barra").setOrigin(0);
@@ -628,7 +632,7 @@ export class Taller extends Phaser.Scene {
       }
       else if (ahora - this.midiendo.desde > this.durMedir(p, this.midiendo) + 4000) this.midiendo = undefined; // rechazo o red caída (holgura de 4 s para una Medida lenta): se puede volver a medir
     }
-    this.pintarPuntas(p, z, juego);
+    this.pintarPuntas(p, z, ahora, juego); // `ahora` (reloj real) porque midiendo.desde usa Date.now(); con `juego` (pausable) la animación quedaba en negativo tras abrir una guía
     const prox = this.modo && !this.midiendo && z && p.proxMedir?.[z.zona] ? AYUDA_USO.prox(p.proxMedir[z.zona]!) : "";
     if (this.multi.prox.text !== prox) this.multi.prox.setText(prox);
     if (this.cartelMulti && this.modo) this.quitarCartelMulti();
