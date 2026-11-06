@@ -328,3 +328,11 @@ Restaurar:
 Solo cliente (SWA `circuitsync-juego`, bundle `index-Jrncl0qg.js`, antes `index-BMxLA_Nj.js`; `dist/version.json` con commit `3fbfc60` y protocolo 2). El árbitro y la VM no se tocaron. Cambios: la guía en solitario se pausa con el reloj de juego (`relojJuego.ts`), aviso para girar el teléfono, acento de «PARTIDA RÁPIDA» con texto oscuro, «3 A» sin cortar en el tutorial del fusible, zonas SÍ/NO del aviso de salir separadas (48×44) y un único texto de la insignia del nivel 1 («Termina el nivel 1»). Mismo procedimiento que v8.
 
 Restaurar: copia del `index.html` y el bundle anterior en el scratchpad de la sesión (`dist-v11-anterior`). Alternativa: reconstruir desde `eedfa1b` y `swa deploy`.
+
+## Despliegue v12 (cliente y árbitro, 6-nov-2026, commit 5e73266)
+
+Cliente en SWA `circuitsync-juego` (bundle `index-55wHrpY3.js`, antes `index-Jrncl0qg.js`; `dist/version.json` con commit `5e73266` y protocolo 2) y árbitro en `arbitro-vm` (`src/` y `deploy/` reemplazados, `instalar.sh` ejecutado desde `/opt/circuitsync/spike/deploy/azure`; servicio `arbitro` activo, log con «sala nueva» por nivel). Cambios: puntas del multímetro y fondo lateral del taller; variedad de mecánicas en el nivel 1 y en el modo mixto (`familias.json`, `generador.ts`, bot). Sin cambios de protocolo (`PROTOCOL_VERSION` sigue en 2). Orden seguido: primero el cliente, luego el árbitro (SSH por 443 sin tocar el NSG).
+
+Restaurar:
+- Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v12 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
+- Cliente: copia del `dist` anterior en el scratchpad de la sesión (`dist-v12-anterior`). Alternativa: reconstruir desde `573d173` y `swa deploy`.
