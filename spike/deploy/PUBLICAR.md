@@ -350,6 +350,8 @@ Restaurar:
 
 Cliente en SWA `circuitsync-juego` (bundle `index-DeLgbuJu.js`, antes `index-DSmHvZUi.js`; `dist/version.json` con commit `6996815` y protocolo 2). Cambios: tutorial rediseñado con pasos guiados, velo y mano; intro de ~21 s en 6 viñetas que sale en cada carga y se puede ver de nuevo desde el menú (INTRO); botón CHECK más claro, menos carteles y textos más grandes. CI verde.
 
-El árbitro de la VM sigue en el código v13: los cambios de `spike/` de v14 (blindaje ante fallos de disco, Photon y salas ociosas) están en git pero NO instalados en la VM.
+**Árbitro v14 instalado (6-nov-2026):** el código de `spike/` del commit `6996815` (blindaje ante fallos de disco, Photon y salas ociosas) YA está en `arbitro-vm`. Backup: `/opt/circuitsync/spike.bak-v14` (código v13). `instalar.sh` ejecutado desde `/opt/circuitsync/spike/deploy/azure` (hubo que quitar los CR de los `.sh` subidos desde Windows: `sed -i 's/$//' *.sh`); servicio `arbitro` activo y 4 salas abiertas en Photon. `arbitro.env` y `LIMITE_MIN` sin cambios.
+
+Restaurar el árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v14 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
 
 Restaurar el cliente: copia del `dist` anterior en el scratchpad de la sesión (`dist-v14-anterior`) o reconstruir desde `0a2a697` y `swa deploy`.
