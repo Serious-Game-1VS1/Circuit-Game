@@ -5,7 +5,7 @@ import { guiaPartida, idGuiaValido, MECANICAS, MEDIDA_DE } from "../src/tutorial
 const ids = (c: Circuito, nivel: number | undefined, vistos: string[]) => guiaPartida(c, nivel, vistos).map((a) => a.id);
 
 describe("guía en partida (mecánica nueva)", () => {
-  it("primera vez muestra mecánica y medida; con sus ids ya vistos, nada", () => {
+  it("primera vez muestra mecánica y medida (1 globo cada una); con sus ids ya vistos, nada", () => {
     expect(ids("led", 1, [])).toEqual(["mec-led", "med-tension"]);
     expect(ids("led", 1, ["mec-led", "med-tension"])).toEqual([]);
     expect(ids("led", 2, ["mec-led"])).toEqual([]); // la mecánica vista no vuelve aunque la medida no se marcara
@@ -37,7 +37,9 @@ describe("guía en partida (mecánica nueva)", () => {
       expect(pasos.length).toBeGreaterThanOrEqual(2);
       expect(pasos.length).toBeLessThanOrEqual(4);
       for (const t of pasos) expect(t.length).toBeLessThanOrEqual(80);
+      for (const a of guiaPartida(c, n, [])) expect(a.focos.length).toBe(a.pasos.length); // cada paso tiene su foco (velo y flecha)
     }
+    expect(guiaPartida("abierto", 1, ["med-tension"])[1]).toMatchObject({ focos: ["tension"], cont: true }); // apunta al botón Continuidad
     for (const m of MECANICAS) expect(idGuiaValido(m.id)).toBe(true);
   });
 });

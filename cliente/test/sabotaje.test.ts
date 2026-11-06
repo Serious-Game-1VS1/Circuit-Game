@@ -82,6 +82,10 @@ describe("humo", () => {
     expect(HUMO_BAHIA.y + HUMO_BAHIA.h + 72).toBeLessThanOrEqual(430);
     expect(cruzan({ ...HUMO_BAHIA, y: HUMO_BAHIA.y + 72 - 430 }, CHECK_PANEL)).toBe(false);
     expect(HUMO_GAVETA.x + HUMO_GAVETA.w).toBeLessThanOrEqual(360);
+    // orden de lectura: humo de la gaveta bajo el circuito (y ≥ 138) y por encima del multímetro y del CHECK
+    expect(HUMO_GAVETA.y).toBeGreaterThanOrEqual(138);
+    for (const m of MULTIMETRO_PANEL) expect(HUMO_GAVETA.y + HUMO_GAVETA.h).toBeLessThanOrEqual(m.y);
+    for (const m of MULTIMETRO_PANEL) expect(m.y + m.h).toBeLessThanOrEqual(CHECK_PANEL.y);
   });
 });
 

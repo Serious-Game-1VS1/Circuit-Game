@@ -80,8 +80,10 @@ export function mensajesMenu(p: { xp: number; partidas: number; tutoriales: stri
 export interface Chispa {
   cont: Phaser.GameObjects.Container;
   poner(expresion: Expresion): void;
-  /** Bocadillo con `texto`; con `ms` se quita solo (tiempo real). */
-  decir(texto: string, ms?: number): void;
+  /** Bocadillo con `texto`; con `ms` se quita solo (tiempo real); `ancho` cambia el ancho máximo del texto solo esta vez. */
+  decir(texto: string, ms?: number, ancho?: number): void;
+  /** Quita el bocadillo. */
+  callar(): void;
   /** Saltito de alegría. */
   animar(): void;
   destruir(): void;
@@ -116,9 +118,9 @@ export function crearChispa(s: Phaser.Scene, x: number, y: number, escala = 3, e
   return {
     cont,
     poner(e) { if (e !== expr) { expr = e; pintar(); } },
-    decir(texto, ms) {
+    decir(texto, ms, ancho) {
       quitar(); clearTimeout(tGlobo);
-      const lado = op.lado ?? "der", t = letras(s, 0, 0, texto, 1.5, 0xe8f6ff).setOrigin(0, 0.5).setMaxWidth(op.ancho ?? 220);
+      const lado = op.lado ?? "der", t = letras(s, 0, 0, texto, 1.5, 0xe8f6ff).setOrigin(0, 0.5).setMaxWidth(ancho ?? op.ancho ?? 220);
       const w = Math.ceil(t.width) + 16, h = Math.ceil(t.height) + 14, cy = -9.5 * k;
       const cx = lado === "der" ? 9 * k + w / 2 : -9 * k - w / 2;
       t.setPosition(cx - w / 2 + 8, cy);
@@ -126,6 +128,7 @@ export function crearChispa(s: Phaser.Scene, x: number, y: number, escala = 3, e
       cont.add(globo);
       if (ms) tGlobo = window.setTimeout(quitar, ms);
     },
+    callar() { quitar(); clearTimeout(tGlobo); },
     animar() { if (!reducido) { salto = 8; if (!cont.active) return; } },
     destruir() { limpiar(); cont.destroy(); },
   };

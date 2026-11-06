@@ -13,7 +13,8 @@ describe("arrastrar y soltar (lógica pura)", () => {
     expect(dentro(r, 180, 34)).toBe(true);
     expect(dentro(r, 250, 82)).toBe(true); // borde
     expect(dentro(r, 251, 34)).toBe(false);
-    expect(dentro(r, 180, 290)).toBe(false); // de vuelta en la gaveta
+    expect(dentro(r, 180, 168)).toBe(false); // de vuelta en la gaveta (GY 168, bajo el circuito)
+    expect(dentro(generosa(r), 180, 138)).toBe(false); // el área generosa acaba antes del borde superior de la gaveta
   });
 
   it("el área de acierto es generosa: 1,5x la ranura y al menos 70 px, con el mismo centro", () => {

@@ -2,8 +2,27 @@ import { describe, expect, it } from "vitest";
 import { PIEZAS } from "../../spike/src/engine/pods";
 import { BATTERY_VOLTS } from "../../spike/src/engine/circuit";
 import type { Circuito, PodView } from "../../spike/src/protocol";
-import { cola, etiquetaCarga, huecosCadena, spriteCadena, montajeCarga, montajePieza, estadoZona, pestanasArte, podDe, sprite, spriteBateria, spriteCarga, spritePieza, spriteTarjeta, ZONAS } from "../src/sprites";
+import { cola, etiquetaCarga, huecosCadena, spriteCadena, montajeCarga, montajePieza, estadoZona, pestanasArte, podDe, punteado, sprite, spriteBateria, spriteCarga, spritePieza, spriteTarjeta, ZONAS } from "../src/sprites";
 import { vistaDeVeredicto } from "../src/vista";
+
+describe("borde punteado de las piezas arrastrables", () => {
+  it("todos los trazos van sobre el borde, ninguno pasa de 6 px y no se salen del rectángulo", () => {
+    const s = punteado(180, 168, 104, 60); // botón de la gaveta
+    expect(s.length).toBeGreaterThan(8);
+    for (const [x1, y1, x2, y2] of s) {
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      expect(len).toBeGreaterThan(0);
+      expect(len).toBeLessThanOrEqual(6);
+      expect(x1 === x2 || y1 === y2).toBe(true); // horizontales o verticales
+      for (const [x, y] of [[x1, y1], [x2, y2]] as const) {
+        expect(x).toBeGreaterThanOrEqual(128); expect(x).toBeLessThanOrEqual(232);
+        expect(y).toBeGreaterThanOrEqual(138); expect(y).toBeLessThanOrEqual(198);
+        expect(x === 128 || x === 232 || y === 138 || y === 198).toBe(true);
+      }
+    }
+    expect(s.some(([x1, y1]) => x1 === 128 && y1 === 138)).toBe(true); // empieza en la esquina
+  });
+});
 
 const CIRCUITOS: Circuito[] = ["led", "cabina", "luces", "interruptor", "fusible"];
 const pod: PodView = {

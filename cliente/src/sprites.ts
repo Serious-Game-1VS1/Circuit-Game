@@ -136,6 +136,13 @@ export const spriteCadena = (id: string, nivel: number): string | null =>
   id === "cable" ? null : id === "led" || id === "ledInv" ? spriteCarga("cadena", nivel) : RESISTENCIA[id.slice(1)] ?? null;
 /** Huecos (centro y tamaño, en coordenadas del panel) de las `n` piezas en serie de la cadena: ahí se mide al tocar y se suelta el repuesto. */
 export const huecosCadena = (n: number) => Array.from({ length: n }, (_, i) => ({ x: n < 4 ? 110 + i * 80 : 100 + i * 65, y: 40, w: 58, h: 76 }));
+/** Trazos [x1, y1, x2, y2] del borde punteado de un rectángulo centrado (Graphics de Phaser no tiene trazo punteado): marca «esto se arrastra». */
+export function punteado(x: number, y: number, w: number, h: number, trazo = 6, hueco = 4): [number, number, number, number][] {
+  const l = x - w / 2, t = y - h / 2, s: [number, number, number, number][] = [];
+  for (let d = 0; d < w; d += trazo + hueco) { const e = Math.min(d + trazo, w); s.push([l + d, t, l + e, t], [l + d, t + h, l + e, t + h]); }
+  for (let d = 0; d < h; d += trazo + hueco) { const e = Math.min(d + trazo, h); s.push([l, t + d, l, t + e], [l + w, t + d, l + w, t + e]); }
+  return s;
+}
 export const cargas = (c: Circuito) => (c === "cabina" || c === "luces" ? 2 : 1);
 
 const RESISTENCIA: Record<string, string> = { "100": "resistencia_100", "220": "resistencia_220", "470": "resistencia_470", "1000": "resistencia_1k" };

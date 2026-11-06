@@ -10,7 +10,7 @@ import type { Falta } from "./pantalla";
 import { esResistencia, type Aguja } from "./vista";
 
 /** Qué elemento del Taller se resalta en cada paso. */
-export type Objetivo = "gaveta" | "tension" | "pieza" | "carga" | "contador" | "pestanas" | "multimetro" | "check" | "cadena";
+export type Objetivo = "gaveta" | "tension" | "pieza" | "carga" | "contador" | "pestanas" | "multimetro" | "check" | "cadena" | "circuito";
 
 /** Lo que el Taller sabe de la zona del tutorial (la única del pod). */
 export interface EstadoTut {
@@ -39,7 +39,13 @@ export interface EstadoTut {
 export type Accion = { arrastrar: string } | "check";
 
 /** `libre`: el paso deja tocar todo; `fin`: último paso con los botones de salida . */
-export interface Paso { titulo: string; texto: string; objetivo: Objetivo; pide?: Accion; libre?: boolean; /** Dibuja el esquema «paralelo» junto al texto. */ esquema?: boolean; fin?: boolean; hecho: (e: EstadoTut) => boolean }
+export interface Paso { titulo: string; texto: string; objetivo: Objetivo; pide?: Accion; libre?: boolean; /** Dibuja el esquema «paralelo» junto al texto. */ esquema?: boolean; fin?: boolean; hecho: (e: EstadoTut) => boolean;
+  /** Tiempo mínimo visible (ms); sin él, MIN_PASO_MS. Los pasos de «mirar» (`hecho` siempre true) avanzan solo por tiempo. */ dura?: number;
+  /** Gesto de la mano; sin él se deduce (ver `manoDe`). */ mano?: Gesto }
+export type Gesto = "tocar" | "arrastrar";
+/** Gesto de la mano para el paso: el indicado; si no, arrastrar si pide arrastrar, tocar si el objetivo es un botón o la pieza; si no, ninguno. */
+export const manoDe = (p: Paso): Gesto | null =>
+  p.mano ?? (typeof p.pide === "object" ? "arrastrar" : ["tension", "pieza", "check"].includes(p.objetivo) ? "tocar" : null);
 
 /** Datos de cada mini-tutorial: ids de piezas de la gaveta y estados que el Taller confirma. */
 const elige = (x: string) => (e: EstadoTut) => e.elegida === x;
@@ -56,7 +62,7 @@ const CABLEADA = (e: EstadoTut) => e.falta === null;
 
 /** Validar: CHECK manda la pieza o el montaje puesto al árbitro (único paso con luz, penalización y espera). Vale también si ya quedó verde. */
 const VALIDA = (texto: string, hecho: (e: EstadoTut) => boolean): Paso => ({ titulo: "Valida", objetivo: "check", pide: "check", hecho: (e) => hecho(e) || e.reparada, texto });
-const CHECK: Paso = { titulo: "Check", objetivo: "check", pide: "check", hecho: DESPACHADO, texto: "Multímetro en verde: pulsa CHECK para pasar al siguiente." };
+const CHECK: Paso = { titulo: "Check", objetivo: "check", pide: "check", hecho: DESPACHADO, texto: "Multímetro en verde: pulsa SIGUIENTE." };
 const LISTO = (texto: string): Paso => ({ titulo: "¡Listo!", objetivo: "contador", libre: true, fin: true, hecho: () => false, texto });
 const MODO_TENSION = (texto: string): Paso => ({ titulo: "Tensión", objetivo: "tension", hecho: (e) => e.modo === "tension", texto });
 const MODO_CONT = (texto: string): Paso => ({ titulo: "Continuidad", objetivo: "tension", hecho: (e) => e.modo === "continuidad", texto });
@@ -78,6 +84,20 @@ export interface Mecanica {
 }
 
 export const MECANICAS: Mecanica[] = [
+  // «Primeros pasos»: el mismo pod que «multimetro» (semilla 84: LED a 9 V, gaveta 220/470/1000). Frases de Chispa ≤ 6 palabras.
+  { id: "basico", nombre: "Primeros pasos", ensena: "Mirar, arrastrar, medir y validar: lo básico.", nivel: 1, semilla: 84, pod: 0, circuito: "led", pasos: [
+    { titulo: "Problema", objetivo: "circuito", dura: 3500, hecho: () => true, texto: "Este LED no enciende." },
+    { titulo: "El hueco", objetivo: "circuito", mano: "tocar", dura: 3000, hecho: () => true, texto: "Aquí falta una pieza." },
+    { titulo: "Mover", objetivo: "gaveta", pide: arrastra("1000"), hecho: elige("1000"), texto: "Arrastra 1000 Ω al hueco." }, // con el valor: «una pieza» llevaba a probar la de 220 Ω, que el paso rechaza
+    MODO_TENSION("Toca TENSIÓN."),
+    { titulo: "Medir", objetivo: "pieza", hecho: MIDE_TENSION, texto: "Ahora toca la pieza." },
+    { ...QUITA, titulo: "Continuidad", texto: "Toca CONTINUIDAD y quita la pieza." }, // «quita» activa el foco y la mano sobre la pieza (taller.ts)
+    { titulo: "Medir hueco", objetivo: "pieza", hecho: MIDE_CONT, texto: "Mide el hueco vacío." },
+    { titulo: "Otra pieza", objetivo: "gaveta", pide: arrastra("470"), hecho: elige("470"), texto: "Ahora arrastra 470 Ω al hueco." },
+    VALIDA("Pulsa CHECK.", SIN_FALLA),
+    { ...CHECK, texto: "Verde: pulsa SIGUIENTE." },
+    LISTO("¡Bien! Ya sabes jugar."),
+  ] },
   { id: "resistencia", nombre: "Resistencia", ensena: "La resistencia frena la corriente: ni mucha ni poca.", nivel: 1, semilla: 12, pod: 0, circuito: "led", pasos: [
     { titulo: "Falta la resistencia", objetivo: "gaveta", pide: arrastra("1000"), hecho: elige("1000"), texto: "Hueco rojo = falta resistencia. Arrastra 1000 Ω: solo la coloca." },
     VALIDA("Pulsa CHECK para validar: ámbar = frena de más. Sin verde no pasas.", (e) => e.aguja === "poco"),
@@ -212,21 +232,24 @@ export interface Tutorial { pasos: Paso[]; i: number; activo: boolean; id: strin
   /** Contadores `pruebas`/`medidas` cuando se cumplió el paso anterior: lo posterior es un evento nuevo. */ p0: number; m0: number;
   /** Contadores en el instante en que el paso actual se cumplió (se anota en `avanzar`, que lo muta). */ listo: { p: number; m: number } | null }
 
-export const iniciar = (id: string): Tutorial => {
+/** `desde`: reloj (Date.now) en que se muestra el paso 1; con 0 el primer `avanzar` lo saltaría sin verse. */
+export const iniciar = (id: string, desde = 0): Tutorial => {
   const m = mecanica(id);
   if (!m) throw new Error(`tutorial desconocido: ${id}`);
-  return { pasos: m.pasos, i: 0, activo: true, id, desde: 0, p0: 0, m0: 0, listo: null };
+  return { pasos: m.pasos, i: 0, activo: true, id, desde, p0: 0, m0: 0, listo: null };
 };
 export const actual = (t: Tutorial) => t.pasos[t.i]!;
 export const esUltimo = (t: Tutorial) => t.i === t.pasos.length - 1;
 /** ¿Muestra los botones de salida («Jugar práctica»)? */
 export const esFin = (t: Tutorial) => !!actual(t).fin;
-/** Avanza UN paso por llamada si el estado confirma el actual y lleva ≥ MIN_PASO_MS (1,4 s) visible (nunca pasa del último): ningún número se salta. */
+/** Avanza UN paso por llamada si el estado confirma el actual y lleva ≥ `dura` (o MIN_PASO_MS, 1,4 s) visible (nunca pasa del último): ningún número se salta. */
 export function avanzar(t: Tutorial, e: EstadoTut, ahora = t.desde + MIN_PASO_MS): Tutorial {
   const hecho = cumple(t, e);
   t.listo = hecho ? t.listo ?? { p: e.pruebas, m: e.medidas } : null; // mutación a propósito: conserva la identidad de `t` cuando no avanza
-  return t.i < t.pasos.length - 1 && ahora - t.desde >= MIN_PASO_MS && hecho ? { ...t, i: t.i + 1, desde: ahora, p0: t.listo!.p, m0: t.listo!.m, listo: null } : t;
+  return t.i < t.pasos.length - 1 && ahora - t.desde >= (actual(t).dura ?? MIN_PASO_MS) && hecho ? { ...t, i: t.i + 1, desde: ahora, p0: t.listo!.p, m0: t.listo!.m, listo: null } : t;
 }
+/** Un toque en un paso de «mirar» (con `dura`, sin acción pedida) lo da por visto: el siguiente `avanzar` ya no espera. */
+export const adelantar = (t: Tutorial): Tutorial => (t.activo && actual(t).dura && !actual(t).pide ? { ...t, desde: -Infinity } : t);
 /**
  * ¿El juego ya confirma el paso actual? Una zona reparada (o un pod despachado) implica hechos todos los pasos previos a Despachar:
  * un jugador rápido que elige y prueba casi a la vez no deja el tutorial clavado en un paso cuyo evento ya pasó.
@@ -247,9 +270,25 @@ export function permite(t: Tutorial | null, a: Accion, e?: EstadoTut): string | 
   // En «Valida» se puede volver a poner la pieza del paso anterior (si se devolvió a la gaveta no quedaba forma de seguir).
   if (actual(t).pide === "check" && t.i > 0 && coincide(t.pasos[t.i - 1]!.pide, a)) return null;
   if (e && t.i < t.pasos.length - 1 && cumple(t, e) && coincide(t.pasos[t.i + 1]!.pide, a)) return null;
-  return `Ahora toca: ${actual(t).titulo}`;
+  return actual(t).texto; // la frase del paso dice qué hacer («Ahora toca: Mover» no lo decía)
 }
 export const saltar = (t: Tutorial): Tutorial => ({ ...t, activo: false });
+
+// --- «Primeros pasos» automático: se ofrece UNA vez por alias (el Taller lo marca al arrancarlo, aunque se salte); siempre se repite desde Aprender ---
+type Disco = Pick<Storage, "getItem" | "setItem"> | null;
+const claveBasico = (alias: string) => `circuitsync.primerosPasos.${alias.trim().toLowerCase()}`;
+/** ¿Ya se le ofreció a este alias? Sin almacenamiento cuenta como visto (no insistir sin poder recordar). */
+export function basicoVisto(alias: string, almacen: Disco): boolean {
+  try { return !almacen || almacen.getItem(claveBasico(alias)) === "1"; } catch { return true; }
+}
+export function marcarBasicoVisto(alias: string, almacen: Disco): void {
+  try { almacen?.setItem(claveBasico(alias), "1"); } catch { /* sin disco */ }
+}
+/** JUGAR SOLO: ¿lanzar `basico` en lugar de la partida? Nunca en el duelo en línea. No marca: el Taller lo marca al arrancar (si `practicar` falla, se vuelve a ofrecer). */
+export function ofrecerBasico(alias: string, almacen: Disco, enLinea = false): boolean {
+  if (enLinea || basicoVisto(alias, almacen)) return false;
+  return true;
+}
 export const textoPaso = (t: Tutorial) => `${(mecanica(t.id)?.nombre ?? t.id).toUpperCase()} ${t.i + 1}/${t.pasos.length} ${actual(t).titulo}`;
 
 // --- Guía en partida: aviso corto y NO bloqueante la primera vez que el jugador ve una mecánica (y, dentro, la medida que estrena) ---
@@ -263,7 +302,7 @@ export type MedidaGuia = "tension" | "continuidad";
 export const MEDIDA_DE: Record<Circuito, MedidaGuia> = { led: "tension", cabina: "tension", protegido: "tension", divisor: "tension", combinar: "tension", luces: "tension", interruptor: "tension", placa3: "tension",
   fusible: "continuidad", fusible3: "continuidad", abierto: "continuidad", invertido: "continuidad", cadena: "continuidad" };
 /** Tutoriales de Aprender que ya enseñan cada medida. */
-const APRENDER_MEDIDA: Record<MedidaGuia, string[]> = { tension: ["multimetro", "fusible", "placa", "divisor", "protegido", "placaExperta"], continuidad: ["multimetro", "cadena", "combinar"] };
+const APRENDER_MEDIDA: Record<MedidaGuia, string[]> = { tension: ["basico", "multimetro", "fusible", "placa", "divisor", "protegido", "placaExperta"], continuidad: ["basico", "multimetro", "cadena", "combinar"] };
 /** Textos de la guía (2 pasos por mecánica): cómo funciona la mecánica, nunca la respuesta del pod. */
 const GUIA_MEC: Record<ClaveMec, { titulo: string; pasos: string[] }> = {
   led: { titulo: "Resistencia", pasos: ["Hueco rojo = falta la resistencia. Arrastra una: solo la coloca.", "Más Ω, más freno. CHECK valida: verde = bien, rojo = el LED se quema."] },
@@ -277,16 +316,16 @@ const GUIA_MEC: Record<ClaveMec, { titulo: string; pasos: string[] }> = {
   fusible3: { titulo: "Fusibles", pasos: ["Se eligen por tamaño, marca (F rápido, T lento) y color.", "Elige el que aguanta el consumo normal y pulsa CHECK."] },
   abierto: { titulo: "Cable roto", pasos: ["Un cable puede estar cortado: así la corriente no llega.", "Empalma el corte o déjalo como está, y pulsa CHECK."] },
   invertido: { titulo: "LED girado", pasos: ["El LED solo deja pasar la corriente en un sentido.", "Gíralo o déjalo como está, y pulsa CHECK."] },
-  cadena: { titulo: "Pieza muerta", pasos: ["Una pieza de la cadena puede estar muerta por dentro.", "Mide continuidad por tramos: el que no pasa está cortado; repón el mismo valor."] },
+  cadena: { titulo: "Pieza muerta", pasos: ["Una pieza está muerta: toca CONTINUIDAD y luego cada pieza. «No pasa» = muerta.", "Repón la muerta con el mismo valor."] },
   placa3: { titulo: "Placa experta", pasos: ["Lee el problema del globo: usa solo las piezas necesarias.", "Las pestañas son gavetas. Cada tira de 5 agujeros es un punto."] },
   colores: { titulo: "Colores", pasos: ["Nivel Experto: las resistencias no traen su valor escrito.", "Bandas 1 y 2 = cifras, banda 3 = ceros: 1-0-00 = 1 kΩ."] },
 };
 const GUIA_MEDIDA = (m: MedidaGuia, c: Circuito) => m === "tension"
-  ? { titulo: "Medir tensión", pasos: ["Toca TENSIÓN en el multímetro: medir no gasta intentos.", "Luego toca una pieza: la aguja dice cuánta batería cae en ella."] }
-  : { titulo: "Medir continuidad", pasos: ["Toca CONTINUIDAD: dice si la corriente pasa por la pieza.",
-    c === "cadena" ? "Mide tramo a tramo: el que «No pasa» está cortado; repón el mismo valor." : "Se mide sin tensión: QUITA la pieza (tócala) y mide el hueco o la pieza."] };
+  ? { titulo: "Medir tensión", pasos: ["Toca TENSIÓN y luego una pieza: la aguja dice cuánta batería cae en ella."] }
+  : { titulo: "Medir continuidad", pasos: [c === "cadena" ? "Toca CONTINUIDAD y mide cada pieza: «No pasa» = cortada." : "Toca CONTINUIDAD, QUITA la pieza (tócala) y mide: dice si pasa corriente."] };
 
-export interface AvisoGuia { id: string; titulo: string; pasos: string[] }
+/** `focos[i]`: qué ilumina el velo (y señala la flecha) en el paso i; `cont`: el botón de modo es Continuidad. */
+export interface AvisoGuia { id: string; titulo: string; pasos: string[]; focos: Objetivo[]; cont?: boolean }
 /** Ids que guarda la guía en Perfil.tutoriales: «mec-<clave>» y «med-<medida>». */
 export const idGuiaValido = (id: string) => /^mec-/.test(id) ? Object.hasOwn(GUIA_MEC, id.slice(4)) : /^med-/.test(id) ? Object.hasOwn(APRENDER_MEDIDA, id.slice(4)) : true;
 /**
@@ -297,6 +336,7 @@ export function guiaPartida(c: Circuito, nivel: number | undefined, vistos: read
   if (enLinea) return []; // en el duelo 1v1 el reloj no se pausa: no hay guía y NO se marca como vista (sale en Jugar solo / Aprender)
   const k = claveMec(c, nivel), a = APRENDER[k];
   if (vistos.includes(`mec-${k}`) || (a && vistos.includes(a))) return [];
-  const m = MEDIDA_DE[c], medida = vistos.includes(`med-${m}`) || APRENDER_MEDIDA[m].some((x) => vistos.includes(x)) ? [] : [{ id: `med-${m}`, ...GUIA_MEDIDA(m, c) }];
-  return [{ id: `mec-${k}`, ...GUIA_MEC[k] }, ...medida];
+  const m = MEDIDA_DE[c], medida: AvisoGuia[] = vistos.includes(`med-${m}`) || APRENDER_MEDIDA[m].some((x) => vistos.includes(x)) ? [] : [{ id: `med-${m}`, ...GUIA_MEDIDA(m, c), focos: ["tension", "pieza"], cont: m === "continuidad" }];
+  // Un solo globo por aviso (antes 2 OK por aviso): el primer paso de cada texto.
+  return [{ id: `mec-${k}`, ...GUIA_MEC[k], focos: ["circuito", "gaveta"] as Objetivo[] }, ...medida].map((a): AvisoGuia => ({ ...a, pasos: a.pasos.slice(0, 1), focos: a.focos.slice(0, 1) }));
 }

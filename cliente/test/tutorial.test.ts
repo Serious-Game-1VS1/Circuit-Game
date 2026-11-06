@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { generar } from "../../spike/src/engine/generador";
-import { actual, avanzar, esFin, esUltimo, iniciar, MECANICAS, mecanica, permite, saltar, siguiente, textoPaso, type EstadoTut } from "../src/tutorial";
+import { actual, adelantar, avanzar, basicoVisto, esFin, esUltimo, iniciar, manoDe, marcarBasicoVisto, MECANICAS, mecanica, MIN_PASO_MS, ofrecerBasico, permite, saltar, siguiente, textoPaso, type EstadoTut } from "../src/tutorial";
 
 const base: EstadoTut = { modo: null, medido: false, quemado: false, reparada: false, despachados: 0, pruebas: 0, medidas: 0 };
 const e = (x: Partial<EstadoTut>): EstadoTut => ({ ...base, ...x });
@@ -8,6 +8,8 @@ const zonaDe = (id: string) => { const m = mecanica(id)!; return generar(m.semil
 
 /** Qué fija la semilla de cada mecánica: familia, solución y opciones que usan los textos. */
 const SEMILLAS: Record<string, { circuito: string; volts?: number; r1?: number; solucion: string; opciones: string[] }> = {
+  // Primeros pasos: el mismo pod que «multimetro» (LED de una zona a 9 V; 1000 Ω frena de más y 470 Ω es la buena).
+  basico: { circuito: "led", volts: 9, solucion: "470", opciones: ["220", "470", "1000"] },
   resistencia: { circuito: "led", volts: 9, solucion: "470", opciones: ["100", "470", "1000"] },
   multimetro: { circuito: "led", volts: 9, solucion: "470", opciones: ["220", "470", "1000"] },
   fusible: { circuito: "fusible", solucion: "1", opciones: ["0.5", "1", "3"] },
@@ -26,6 +28,7 @@ const SEMILLAS: Record<string, { circuito: string; volts?: number; r1?: number; 
 
 /** Un estado por paso (menos el último): el que confirma ese paso, con los contadores como los lleva el Taller. */
 const ESTADOS: Record<string, EstadoTut[]> = {
+  basico: [base, base, e({ elegida: "1000" }), e({ elegida: "1000", modo: "tension" }), e({ elegida: "1000", modo: "tension", medido: true }), e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "470" }), e({ elegida: "470", reparada: true }), e({ despachados: 1 })],
   resistencia: [e({ elegida: "1000" }), e({ elegida: "1000", aguja: "poco" }), e({ elegida: "100" }), e({ elegida: "100", quemado: true }), e({ elegida: "470" }), e({ elegida: "470", reparada: true }), e({ despachados: 1 })],
   multimetro: [e({ elegida: "1000" }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ modo: "continuidad" }), e({ modo: "continuidad", medidas: 1 }), e({ elegida: "470" }), e({ elegida: "470", reparada: true }), e({ despachados: 1 })],
   fusible: [e({ elegida: "3" }), e({ modo: "tension" }), e({ modo: "tension", medido: true }), e({ elegida: "3", quemado: true }), e({ elegida: "1" }), e({ elegida: "1", reparada: true }), e({ despachados: 1 })],
@@ -41,11 +44,11 @@ const ESTADOS: Record<string, EstadoTut[]> = {
 };
 
 describe("mini-tutoriales por mecánica", () => {
-  it("son 12 (9 + 3 de nivel 3), en orden, con ids únicos y datos válidos", () => {
-    expect(MECANICAS.map((m) => m.id)).toEqual(["resistencia", "multimetro", "fusible", "cadena", "placa", "turbina", "combinar", "divisor", "protegido", "colores", "fusibles", "placaExperta"]);
-    expect(new Set(MECANICAS.map((m) => m.id)).size).toBe(12);
+  it("son 13 (Primeros pasos + 9 + 3 de nivel 3), en orden, con ids únicos y datos válidos", () => {
+    expect(MECANICAS.map((m) => m.id)).toEqual(["basico", "resistencia", "multimetro", "fusible", "cadena", "placa", "turbina", "combinar", "divisor", "protegido", "colores", "fusibles", "placaExperta"]);
+    expect(new Set(MECANICAS.map((m) => m.id)).size).toBe(13);
     for (const m of MECANICAS) {
-      expect(m.nombre.length, m.id).toBeLessThanOrEqual(12);
+      expect(m.nombre.length, m.id).toBeLessThanOrEqual(m.id === "basico" ? 14 : 12); // «Primeros pasos» (decisión del usuario)
       expect(m.ensena, m.id).not.toBe("");
       expect([1, 2, 3]).toContain(m.nivel);
       expect(m.pod, m.id).toBeGreaterThanOrEqual(0);
@@ -54,10 +57,10 @@ describe("mini-tutoriales por mecánica", () => {
     expect(mecanica("nada")).toBeUndefined();
   });
 
-  it("cada tutorial tiene 4-9 pasos, textos <= 70 caracteres y solo el último es fin", () => {
+  it("cada tutorial tiene 4-9 pasos (basico 11), textos <= 70 caracteres y solo el último es fin", () => {
     for (const m of MECANICAS) {
       expect(m.pasos.length, m.id).toBeGreaterThanOrEqual(4);
-      expect(m.pasos.length, m.id).toBeLessThanOrEqual(9);
+      expect(m.pasos.length, m.id).toBeLessThanOrEqual(m.id === "basico" ? 11 : 9);
       m.pasos.forEach((p, k) => {
         expect(p.texto.length, `${m.id} ${p.titulo}`).toBeLessThanOrEqual(70);
         expect(!!p.fin, `${m.id} ${k}`).toBe(k === m.pasos.length - 1);
@@ -65,10 +68,11 @@ describe("mini-tutoriales por mecánica", () => {
     }
   });
 
-  it("siguiente() encadena los 12 y el último no tiene siguiente", () => {
+  it("siguiente() encadena los 13 y el último no tiene siguiente", () => {
     const orden: string[] = [];
     for (let id: string | null = MECANICAS[0]!.id; id; id = siguiente(id)) orden.push(id);
     expect(orden).toEqual(MECANICAS.map((m) => m.id));
+    expect(siguiente("basico")).toBe("resistencia");
     expect(siguiente("protegido")).toBe("colores");
     expect(siguiente("fusibles")).toBe("placaExperta");
     expect(siguiente("placaExperta")).toBeNull();
@@ -90,8 +94,9 @@ describe("mini-tutoriales por mecánica", () => {
       expect(t.id).toBe(id);
       expect(estados).toHaveLength(t.pasos.length - 1);
       estados.forEach((s, k) => {
-        expect(avanzar(t, s).i, `${id} paso ${k + 1} ${actual(t).titulo}`).toBe(k + 1);
-        t = avanzar(t, s);
+        const ya = t.desde + (actual(t).dura ?? MIN_PASO_MS); // los pasos de «mirar» esperan su `dura`
+        expect(avanzar(t, s, ya).i, `${id} paso ${k + 1} ${actual(t).titulo}`).toBe(k + 1);
+        t = avanzar(t, s, ya);
       });
       expect(esUltimo(t) && esFin(t)).toBe(true);
       expect(textoPaso(t)).toBe(`${mecanica(id)!.nombre.toUpperCase()} ${t.pasos.length}/${t.pasos.length} ¡Listo!`);
@@ -149,7 +154,7 @@ describe("mecánica del tutorial", () => {
   it("solo deja arrastrar la pieza del paso; CHECK solo en sus pasos", () => {
     const t = iniciar("fusible");
     expect(permite(t, { arrastrar: "3" })).toBeNull();
-    expect(permite(t, { arrastrar: "1" })).toBe("Ahora toca: Fusible grueso");
+    expect(permite(t, { arrastrar: "1" })).toBe(t.pasos[0]!.texto); // el aviso repite la frase accionable del paso
     expect(permite(t, "check")).not.toBeNull();
     const t2 = { ...t, i: t.pasos.findIndex((p) => typeof p.pide === "object" && p.pide.arrastrar === "1") };
     expect(permite(t2, { arrastrar: "1" })).toBeNull();
@@ -159,7 +164,7 @@ describe("mecánica del tutorial", () => {
   it("resistencia: arrastrar solo la pieza del paso; CHECK solo en su paso", () => {
     const t = iniciar("resistencia");
     expect(permite(t, { arrastrar: "1000" })).toBeNull();
-    expect(permite(t, { arrastrar: "470" })).toBe("Ahora toca: Falta la resistencia");
+    expect(permite(t, { arrastrar: "470" })).toBe(t.pasos[0]!.texto);
     expect(permite(t, "check")).not.toBeNull();
     const ck = { ...t, i: t.pasos.findIndex((p) => p.pide === "check") };
     expect(permite(ck, "check")).toBeNull();
@@ -228,5 +233,62 @@ describe("mecánica del tutorial", () => {
     const t = avanzar({ ...iniciar("cadena"), i: i - 1, desde: 0 }, s, 5000);
     expect(avanzar(t, s, 9000)).toBe(t);
     expect(avanzar(t, { ...s, medidas: 2 }, 9000).i).toBe(i + 1);
+  });
+});
+
+describe("Primeros pasos (basico)", () => {
+  const m = mecanica("basico")!;
+  it("va primero; frases de Chispa <= 6 palabras y <= 36 caracteres", () => {
+    expect(MECANICAS[0]!.id).toBe("basico");
+    for (const p of m.pasos) {
+      expect(p.texto.trim().split(/\s+/).length, p.texto).toBeLessThanOrEqual(6);
+      expect(p.texto.length, p.texto).toBeLessThanOrEqual(36);
+    }
+  });
+
+  it("orden circuito -> gaveta -> multímetro: mirar, arrastrar 1000, tensión, medir, quitar, medir hueco, 470, validar, CHECK, fin", () => {
+    expect(m.pasos.map((p) => p.objetivo)).toEqual(["circuito", "circuito", "gaveta", "tension", "pieza", "tension", "pieza", "gaveta", "check", "check", "contador"]);
+    expect(m.pasos.map((p) => p.pide)).toEqual([undefined, undefined, { arrastrar: "1000" }, undefined, undefined, undefined, undefined, { arrastrar: "470" }, "check", "check", undefined]);
+    expect(m.pasos.map(manoDe)).toEqual([null, "tocar", "arrastrar", "tocar", "tocar", "tocar", "tocar", "arrastrar", "tocar", "tocar", null]);
+  });
+
+  it("continuidad pide la pieza fuera; el hueco se mide después", () => {
+    let t = { ...iniciar("basico"), i: 5, desde: 0 };
+    expect(avanzar(t, e({ modo: "continuidad", elegida: "1000" }), 5000)).toBe(t); // con la pieza puesta no vale
+    t = avanzar(t, e({ modo: "continuidad" }), 5000);
+    expect(t.i).toBe(6);
+    expect(avanzar(t, e({ modo: "continuidad" }), 9000)).toBe(t); // sin lectura nueva no avanza
+  });
+
+  it("los pasos de «mirar» esperan su `dura`; un toque (adelantar) los pasa ya", () => {
+    const t = iniciar("basico");
+    expect(avanzar(t, base, 3499)).toBe(t);
+    expect(avanzar(t, base, 3500).i).toBe(1);
+    expect(avanzar(adelantar(t), base, 10).i).toBe(1);
+    const mover = { ...t, i: 2 };
+    expect(adelantar(mover)).toBe(mover); // un paso con acción pedida no se adelanta
+    expect(adelantar(saltar(t))).toEqual(saltar(t));
+  });
+
+  it("iniciar con `desde` = ahora: el primer avanzar no salta el paso 1", () => {
+    const s = e({});
+    expect(avanzar(iniciar("basico", 1000), s, 1000 + 100).i).toBe(0);
+    expect(avanzar(iniciar("basico", 1000), s, 1000 + 3500).i).toBe(1);
+  });
+
+  it("se ofrece una vez por alias (aunque se salte), nunca en línea ni sin disco", () => {
+    const d = new Map<string, string>(), alm = { getItem: (k: string) => d.get(k) ?? null, setItem: (k: string, v: string) => void d.set(k, v) };
+    expect(ofrecerBasico("Ana", alm, true)).toBe(false);
+    expect(basicoVisto("Ana", alm)).toBe(false);
+    expect(ofrecerBasico("Ana", alm)).toBe(true);
+    expect(ofrecerBasico("Ana", alm)).toBe(true); // ofrecer no marca: si practicar falla se vuelve a ofrecer
+    marcarBasicoVisto("Ana", alm);
+    expect(ofrecerBasico(" ana ", alm)).toBe(false);
+    expect(basicoVisto("ANA", alm)).toBe(true);
+    expect(ofrecerBasico("Beto", alm)).toBe(true);
+    marcarBasicoVisto("Caro", alm);
+    expect(ofrecerBasico("Caro", alm)).toBe(false);
+    expect(ofrecerBasico("Ana", null)).toBe(false);
+    expect(ofrecerBasico("Ana", { getItem: () => { throw new Error("bloqueado"); }, setItem: () => {} })).toBe(false);
   });
 });

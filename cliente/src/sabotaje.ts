@@ -41,8 +41,8 @@ export const sinPista = (p: Pantalla, ahora: number) => sabotajeActivo(p, ahora,
 export interface Recta { x: number; y: number; w: number; h: number }
 /** Humo sobre la bahía (coordenadas de la escena) y sobre la gaveta (coordenadas del panel). Nunca sobre el CHECK, el HUD ni el multímetro. */
 export const HUMO_BAHIA: Recta = { x: 0, y: 150, w: 360, h: 176 };
-export const HUMO_GAVETA: Recta = { x: 0, y: 258, w: 360, h: 56 };
-/** Zona táctil del CHECK y de los botones del multímetro, en coordenadas del panel. */
+export const HUMO_GAVETA: Recta = { x: 0, y: 140, w: 360, h: 60 }; // gaveta bajo el circuito (GY 168 en taller.ts)
+/** Zona táctil del CHECK y de los botones del multímetro (bajo la gaveta, filaDy 78), en coordenadas del panel. */
 export const CHECK_PANEL: Recta = { x: 30, y: 316, w: 300, h: 48 };
-export const MULTIMETRO_PANEL: Recta[] = [{ x: 10, y: 154, w: 48, h: 48 }, { x: 302, y: 154, w: 48, h: 48 }];
+export const MULTIMETRO_PANEL: Recta[] = [{ x: 10, y: 232, w: 48, h: 48 }, { x: 302, y: 232, w: 48, h: 48 }];
 export const cruzan = (a: Recta, b: Recta) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;

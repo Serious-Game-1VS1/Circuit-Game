@@ -29,7 +29,7 @@ export const RETO: Record<Circuito, string> = {
   combinar: "Monta las dos resistencias para que el LED reciba entre 10 y 20 mA",
   divisor: "Tu salida va al Arduino: debe quedar entre 4 y 5 V. Mídela con Tensión",
   protegido: "El diodo se come 0,7 V: la resistencia debe ajustarse",
-  cadena: "Mide continuidad tramo a tramo: el que no pasa está cortado",
+  cadena: "Toca CONTINUIDAD y mide cada pieza: «No pasa» = cortada",
   fusible3: "Elige el fusible: aguanta el consumo normal y corta la falla",
   placa3: "Resuelve el problema en la placa", // el globo muestra el enunciado del pod
 };
