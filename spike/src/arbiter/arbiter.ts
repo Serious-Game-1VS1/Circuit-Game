@@ -28,6 +28,7 @@ export const RAZON_SALA_OCIOSA = "sala inactiva";
 export const RAZON_ABANDONO = "abandono";
 /** Mensajes por jugador en cualquier ventana de 1 s; el exceso se ignora sin responder. */
 export const LIMITE_MSG_POR_S = 30;
+const DETALLE_FUERA_DE_JUEGO = "La partida aún no empezó o ya terminó.";
 const MEDIR_TOLERANCIA_MS = 250; // red y reloj del cliente: no rechazar a quien espera lo que muestra la barra
 export const COUNTDOWN_MS = 3_000;
 /**
@@ -109,6 +110,28 @@ interface Seat {
   sab: { tipo: TipoSabotaje; hasta: number; de: Station } | null;
   /** Instantes de los últimos `LIMITE_MSG_POR_S` mensajes aceptados (límite de tasa). */
   recientes: number[];
+}
+
+
+/** Texto para el estudiante de un rechazo de «Probar» por penalización (el `reason` no cambia). */
+function detalleCanTest(reason: "sin-cambios" | "enfriamiento" | "quemada", waitMs: number): string {
+  const seg = Math.max(1, Math.ceil(waitMs / 1000));
+  if (reason === "quemada") return `Pieza quemada: espera ${seg} s para volver a probar.`;
+  if (reason === "enfriamiento") return `Enfriamiento tras un fallo: espera ${seg} s para volver a probar esta zona.`;
+  return "No cambiaste nada desde la última prueba: cambia la pieza antes de volver a probar.";
+}
+
+/** Causa concreta de «medida no válida»; se llama solo cuando la validación de `measure` ya falló. */
+function detalleMedidaInvalida(z: ZonaPod | undefined, pieza: unknown, modo: unknown, punto: unknown): string {
+  if (!z) return "Esa zona no existe en este pod.";
+  if (typeof pieza !== "string") return "Falta indicar la pieza.";
+  if (modo !== "continuidad" && modo !== "tension") return "El modo debe ser continuidad o tensión.";
+  if (typeof punto !== "string") return "Falta indicar el punto de medida.";
+  if (pieza === "ninguna") {
+    if (modo !== "continuidad") return "«ninguna» solo vale al medir continuidad; para medir tensión pon una pieza.";
+    if (SIN_HUECO.includes(z.circuito)) return "En esta zona no hay hueco que vaciar: mide con el montaje puesto.";
+  }
+  return "Esa pieza no está en la gaveta de esta zona.";
 }
 
 /**
@@ -362,15 +385,17 @@ export class Arbiter {
   }
 
   private test(s: Seat, zone: unknown, pieza: string | null, seq: number, t0: number): void {
-    const reject = (reason: string, waitMs = 0) => this.send(s.peer!, { t: "reject", seq, t0, reason, waitMs });
-    if (this.phase !== "jugando") return reject("la partida no está en juego");
+    const reject = (reason: string, detalle: string, waitMs = 0) => this.send(s.peer!, { t: "reject", seq, t0, reason, waitMs, detalle });
+    if (this.phase !== "jugando") return reject("la partida no está en juego", DETALLE_FUERA_DE_JUEGO);
     const pod = this.podAt(s, s.despachados);
     const z = this.zonaDe(s, pod, zone);
-    if (!z || s.repaired.has(z.zona)) return reject("zona no válida");
-    if (pieza === null || !piezaValida(z, pieza)) return reject("pieza no válida");
+    if (!z) return reject("zona no válida", "Esa zona no existe en este pod.");
+    if (s.repaired.has(z.zona)) return reject("zona no válida", "Esa zona ya está reparada.");
+    if (pieza === null) return reject("pieza no válida", "Falta indicar la pieza.");
+    if (!piezaValida(z, pieza)) return reject("pieza no válida", "Esa pieza no está en la gaveta de esta zona.");
 
     const check = s.penalties.canTest(z.zona, s.lastPieza.get(z.zona) !== pieza);
-    if (!check.ok) return reject(check.reason, check.waitMs);
+    if (!check.ok) return reject(check.reason, detalleCanTest(check.reason, check.waitMs), check.waitMs);
     s.lastPieza.set(z.zona, pieza);
 
     const v = evaluar(z, pieza);
@@ -410,23 +435,23 @@ export class Arbiter {
    * penalizaciones, intentos, CSV ni el estado del rival (medir no cuenta como «Probar»).
    */
   private measure(s: Seat, m: Record<string, unknown>, seq: number, t0: number): void {
-    const reject = (reason: string) => this.send(s.peer!, { t: "reject", seq, t0, reason, waitMs: 0 });
-    if (this.phase !== "jugando") return reject("la partida no está en juego");
+    const reject = (reason: string, detalle: string) => this.send(s.peer!, { t: "reject", seq, t0, reason, waitMs: 0, detalle });
+    if (this.phase !== "jugando") return reject("la partida no está en juego", DETALLE_FUERA_DE_JUEGO);
     const z = this.zonaDe(s, this.podAt(s, s.despachados), m.zone);
     const { pieza, modo, punto } = m;
     // «ninguna» (hueco vacío) vale al medir continuidad en cualquier familia con gaveta; luces, interruptor y placa3 miden con su montaje puesto.
     const vacia = pieza === "ninguna" && modo === "continuidad" && z !== undefined && !SIN_HUECO.includes(z.circuito);
     if (!z || typeof pieza !== "string" || !(vacia || piezaValida(z, pieza)) || (modo !== "continuidad" && modo !== "tension") || typeof punto !== "string") {
-      return reject("medida no válida");
+      return reject("medida no válida", detalleMedidaInvalida(z, pieza, modo, punto));
     }
     // Con la pieza puesta la continuidad no da lectura: rechazo sin coste, sin contar para la escala y sin información (solo depende de lo que mandó el cliente).
-    if (piezaPuesta(z, pieza, modo, punto, m.fuera === true)) return reject(QUITA_PIEZA);
+    if (piezaPuesta(z, pieza, modo, punto, m.fuera === true)) return reject(QUITA_PIEZA, QUITA_PIEZA);
     const ahora = this.now(), base = this.medirMs * this.medirFactor, n = s.medidas.get(z.zona) ?? 0;
     const medirMs = this.escalaMedir ? costeMedir(base, n) : base;
-    if (ahora < s.medirLibre - MEDIR_TOLERANCIA_MS) return this.send(s.peer!, { t: "reject", seq, t0, reason: "el multímetro sigue midiendo", waitMs: 0 });
+    if (ahora < s.medirLibre - MEDIR_TOLERANCIA_MS) return reject("el multímetro sigue midiendo", `El multímetro sigue midiendo: espera ${Math.max(1, Math.ceil((s.medirLibre - ahora) / 1000))} s.`);
     let lectura: ReturnType<typeof medir> = null;
     try { lectura = medir(z, pieza, modo, punto); } catch { /* punto hostil: se trata como medida no válida */ }
-    if (!lectura) return reject("medida no válida");
+    if (!lectura) return reject("medida no válida", "Ese punto de medida no existe en esta zona.");
     s.medirLibre = ahora + medirMs;
     s.medidas.set(z.zona, n + 1);
     this.send(s.peer!, { t: "medida", seq, t0, zona: z.zona, modo, punto, medirMs, ...(this.escalaMedir && { proxMs: this.proxMedir(s, z.zona) }), ...lectura });
@@ -434,8 +459,8 @@ export class Arbiter {
 
   /** "Despachar": el pod cuenta solo si todas sus zonas están reparadas (RF-03). */
   private dispatch(s: Seat, seq: number, t0: number): void {
-    const reject = (reason: string) => this.send(s.peer!, { t: "reject", seq, t0, reason, waitMs: 0 });
-    if (this.phase !== "jugando") return reject("la partida no está en juego");
+    const reject = (reason: string, detalle?: string) => this.send(s.peer!, { t: "reject", seq, t0, reason, waitMs: 0, ...(detalle && { detalle }) });
+    if (this.phase !== "jugando") return reject("la partida no está en juego", DETALLE_FUERA_DE_JUEGO);
     if (s.repaired.size < this.podAt(s, s.despachados).zonas.length) return reject("faltan zonas por reparar");
     const limpio = s.podFallos === 0;
     s.despachados++;

@@ -116,7 +116,7 @@ describe("árbitro: mensaje medir", () => {
     const { arb, out, z, paso } = setup();
     const ultimoMsg = () => out.at(-1)!.m;
     arb.handle("p1", { t: "medir", seq: 1, t0: 0, zone: z.zona, pieza: z.opciones[0], modo: "continuidad", punto: "pieza" });
-    expect(ultimoMsg()).toEqual({ t: "reject", seq: 1, t0: 0, reason: "Quita la pieza para medir continuidad.", waitMs: 0 });
+    expect(ultimoMsg()).toEqual({ t: "reject", seq: 1, t0: 0, reason: "Quita la pieza para medir continuidad.", waitMs: 0, detalle: "Quita la pieza para medir continuidad." });
     // no cobró: la siguiente medida de la misma zona es inmediata y a coste base (la escala no avanzó)
     arb.handle("p1", { t: "medir", seq: 2, t0: 0, zone: z.zona, pieza: "ninguna", modo: "continuidad", punto: "carga1", fuera: true });
     expect(ultimoMsg()).toMatchObject({ t: "medida", seq: 2, pasa: true });

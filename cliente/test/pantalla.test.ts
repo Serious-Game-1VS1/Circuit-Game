@@ -127,6 +127,7 @@ describe("lógica de pantalla", () => {
 
   it("rechazo sin cambios con dirección", () => {
     expect(textoRechazo("sin-cambios", 0)).toBe("No cambiaste nada. Cambia una pieza o un cable y prueba.");
+    expect(textoRechazo("enfriamiento", 3000, "Esa zona ya está reparada.")).toBe("Esa zona ya está reparada.");
   });
 
   it("al reparar la última zona 'Despachar' se activa; el contador sube solo con la confirmación del árbitro", () => {

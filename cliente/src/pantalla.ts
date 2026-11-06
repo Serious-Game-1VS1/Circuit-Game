@@ -124,7 +124,8 @@ const ESTADO: Record<RivalView["estado"], string> = { reparando: "reparando", pe
 export const textoRival = (r: RivalView | null, total = 5) => (r ? `${r.alias}: ${r.despachados}/${total} pods · ${ESTADO[r.estado]}` : "Rival: —");
 
 const segundos = (ms: number) => Math.ceil(ms / 1000);
-export function textoRechazo(reason: string, waitMs: number): string {
+export function textoRechazo(reason: string, waitMs: number, detalle?: string): string {
+  if (detalle) return detalle; // el árbitro ya explica la causa; `reason` queda para los clientes viejos
   if (reason === "enfriamiento") return `Espera ${segundos(waitMs)} s y vuelve a probar`;
   if (reason === "quemada") return `Pieza quemada: espera ${segundos(waitMs)} s`;
   if (reason === "sin-cambios") return "No cambiaste nada. Cambia una pieza o un cable y prueba.";
@@ -154,7 +155,7 @@ export const checkActivo = (reparada: boolean, probable: boolean, esperaHasta: n
 /** El aviso con el "espera N s" descontando en vivo; al acabar el bloqueo se quita la espera. */
 export function avisoVivo(p: Pantalla, ahora: number): string | null {
   const s = segundos(p.esperaHasta - ahora);
-  const t = p.aviso?.replace(/( · )?espera \d+ s( y vuelve a probar)?/i, (m, sep: string | undefined) =>
+  const t = p.aviso?.replace(/( · )?espera \d+ s( y vuelve a probar| para volver a probar( esta zona)?)?/i, (m, sep: string | undefined) =>
     s > 0 ? m.replace(/\d+/, String(s)) : sep ? "" : "ya puedes volver a probar");
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : null;
 }
@@ -208,7 +209,7 @@ export function reducir(p: Pantalla, m: ServerMsg, ahora: number): Pantalla {
       ...p, sabotaje: { tipo: m.tipo, hasta: ahora + m.ms, n: (p.sabotaje?.n ?? 0) + 1 }, aviso: avisoRecibido(m.tipo), eco: { n: (p.eco?.n ?? 0) + 1, tipo: "sabotaje" },
     };
     // Un rechazo sin espera (medir ocupado, medida no válida) no borra el enfriamiento que ya corre.
-    case "reject": return { ...p, despachando: false, aviso: textoRechazo(m.reason, m.waitMs), esperaHasta: m.waitMs > 0 ? ahora + m.waitMs : p.esperaHasta };
+    case "reject": return { ...p, despachando: false, aviso: textoRechazo(m.reason, m.waitMs, m.detalle), esperaHasta: m.waitMs > 0 ? ahora + m.waitMs : p.esperaHasta };
     // Medir no toca avisos ni bloqueos: solo guarda la lectura.
     case "medida": return { ...p, medida: m, ...(m.proxMs !== undefined && { proxMedir: { ...p.proxMedir, [m.zona]: m.proxMs } }) };
     case "rival": return { ...p, rival: { alias: m.alias, despachados: m.despachados, estado: m.estado },

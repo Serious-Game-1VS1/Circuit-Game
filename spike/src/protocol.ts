@@ -116,7 +116,8 @@ export interface Result { t: "result"; seq: number; t0: number; zona: number; ve
   /** Racha tras este intento (0-3). `bono`: «listo» al ganarlo, «usado» cuando el fallo lo consumió (waitMs ya viene reducido), «perdido» si una quemada lo borró. */ racha?: number; bono?: "listo" | "usado" | "perdido"; /** Pods limpios seguidos (0-3) tras este intento: un fallo lo pone en 0. */ limpios?: number }
 /** Despacho aceptado: `despachados` ya incluye este pod y `pod` es el siguiente. */
 export interface Dispatched { t: "despachado"; seq: number; t0: number; despachados: number; pod: PodView; limpios?: number; /** Sabotaje que ganaste con este despacho y ya se aplicó al rival. */ enviado?: TipoSabotaje }
-export interface Reject { t: "reject"; seq: number; t0: number; reason: string; waitMs: number }
+export interface Reject { t: "reject"; seq: number; t0: number; reason: string; waitMs: number;
+  /** Aditivo y opcional: causa concreta en español, pensada para mostrarse al estudiante. `reason` no cambia; los clientes viejos lo ignoran. */ detalle?: string }
 export type Tramo = "nada" | "parte" | "toda";
 /** Zona del dial del multímetro: lo que hace la pieza puesta (poco = ámbar, correcto = verde, demasiado = rojo). */
 export type Dial = "poco" | "correcto" | "demasiado";
