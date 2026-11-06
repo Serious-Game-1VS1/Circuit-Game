@@ -336,3 +336,11 @@ Cliente en SWA `circuitsync-juego` (bundle `index-55wHrpY3.js`, antes `index-Jrn
 Restaurar:
 - Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v12 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
 - Cliente: copia del `dist` anterior en el scratchpad de la sesión (`dist-v12-anterior`). Alternativa: reconstruir desde `573d173` y `swa deploy`.
+
+## Despliegue v13 (cliente y árbitro, 6-nov-2026, commit 44775a5)
+
+Cliente en SWA `circuitsync-juego` (bundle `index-DSmHvZUi.js`, antes `index-55wHrpY3.js`; `dist/version.json` con commit `44775a5` y protocolo 2) y árbitro en `arbitro-vm` (`src/` y `deploy/` reemplazados, `instalar.sh` ejecutado desde `/opt/circuitsync/spike/deploy/azure`; servicio `arbitro` activo, log con «sala nueva» por nivel). Cambios: se corrige el bloqueo del multímetro tras abrir una guía, textos más claros, y el árbitro envía `detalle` (causa del rechazo en español) que el cliente muestra. `detalle` es aditivo y opcional; `PROTOCOL_VERSION` sigue en 2. CI verde. Orden seguido: primero el cliente, luego el árbitro (SSH por 443).
+
+Restaurar:
+- Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v13b /opt/circuitsync/spike && sudo systemctl restart arbitro` (ya existía un `spike.bak-v13` previo, se dejó intacto).
+- Cliente: copia del `dist` anterior en el scratchpad de la sesión (`dist-v13-anterior`). Alternativa: reconstruir desde `d6d7831` y `swa deploy`.
