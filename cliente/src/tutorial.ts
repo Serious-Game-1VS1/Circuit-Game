@@ -277,14 +277,14 @@ const GUIA_MEC: Record<ClaveMec, { titulo: string; pasos: string[] }> = {
   fusible3: { titulo: "Fusibles", pasos: ["Se eligen por tamaño, marca (F rápido, T lento) y color.", "Elige el que aguanta el consumo normal y pulsa CHECK."] },
   abierto: { titulo: "Cable roto", pasos: ["Un cable puede estar cortado: así la corriente no llega.", "Empalma el corte o déjalo como está, y pulsa CHECK."] },
   invertido: { titulo: "LED girado", pasos: ["El LED solo deja pasar la corriente en un sentido.", "Gíralo o déjalo como está, y pulsa CHECK."] },
-  cadena: { titulo: "Pieza muerta", pasos: ["Una pieza de la cadena puede estar muerta por dentro.", "Hállala y arrastra encima un repuesto del mismo valor."] },
+  cadena: { titulo: "Pieza muerta", pasos: ["Una pieza de la cadena puede estar muerta por dentro.", "Mide continuidad por tramos: el que no pasa está cortado; repón el mismo valor."] },
   placa3: { titulo: "Placa experta", pasos: ["Lee el problema del globo: usa solo las piezas necesarias.", "Las pestañas son gavetas. Cada tira de 5 agujeros es un punto."] },
   colores: { titulo: "Colores", pasos: ["Nivel Experto: las resistencias no traen su valor escrito.", "Bandas 1 y 2 = cifras, banda 3 = ceros: 1-0-00 = 1 kΩ."] },
 };
 const GUIA_MEDIDA = (m: MedidaGuia, c: Circuito) => m === "tension"
   ? { titulo: "Medir tensión", pasos: ["Toca TENSIÓN en el multímetro: medir no gasta intentos.", "Luego toca una pieza: la aguja dice cuánta batería cae en ella."] }
   : { titulo: "Medir continuidad", pasos: ["Toca CONTINUIDAD: dice si la corriente pasa por la pieza.",
-    c === "cadena" ? "En la cadena toca cada pieza: la que «No pasa» está muerta." : "Se mide sin tensión: QUITA la pieza (tócala) y mide el hueco o la pieza."] };
+    c === "cadena" ? "Mide tramo a tramo: el que «No pasa» está cortado; repón el mismo valor." : "Se mide sin tensión: QUITA la pieza (tócala) y mide el hueco o la pieza."] };
 
 export interface AvisoGuia { id: string; titulo: string; pasos: string[] }
 /** Ids que guarda la guía en Perfil.tutoriales: «mec-<clave>» y «med-<medida>». */

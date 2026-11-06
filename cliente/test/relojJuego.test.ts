@@ -58,3 +58,17 @@ describe("preferencias de Jugar solo", () => {
     expect(preferenciasSolo(alm({ "circuitsync.dificultad": "dificil", "circuitsync.nivelbot": "mixto" }))).toEqual({ dif: "dificil", nivBot: "mixto" });
   });
 });
+
+describe("medir y guía abierta", () => {
+  it("la medida se congela con la guía y nunca da tiempo negativo", async () => {
+    const { lecturaLista } = await import("../src/multimetro");
+    vi.useFakeTimers(); vi.setSystemTime(1000);
+    pausarJuego(true); vi.setSystemTime(5000); pausarJuego(false); // una guía previa deja ahoraJuego atrasado
+    const m = { seq: 1, desde: ahoraJuego(), punto: "pieza" }, medida = { seq: 1 } as never;
+    expect(ahoraJuego() - m.desde).toBe(0);
+    vi.setSystemTime(6000); pausarJuego(true); vi.setSystemTime(20000); // guía abierta >3 s
+    expect(lecturaLista(m, medida, ahoraJuego(), 3000)).toBeNull();
+    pausarJuego(false); vi.setSystemTime(22000);
+    expect(lecturaLista(m, medida, ahoraJuego(), 3000)).toBe(medida);
+  });
+});

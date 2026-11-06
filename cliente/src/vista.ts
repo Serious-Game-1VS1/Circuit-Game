@@ -29,7 +29,7 @@ export const RETO: Record<Circuito, string> = {
   combinar: "Monta las dos resistencias para que el LED reciba entre 10 y 20 mA",
   divisor: "Tu salida va al Arduino: debe quedar entre 4 y 5 V. Mídela con Tensión",
   protegido: "El diodo se come 0,7 V: la resistencia debe ajustarse",
-  cadena: "Una pieza está muerta: hállala con el multímetro y cámbiala",
+  cadena: "Mide continuidad tramo a tramo: el que no pasa está cortado",
   fusible3: "Elige el fusible: aguanta el consumo normal y corta la falla",
   placa3: "Resuelve el problema en la placa", // el globo muestra el enunciado del pod
 };
@@ -103,13 +103,13 @@ export function textoOpcion(pieza: string, circuito: Circuito): string {
 export const textoVolts = (v: number) => `${String(v).replace(".", ",")} V`;
 
 const CARGA: Record<Circuito, { poco: string; demasiado: string; quema: string }> = {
-  led: { poco: "El LED casi no brilla: llega poca corriente. Prueba una resistencia que frene menos.", demasiado: "El LED sufre: llega demasiada corriente. Prueba una que frene más.", quema: "¡El LED se quemó! Frenaste muy poco. Espera y prueba una que frene más." },
-  cabina: { poco: "Los LED casi no brillan: llega poca corriente. Prueba una resistencia que frene menos.", demasiado: "Los LED sufren: llega demasiada corriente. Prueba una que frene más.", quema: "¡Un LED se quemó! Frenaste muy poco. Espera y prueba una que frene más." },
+  led: { poco: "El LED casi no brilla: llega poca corriente (la resistencia es muy alta). Prueba una resistencia que frene menos.", demasiado: "El LED sufre: llega demasiada corriente (la resistencia es muy baja). Prueba una que frene más.", quema: "¡El LED se quemó! Frenaste muy poco. Espera y prueba una que frene más." },
+  cabina: { poco: "Los LED casi no brillan: llega poca corriente (la resistencia es muy alta). Prueba una resistencia que frene menos.", demasiado: "Los LED sufren: llega demasiada corriente (la resistencia es muy baja). Prueba una que frene más.", quema: "¡Un LED se quemó! Frenaste muy poco. Espera y prueba una que frene más." },
   luces: { poco: "Las luces brillan débil: no reciben toda la batería. Cambia cómo están conectadas.", demasiado: "Las luces sufren: reciben demasiado. Revisa cómo están conectadas.", quema: "¡Una luz se quemó! Recibió demasiado. Espera y revisa cómo están conectadas." },
   interruptor: { poco: "El motor no arranca: le llega poca corriente. Revisa los cables.", demasiado: "El motor sufre: recibe demasiado. Revisa los cables.", quema: "¡El motor se quemó! Recibió demasiado. Espera y revisa los cables." },
   invertido: { poco: "El LED no enciende: está al revés y no deja pasar la corriente. Prueba girarlo.", demasiado: "El LED sufre. Revisa su posición.", quema: "¡El LED se quemó! Espera y revisa su posición." },
   abierto: { poco: "El LED no enciende: el circuito está cortado y no pasa corriente. Prueba cerrar el corte.", demasiado: "El LED sufre. Revisa el circuito.", quema: "¡El LED se quemó! Espera y revisa el circuito." },
-  combinar: { poco: "El LED casi no brilla: llega poca corriente. Prueba otro montaje que frene menos.", demasiado: "El LED sufre: llega demasiada corriente. Prueba otro montaje que frene más.", quema: "¡El LED se quemó! Frenaste muy poco. Espera y prueba un montaje que frene más." },
+  combinar: { poco: "El LED casi no brilla: llega poca corriente (el total es muy alto). Prueba otro montaje que frene menos.", demasiado: "El LED sufre: llega demasiada corriente (el total es muy bajo). Prueba otro montaje que frene más.", quema: "¡El LED se quemó! Frenaste muy poco. Espera y prueba un montaje que frene más." },
   divisor: { poco: "Al Arduino le llega muy poca tensión. Mide R2 con Tensión y prueba otra.", demasiado: "Al Arduino le llega más tensión de la que le gusta. Prueba otra R2.", quema: "¡Se quemó el pin del Arduino! Le llegó demasiada tensión. Espera y prueba otra R2." },
   protegido: { poco: "El LED casi no brilla: el diodo y la resistencia se comen mucha tensión. Prueba una que frene menos.", demasiado: "El LED sufre: llega demasiada corriente. Prueba una que frene más.", quema: "¡El LED se quemó! Frenaste muy poco. Espera y prueba una que frene más." },
   // Sin decir cuál pieza ni por qué: ni qué falla ni si el repuesto o el hueco son los equivocados.

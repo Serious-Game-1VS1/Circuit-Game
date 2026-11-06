@@ -76,7 +76,7 @@ export function panelRecompensas(s: Phaser.Scene, ev: Eventos, perfil: Perfil, o
     const caja = s.add.container(0, 0);
     caja.add(c.destacada ? marco(s, W / 2, y + h / 2, "boton_primario", 328, h, 4) : marco(s, W / 2, y + h / 2, "panel_oscuro", 328, h, 2));
     caja.add(letras(s, 36, y + 10, c.titulo, 2, c.destacada ? 0x140f1f : 0xffffff).setMaxWidth(288));
-    if (c.detalle) caja.add(letras(s, 36, y + 32, c.detalle, 2, c.destacada ? 0x3a2a10 : GRIS).setMaxWidth(288));
+    if (c.detalle) caja.add(letras(s, 36, y + 32, c.detalle, c.detalle.length > 60 ? 1.5 : 2, c.destacada ? 0x3a2a10 : GRIS).setMaxWidth(288));
     raiz.add(caja);
     const mostrar = () => { if (!vivo) return; caja.setAlpha(1); if (c.destacada) sonar("insignia"); };
     if (reducido) mostrar();

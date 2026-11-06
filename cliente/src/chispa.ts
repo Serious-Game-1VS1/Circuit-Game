@@ -54,7 +54,7 @@ export function expresionGuia(texto: string, fin: boolean, e?: { quemado: boolea
  */
 export function reaccion(tipo: EcoTipo, racha: number, espera = 0): Mensaje {
   switch (tipo) {
-    case "acierto": return { texto: `¡Racha ${racha}/3!`, expr: "feliz" };
+    case "acierto": return { texto: `¡Racha ${racha}/3 sin fallar!`, expr: "feliz" };
     case "listo": return { texto: "¡Bono listo! Tu próximo fallo espera la mitad.", expr: "feliz" };
     case "usado": return { texto: `¡Bono usado! Esperas solo ${espera} s.`, expr: "normal" };
     case "perdido": return { texto: "Se perdió el bono por la quemada. ¡Sigue!", expr: "preocupada" };

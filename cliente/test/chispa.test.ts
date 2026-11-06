@@ -41,7 +41,7 @@ describe("chispa: dibujo", () => {
 
 describe("chispa: reacciones de partida (sin pistas)", () => {
   it("celebra racha y bono, anima tras fallo y avisa el enfriamiento", () => {
-    expect(reaccion("acierto", 2)).toEqual({ texto: "¡Racha 2/3!", expr: "feliz" });
+    expect(reaccion("acierto", 2)).toEqual({ texto: "¡Racha 2/3 sin fallar!", expr: "feliz" });
     expect(reaccion("listo", 3).texto).toMatch(/Bono listo/);
     expect(reaccion("usado", 0, 4).texto).toContain("4 s");
     expect(reaccion("fallo", 0, 8)).toMatchObject({ expr: "preocupada" });

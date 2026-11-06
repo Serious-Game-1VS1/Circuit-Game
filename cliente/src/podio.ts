@@ -35,6 +35,13 @@ export const TXT = {
   mejoras: "Mejoras: {m}",
 };
 
+/** Nombres cortos de las habilidades (caben enteros en Logros y en la tarjeta de Recompensas). */
+export const HABILIDAD: Record<string, string> = {
+  led: "Frenar corriente LED", luces: "Luces en paralelo", interruptor: "Interruptor en serie", fusible: "Elegir el fusible",
+  invertido: "Polaridad del LED", abierto: "Circuito abierto", combinar: "Serie y paralelo", divisor: "Divisor de tensión",
+  protegido: "Caída de tensión", cadena: "Continuidad abierta", fusible3: "Fusible por tamaño", placa3: "Conectar protoboard",
+};
+
 // supuesto: concepto (C1..C12 de textos.js) por circuito, según el mapa zona → concepto del handoff.
 export const CONCEPTO: Record<Circuito, string> = {
   led: "Frenar la corriente del LED",
@@ -114,12 +121,12 @@ const corto = (t: string, n = 72) => (t.length > n ? `${t.slice(0, n - 3)}...` :
 /** Lista de recompensas de la partida en tarjetas (la pantalla las revela de a una). Máximo `max`; las insignias van al final y mandan. */
 export function tarjetasRecompensa(ev: Eventos, max = 5): Tarjeta[] {
   const t: Tarjeta[] = [];
-  if (ev.oleada) t.push({ titulo: `Oleadas: ${ev.oleada.pods} pods`, detalle: `Racha ${ev.oleada.racha} - ${ev.oleada.nuevo ? "¡nuevo récord!" : `tu récord: ${ev.oleada.record}`}` });
+  if (ev.oleada) t.push({ titulo: `Oleadas: ${ev.oleada.pods} pods`, detalle: `Racha: ${ev.oleada.racha} seguidos sin fallar - ${ev.oleada.nuevo ? "¡nuevo récord!" : `tu récord: ${ev.oleada.record}`}` });
   if (ev.oleada?.diag) t.push({ titulo: `Diagnósticos: ${ev.oleada.diag}`, detalle: `+${ev.oleada.diag * DIAGNOSTICO} XP` });
   if (ev.naves.length) t.push({ titulo: "Nave nueva", detalle: corto(ev.naves.join(", ")) });
   if (ev.nivel2) t.push({ titulo: "¡Nivel 1 completo!", detalle: "Prueba el nivel 2 en Practicar" });
-  if (ev.nivel3) t.push({ titulo: "¡Nivel 2 completo!", detalle: "Prueba el Experto en Practicar: colores y fusibles" });
-  if (ev.habilidades.length) t.push({ titulo: "Habilidades", detalle: corto(ev.habilidades.map((c) => `${c.nombre} ${c.estrellas}/3${c.estrellas > c.antes ? " ↑" : c.estrellas < c.antes ? " ↓" : ""}`).join(", ")) });
+  if (ev.nivel3) t.push({ titulo: "¡Nivel 2 completo!", detalle: "Prueba el nivel Experto en Practicar (colores y fusibles)" });
+  if (ev.habilidades.length) t.push({ titulo: "Habilidades", detalle: ev.habilidades.map((c) => `${HABILIDAD[c.clave] ?? c.nombre} ${c.estrellas}/3${c.estrellas > c.antes ? " ↑" : c.estrellas < c.antes ? " ↓" : ""}`).join(", ") });
   const ins = ev.insignias.map((i): Tarjeta => ({ titulo: `Insignia: ${i.nombre}`, detalle: corto(i.descripcion), destacada: true }));
   if (!t.length && !ins.length) return [{ titulo: "Sin novedades", detalle: "Sigue practicando" }];
   const libres = Math.max(0, max - Math.min(ins.length, max));

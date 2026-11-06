@@ -1,5 +1,6 @@
 /** Presentación de «Logros» (lógica pura; el dibujo está en recompensas.ts). No cambia los datos del perfil. */
 import { claves, estrellasTxt, habilidad, nombreDe } from "./dominio";
+import { HABILIDAD } from "./podio";
 import { INSIGNIAS, NAVES, navesDesbloqueadas, type Perfil } from "./perfil";
 
 /** Textos cortos escritos a propósito (caben en una línea de Logros sin «…» ni líneas envueltas). */
@@ -7,11 +8,7 @@ export const CONDICION: Record<string, string> = {
   "primer-pod": "Despacha tu primer pod", "sin-quemadas": "Pods sin quemar piezas", "racha-limpia": "3 pods limpios en partida",
   ganador: "Gana un duelo", constante: "Juega 5 partidas", dominio: "3 estrellas en un concepto", "nivel-2": "Termina el nivel 1",
 };
-export const HABILIDAD: Record<string, string> = {
-  led: "Frenar corriente LED", luces: "Luces en paralelo", interruptor: "Interruptor en serie", fusible: "Elegir el fusible",
-  invertido: "Polaridad del LED", abierto: "Circuito abierto", combinar: "Serie y paralelo", divisor: "Divisor de tensión",
-  protegido: "Caída de tensión", cadena: "Continuidad abierta", fusible3: "Fusible por tamaño", placa3: "Conectar protoboard",
-};
+export { HABILIDAD };
 const NAVE: Record<string, string> = { Raya: "Todas las insignias" };
 
 export const resumenLogros = (p: Perfil) =>
