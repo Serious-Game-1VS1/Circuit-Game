@@ -344,3 +344,12 @@ Cliente en SWA `circuitsync-juego` (bundle `index-DSmHvZUi.js`, antes `index-55w
 Restaurar:
 - Árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v13b /opt/circuitsync/spike && sudo systemctl restart arbitro` (ya existía un `spike.bak-v13` previo, se dejó intacto).
 - Cliente: copia del `dist` anterior en el scratchpad de la sesión (`dist-v13-anterior`). Alternativa: reconstruir desde `d6d7831` y `swa deploy`.
+
+
+## Despliegue v14 (solo cliente, 6-nov-2026, commit 6996815)
+
+Cliente en SWA `circuitsync-juego` (bundle `index-DeLgbuJu.js`, antes `index-DSmHvZUi.js`; `dist/version.json` con commit `6996815` y protocolo 2). Cambios: tutorial rediseñado con pasos guiados, velo y mano; intro de ~21 s en 6 viñetas que sale en cada carga y se puede ver de nuevo desde el menú (INTRO); botón CHECK más claro, menos carteles y textos más grandes. CI verde.
+
+El árbitro de la VM sigue en el código v13: los cambios de `spike/` de v14 (blindaje ante fallos de disco, Photon y salas ociosas) están en git pero NO instalados en la VM.
+
+Restaurar el cliente: copia del `dist` anterior en el scratchpad de la sesión (`dist-v14-anterior`) o reconstruir desde `0a2a697` y `swa deploy`.
