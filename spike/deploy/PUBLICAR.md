@@ -352,6 +352,8 @@ Cliente en SWA `circuitsync-juego` (bundle `index-DeLgbuJu.js`, antes `index-DSm
 
 **Árbitro v14 instalado (6-nov-2026):** el código de `spike/` del commit `6996815` (blindaje ante fallos de disco, Photon y salas ociosas) YA está en `arbitro-vm`. Backup: `/opt/circuitsync/spike.bak-v14` (código v13). `instalar.sh` ejecutado desde `/opt/circuitsync/spike/deploy/azure` (hubo que quitar los CR de los `.sh` subidos desde Windows: `sed -i 's/$//' *.sh`); servicio `arbitro` activo y 4 salas abiertas en Photon. `arbitro.env` y `LIMITE_MIN` sin cambios.
 
+Desde el `.gitattributes` de la raíz los `.sh` y la config de `spike/deploy/azure/` se extraen siempre con LF: ya no hace falta quitar CR a mano (si subes por `scp` desde un checkout antiguo, haz `git checkout` de nuevo).
+
 Restaurar el árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v14 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
 
 Restaurar el cliente: copia del `dist` anterior en el scratchpad de la sesión (`dist-v14-anterior`) o reconstruir desde `0a2a697` y `swa deploy`.

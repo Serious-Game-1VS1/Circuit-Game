@@ -1,0 +1,4 @@
+*.sh text eol=lf
+spike/deploy/azure/*.service text eol=lf
+spike/deploy/azure/*.conf text eol=lf
+spike/deploy/azure/*.example text eol=lf
