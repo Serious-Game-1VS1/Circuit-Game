@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { Arbiter, costeMedir, ESCALA_COSTE_MEDIR, MEDIR_COMPETITIVO_MS, MEDIR_MS } from "../src/arbiter/arbiter";
-import { generar } from "../src/engine/generador";
+import { generarOleada } from "../src/engine/generador";
 import type { ServerMsg } from "../src/protocol";
 
 /** Pods de la prueba: uno con 2+ zonas (para el reinicio al cambiar de zona; solo salen al final de la partida) y uno de 1 zona. */
 const SEM = 7;
-const TODOS = generar(SEM, 1);
-const PODS = [TODOS.find((x) => x.zonas.length >= 2) ?? TODOS[0]!, TODOS[0]!];
+/** El nivel 1 ya no es siempre LED: se arman a mano un pod de LED y uno de 2 zonas (dos LED de zonas distintas). */
+const LEDS2 = Array.from({ length: 40 }, (_, i) => generarOleada(SEM + i, 1, 1).zonas[0]!).filter((z) => z.circuito === "led");
+const SEGUNDA = LEDS2.find((z) => z.zona !== LEDS2[0]!.zona)!;
+const PODS = [{ numero: 1, zonas: [LEDS2[0]!, SEGUNDA] }, { numero: 2, zonas: [LEDS2[0]!] }];
 
 /** Coste de medir: lo fija el árbitro por modo (1 s práctica/tutorial, 3 s en 1v1 y contra el bot) y rechaza medir antes de tiempo. */
 function partida(medirMs?: number, practica = false) {

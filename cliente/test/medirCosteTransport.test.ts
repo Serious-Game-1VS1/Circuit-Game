@@ -22,7 +22,7 @@ async function arrancar(tr: ContraBotTransport | PracticaTransport, avanzar: (ms
 describe("Jugar solo cobra el tiempo de medir (ContraBotTransport real)", () => {
   it("3000 / 3750 / 4500 ms, rechaza medir antes de tiempo y reinicia al despachar", async () => {
     let t = 1_000;
-    const tr = new ContraBotTransport(1, 5, "dificil", { now: () => t, limitMs: 1e9 });
+    const tr = new ContraBotTransport(1, 7, "dificil", { now: () => t, limitMs: 1e9 });
     const a = await arrancar(tr, (ms) => { t += ms; tr.tick(); });
     const pasar = async (ms: number) => { t += ms; tr.tick(); await Promise.resolve(); };
     expect(await a.medir()).toMatchObject({ t: "medida", medirMs: 3000, proxMs: 3750 });

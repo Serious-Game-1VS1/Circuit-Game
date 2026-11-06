@@ -161,9 +161,9 @@ describe("generador en modo demo de cableado (Cabina y Turbina)", () => {
 
 describe("falla encadenada (solo Oleadas)", () => {
   const h = (x: string) => { let a = 5381; for (const c of x) a = (Math.imul(a, 33) ^ c.charCodeAt(0)) >>> 0; return a; };
-  // Huellas (resistencias: 15 V y reparto de la correcta, ver VOLTS_SORTEO; nivel 2 actualizado al añadir LED invertido, circuito abierto, combinar, divisor y protegido y, en el bloque 5, al cambiar invertido/abierto por la cadena y, en la ronda del 30-oct, al fijar la gaveta de la cadena con todos los tipos); tomadas antes de añadir la encadenada: el duelo, la práctica normal y las zonas de Oleadas no deben cambiar.
+  // Huellas (resistencias: 15 V y reparto de la correcta, ver VOLTS_SORTEO; nivel 1 recalculado al sortear 3 mecánicas distintas (led, cabina, cadena, fusible) en los pods 1-3 y luces/interruptor en los 4-5; nivel 2 actualizado al añadir LED invertido, circuito abierto, combinar, divisor y protegido y, en el bloque 5, al cambiar invertido/abierto por la cadena y, en la ronda del 30-oct, al fijar la gaveta de la cadena con todos los tipos); tomadas antes de añadir la encadenada: el duelo, la práctica normal y las zonas de Oleadas no deben cambiar.
   const HUELLAS: [Nivel, number, number, number][] = [
-    [1, 1, 1741707192, 4276358291], [1, 7, 887873660, 779038811], [1, 42, 1518233202, 907116463], [1, 20261019, 3272820337, 4008486270],
+    [1, 1, 142049793, 4265954628], [1, 7, 2151063817, 3706015574], [1, 42, 3922287240, 324739423], [1, 20261019, 342208385, 690072285],
     [2, 1, 1508765279, 3493224660], [2, 7, 3665630562, 10662436], [2, 42, 634838147, 377073665], [2, 20261019, 1722553660, 452479173],
   ];
   it.each(HUELLAS)("nivel %i, semilla %i: mismos pods que antes (partida y zonas de las 18 primeras oleadas)", (nivel, s, partida, oleada) => {
@@ -198,7 +198,8 @@ describe("falla encadenada (solo Oleadas)", () => {
         }
       }
     }
-    expect(vistas).toBeGreaterThan(300);
+    // nivel 1: solo led/cabina se encadenan y ya están solo en los pods 1-3 (sin encadenada hasta la oleada 3, pods 7+), así que no sale ninguna
+    if (nivel === 1) expect(vistas).toBe(0); else expect(vistas).toBeGreaterThan(300);
   });
 });
 
@@ -233,11 +234,11 @@ describe("pods del segundo jugador (podsRival)", () => {
     expect(distintos / total).toBeGreaterThan(0.6);
   });
 
-  it("en el nivel 1 (una familia por zona) cambia la solución o la batería", () => {
+  it("en el nivel 1 cambia la solución o la batería (zonas de led y cabina; cadena y fusible tienen pocas soluciones posibles)", () => {
     let iguales = 0, total = 0;
     for (let s = 0; s < 100; s++) {
       const a = generar(s, 1), b = podsRival(a, s, 1);
-      a.forEach((p, i) => p.zonas.forEach((z, k) => { total++; if (b[i]!.zonas[k]!.solucion === z.solucion && b[i]!.zonas[k]!.volts === z.volts) iguales++; }));
+      a.forEach((p, i) => p.zonas.forEach((z, k) => { if (z.circuito !== "led" && z.circuito !== "cabina") return; total++; if (b[i]!.zonas[k]!.solucion === z.solucion && b[i]!.zonas[k]!.volts === z.volts) iguales++; }));
     }
     expect(iguales / total).toBeLessThan(0.15);
   });

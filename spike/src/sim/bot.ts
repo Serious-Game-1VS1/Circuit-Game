@@ -1,5 +1,5 @@
 import { performance } from "node:perf_hooks";
-import { evaluar } from "../engine/pods.js";
+import { evaluar, jugadas } from "../engine/pods.js";
 import type { ClientMsg, End, PodView, RivalView, ServerMsg, Station, ZonaView } from "../protocol.js";
 import type { Transport } from "../transport/transport.js";
 
@@ -18,6 +18,8 @@ export class Bot {
   /** RTT acción -> respuesta del árbitro, y acción del rival -> progreso visto aquí (ms). */
   readonly own: number[] = [];
   readonly mirror: number[] = [];
+  /** Banco de latencia: no mide, prueba a ciegas (solo importan los RTT, no acertar). */
+  adivina = false;
   private seq = 0;
   private waiters: { pred: (m: ServerMsg) => boolean; resolve: (m: ServerMsg) => void }[] = [];
 
@@ -55,13 +57,30 @@ export class Bot {
   async solveNext(): Promise<ServerMsg> {
     if (!this.pod) throw new Error("sin pod a la vista");
     const z = this.pod.zonas.find((x) => !x.reparada);
-    const seq = z ? this.test(z.zona, Bot.answer(z)) : this.dispatch();
+    const seq = z ? this.test(z.zona, Bot.answer(await this.conocer(z))) : this.dispatch();
     return this.until((m) => (m.t === "result" || m.t === "despachado" || m.t === "reject") && m.seq === seq);
+  }
+
+  /**
+   * En una cadena la pieza muerta no viaja: el estudiante la localiza con el multímetro (continuidad con el hueco vacío, 1 s por medida;
+   * la última se deduce). Devuelve la zona con `muerta` para que `answer` la evalúe; las demás familias ya se deducen de lo que se ve.
+   */
+  async conocer(z: ZonaView): Promise<ZonaView> {
+    if (!z.cadena || this.adivina) return z;
+    let muerta = z.cadena.length;
+    for (let k = 1; k < z.cadena.length; k++) {
+      const seq = ++this.seq;
+      this.sendMsg({ t: "medir", seq, t0: performance.now(), zone: z.zona, pieza: "ninguna", modo: "continuidad", punto: `t${k}` });
+      const m = await this.until((x) => (x.t === "medida" || x.t === "reject") && x.seq === seq);
+      await new Promise((ok) => setTimeout(ok, 1000));
+      if (m.t === "medida" && m.pasa === false) { muerta = k; break; }
+    }
+    return { ...z, muerta } as ZonaView;
   }
 
   /** Primera opción que el motor da por correcta (o la que cumpla `want`). */
   static answer(z: ZonaView, want: (v: string) => boolean = (v) => v === "correcto"): string {
-    return z.opciones.find((p) => want(evaluar(z, p)))!;
+    return jugadas(z).find((p) => want(evaluar(z, p)))!;
   }
 
   /** Juega hasta despachar `pods` pods, esperando los enfriamientos si los hay. */

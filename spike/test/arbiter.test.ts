@@ -230,6 +230,10 @@ describe("racha de despachos y bono (autoridad del árbitro)", () => {
     }
   });
   it("el fallo consume el bono: espera reducida y racha 0", () => {
+    // el nivel 1 ya no es siempre LED y sus pods 4-5 son de cableado (el fallo es un corto, no «poco»): se juega con 5 pods de LED que tengan una opción corta
+    const led = Array.from({ length: 5 }, (_, i) => { for (let k = 0; ; k++) { const p = generarOleada(SEMILLA + k, 1, 1 + (i % 3)); const z = p.zonas[0]!; if (z.circuito === "led" && jugadas(z).some((o) => evaluar(z, o) === "poco")) return { ...p, numero: i + 1 }; } });
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEMILLA, pods: led });
+    play();
     let n = 0;
     while (n < 3) { for (const z of podOf("p1").zonas) { if (n >= 3) break; test("p1", z.zona, jugadas(z).find((p) => evaluar(z, p) === "correcto")!); n++; } if (n < 3) despachar("p1"); }
     despachar("p1");
@@ -594,12 +598,12 @@ describe("práctica: mejoras y modo Oleadas", () => {
 });
 
 describe("Oleadas: falla encadenada", () => {
-  /** Primera semilla cuyo pod 7 (oleada 3, nivel 1) trae segunda falla. */
-  const SEM = (() => { for (let s = 0; ; s++) if (encadena(s, 7) && generarOleada(s, 1, 7).encadenada) return s; })();
-  const POD = generarOleada(SEM, 1, 7);
+  /** Primera semilla cuyo pod 7 (oleada 3, nivel 2: en el nivel 1 los pods 4+ son luces/interruptor y no se encadenan) trae segunda falla. */
+  const SEM = (() => { for (let s = 0; ; s++) if (encadena(s, 7) && generarOleada(s, 2, 7).encadenada) return s; })();
+  const POD = generarOleada(SEM, 2, 7);
   const C = POD.encadenada!, B = POD.zonas.find((z) => z.zona === C.zona)!;
   const abrir = () => {
-    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEM, practica: true, oleadas: true });
+    arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla: SEM, nivel: 2, practica: true, oleadas: true });
     arb.handle("p1", { t: "hello", alias: "ana" });
     for (let i = 0; i < 6; i++) solvePod("p1"); // las oleadas 1 y 2 no traen segunda falla
   };

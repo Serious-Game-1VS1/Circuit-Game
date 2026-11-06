@@ -26,7 +26,7 @@ async function partida(dif: DificultadBot, semilla: number, cadaMs = 2500) {
       proximo = Infinity;
       const z = pod.zonas.find((x) => !x.reparada);
       const base = { seq: ++seq, t0: t };
-      tr.send(z ? { t: "test", ...base, zone: z.zona, pieza: z.opciones.find((p) => evaluar(z, p) === "correcto") } : { t: "despachar", ...base });
+      tr.send(z ? { t: "test", ...base, zone: z.zona, pieza: z.cadena ? tr.arbiter.pods[pod.numero - 1]!.zonas.find((x) => x.zona === z.zona)!.solucion : z.opciones.find((p) => evaluar(z, p) === "correcto") } : { t: "despachar", ...base });
     }
     await Promise.resolve();
     espera = i;

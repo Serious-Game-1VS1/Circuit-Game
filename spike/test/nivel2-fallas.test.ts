@@ -44,14 +44,16 @@ describe("LED invertido y circuito abierto (siguen en el motor; desde el bloque 
   });
 });
 
-describe("perfil mixto (duelo por defecto): rampa LED, LED, Cabina (nivel 1) y dos pods de nivel 2", () => {
-  it("pods 1-3 de nivel 1 (zonas de LED, LED, Cabina); pods 4-5 con al menos 3 familias de nivel 2 distintas", () => {
+describe("perfil mixto (duelo por defecto): 3 mecánicas distintas en los pods 1-3 (nivel 1) y dos pods de nivel 2", () => {
+  it("pods 1-3 de nivel 1 (3 mecánicas distintas entre led, cabina, cadena y fusible); pods 4-5 con al menos 3 familias de nivel 2 distintas", () => {
     const vistas = new Set<string>();
     for (let s = 0; s < 500; s++) {
       const pods = generar(s, "mixto");
       expect(validarPartida(pods, "mixto")).toBeNull();
       expect(generar(s, "mixto")).toEqual(pods); // determinista: ambos jugadores reciben los mismos
-      expect(pods.slice(0, 3).map((p) => p.zonas.map((z) => z.zona === 1 ? "cabina" : z.circuito))).toEqual([["led"], ["led"], ["cabina"]]);
+      const m1 = pods.slice(0, 3).map((p) => p.zonas.map((z) => z.circuito));
+      expect(m1.every((c) => c.length === 1 && ["led", "cabina", "cadena", "fusible"].includes(c[0]!))).toBe(true);
+      expect(new Set(m1.flat()).size).toBe(3);
       pods.slice(0, 3).forEach((p) => p.zonas.forEach((z) => expect(familias(z.zona, 1, false)).toContain(z.circuito)));
       pods.slice(3).forEach((p) => p.zonas.forEach((z) => expect(familias(z.zona, 2, true)).toContain(z.circuito)));
       const n2 = new Set(pods.slice(3).flatMap((p) => p.zonas.map((z) => z.circuito)).filter((c) => ["luces", "interruptor", "fusible", "cadena", "combinar", "divisor", "protegido"].includes(c)));

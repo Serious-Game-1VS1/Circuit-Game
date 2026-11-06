@@ -5,11 +5,16 @@ import { generarOleada } from "../src/engine/generador.js";
 import { evaluar } from "../src/engine/pods.js";
 import type { PodView, ServerMsg, Sabotaje, TipoSabotaje } from "../src/protocol.js";
 
+/** El nivel 1 ya no es siempre LED: se busca (determinista) un pod de 1 zona de LED (con alguna opción que falle sin quemar) para que `probar` lo resuelva igual que antes. */
+function podLed(semilla: number, numero: number) {
+  for (let k = 0; ; k++) { const p = generarOleada(semilla + k, 1, 1 + (numero % 3)); const z = p.zonas[0]!; if (z.circuito === "led" && z.opciones.some((o) => ["poco", "demasiado"].includes(evaluar(z, o)))) return { ...p, numero }; }
+}
+
 /** Duelo con reloj falso. `pods` > 5 alarga la partida para probar los topes sin que acabe antes. */
 function partida(semilla: number, pods = 12) {
   let t = 0;
   const out: { to: string; m: ServerMsg }[] = [];
-  const arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla, pods: Array.from({ length: pods }, (_, i) => generarOleada(semilla, 1, i + 1)) });
+  const arb = new Arbiter((to, m) => out.push({ to, m }), { now: () => t, semilla, pods: Array.from({ length: pods }, (_, i) => podLed(semilla, i + 1)) });
   arb.handle("p1", { t: "hello", alias: "ana" });
   arb.handle("p2", { t: "hello", alias: "beto" });
   arb.handle("p1", { t: "ready" });
@@ -125,7 +130,7 @@ describe("sabotaje: concesión", () => {
   it("la práctica (sin rival) no sabotea ni informa de pods limpios", () => {
     let t = 0;
     const out: ServerMsg[] = [];
-    const arb = new Arbiter((_, m) => out.push(m), { now: () => t, semilla: 3, practica: true });
+    const arb = new Arbiter((_, m) => out.push(m), { now: () => t, semilla: 3, practica: true, pods: Array.from({ length: 3 }, (_, i) => podLed(3, i + 1)) });
     arb.handle("p1", { t: "hello", alias: "ana" });
     for (let i = 0; i < 3; i++) {
       const pod = out.flatMap((m) => (m.t === "start" || m.t === "despachado" ? [m.pod] : [])).at(-1)!;

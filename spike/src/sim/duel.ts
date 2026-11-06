@@ -42,7 +42,7 @@ export async function simulateDuel(make: () => Transport): Promise<{ arbiter: Ar
     assert.ok(rj.t === "reject" && rj.reason === "faltan zonas por reparar" && ana.despachados === 0);
 
     // Un fallo cuesta tiempo y el rival lo ve como "penalizado" (nunca ve la pieza).
-    const z = ana.pod!.zonas[0]!;
+    const z = await ana.conocer(ana.pod!.zonas[0]!);
     const seq = ana.test(z.zona, Bot.answer(z, (v) => v !== "correcto"));
     const r = await ana.until((m) => m.t === "result" && m.seq === seq);
     assert.ok(r.t === "result" && r.veredicto !== "correcto" && r.waitMs >= 2000);

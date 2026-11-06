@@ -100,7 +100,7 @@ const ZONAS_CABLEADO: Record<number, Circuito> = { 1: "luces", 2: "interruptor" 
 
 /**
  * Perfil de niveles de la partida: 1 o 2 (los 5 pods del mismo nivel) o "mixto" (el del duelo por defecto en `npm run serve`), con rampa:
- * pods 1-2 de nivel 1 en Radar/Reactor/Turbina (LED + resistencia), pod 3 de nivel 1 en Cabina (2 LED) y pods 4-5 de nivel 2
+ * pods 1-3 de nivel 1 (3 mecánicas distintas entre led, cabina, cadena y fusible) y pods 4-5 de nivel 2
  * (cables/placa, interruptor, fusible, LED invertido, circuito abierto; 1-4 zonas, al menos 3 familias distintas entre los dos).
  * Ambos jugadores reciben los mismos pods, como siempre.
  */
@@ -113,8 +113,8 @@ const MIN_N2 = 3;
 /** null si los circuitos por pod cumplen la cobertura del perfil; si no, el motivo. */
 function faltaCobertura(perfil: Perfil, cs: Circuito[][]): string | null {
   const usadas = cs.flat();
+  if ((perfil === 1 || perfil === "mixto") && new Set(cs.slice(0, 3).flat()).size < 3) return "pods 1-3: mecánicas repetidas";
   if (perfil !== "mixto") { const f = COBERTURA[perfil].find((x) => !usadas.includes(x)); return f ? `falta la familia ${f}` : null; }
-  if (!cs.slice(0, 3).flat().includes("cabina")) return "falta la familia cabina";
   return new Set(cs.slice(3).flat().filter((c) => SOLO_N2.includes(c))).size < MIN_N2 ? "pods 4-5: pocas familias de nivel 2" : null;
 }
 
@@ -193,11 +193,10 @@ export function generar(semilla: number, nivel: Perfil, demo: Demo = false): Pod
     throw new Error("sin partida demo con Cabina y Turbina");
   }
   for (let i = 0; i < MAX_INTENTOS; i++) {
-    // "mixto": pods 1-2 en zonas de LED (Radar, Turbina, Reactor) y pod 3 en Cabina; si no, 3 zonas distintas al azar.
-    const primeras = nivel === "mixto" ? [...shuffle(rnd, [0, 2, 3]).slice(0, 2), 1] : shuffle(rnd, [0, 1, 2, 3]).slice(0, 3);
+    const primeras = shuffle(rnd, [0, 1, 2, 3]).slice(0, 3);
     const zonasPorPod = [
       ...primeras.map((z) => [z]),
-      ...[0, 1].map(() => shuffle(rnd, [0, 1, 2, 3]).slice(0, 1 + Math.floor(rnd() * 4)).sort((a, b) => a - b)),
+      ...[0, 1].map(() => shuffle(rnd, [0, 1, 2, 3]).slice(0, 1 + Math.floor(rnd() * (nivel === 1 ? 3 : 4))).sort((a, b) => a - b)),
     ];
     const circuitos = zonasPorPod.map((zs, p) => zs.map((z) => familiaDe(rnd, z, nivelDePod(nivel, p), p >= 3)));
     if (faltaCobertura(nivel, circuitos)) continue; // se vuelve a sortear; sigue siendo determinista
@@ -222,7 +221,7 @@ const zonaRival = (rnd: Rnd, base: ZonaPod[], zona: number, c: Circuito) => {
 
 /**
  * Un intento de pods con OTRAS zonas y mecánicas: en cada pod, la misma cantidad de zonas y el mismo presupuesto de dificultad que `base`, con las
- * familias permitidas para ese pod (los pods 1-3 siguen sin cables y con una zona; la rampa «mixto» LED, LED, Cabina se respeta). `null` si no sale.
+ * familias permitidas para ese pod (los pods 1-3 siguen sin cables y con una zona; las 3 mecánicas distintas de los pods 1-3 se respetan). `null` si no sale.
  */
 function otrasZonas(base: Pod[], rnd: Rnd, perfil: Perfil, distinto: boolean): Pod[] | null {
   const pods: Pod[] = [];
@@ -230,7 +229,7 @@ function otrasZonas(base: Pod[], rnd: Rnd, perfil: Perfil, distinto: boolean): P
     if (i < podsFijos(perfil)) { pods.push({ numero: p.numero, zonas: p.zonas.map((z) => zonaRival(rnd, p.zonas, z.zona, z.circuito)) }); continue; }
     const nivel = nivelDePod(perfil, i), cables = i >= 3, meta = presupuesto(p);
     const usadas = i < 3 ? pods.flatMap((q) => q.zonas.map((z) => z.zona)) : [];
-    const libres = (perfil === "mixto" && i < 3 ? (i < 2 ? [0, 2, 3] : [1]) : [0, 1, 2, 3]).filter((z) => !usadas.includes(z));
+    const libres = [0, 1, 2, 3].filter((z) => !usadas.includes(z));
     const clave = (zs: { zona: number; circuito: Circuito }[]) => zs.map((z) => `${z.zona}${z.circuito}`).sort().join();
     let zonas: ZonaPod[] | undefined;
     for (let t = 0; t < 80 && !zonas; t++) {
@@ -379,7 +378,6 @@ export function validarPartida(pods: Pod[], nivel: Perfil, demo: Demo = false): 
       if (e) return `pod ${p.numero}: ${e}`;
     }
   }
-  if (nivel === "mixto" && (pods[2]!.zonas[0]!.zona !== 1 || pods[0]!.zonas[0]!.zona === 1 || pods[1]!.zonas[0]!.zona === 1)) return "pods 1-3: la rampa mixta es LED, LED, Cabina";
   return faltaCobertura(nivel, pods.map((p) => p.zonas.map((z) => z.circuito)));
 }
 

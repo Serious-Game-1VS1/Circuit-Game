@@ -78,7 +78,7 @@ export interface Mecanica {
 }
 
 export const MECANICAS: Mecanica[] = [
-  { id: "resistencia", nombre: "Resistencia", ensena: "La resistencia frena la corriente: ni mucha ni poca.", nivel: 1, semilla: 27, pod: 0, circuito: "led", pasos: [
+  { id: "resistencia", nombre: "Resistencia", ensena: "La resistencia frena la corriente: ni mucha ni poca.", nivel: 1, semilla: 12, pod: 0, circuito: "led", pasos: [
     { titulo: "Falta la resistencia", objetivo: "gaveta", pide: arrastra("1000"), hecho: elige("1000"), texto: "Hueco rojo = falta resistencia. Arrastra 1000 Ω: solo la coloca." },
     VALIDA("Pulsa CHECK para validar: ámbar = frena de más. Sin verde no pasas.", (e) => e.aguja === "poco"),
     { titulo: "Frena poco", objetivo: "gaveta", pide: arrastra("100"), hecho: elige("100"), texto: "Cambia a 100 Ω (frena poco). Cambiar de pieza es gratis." },
@@ -88,7 +88,7 @@ export const MECANICAS: Mecanica[] = [
     CHECK,
     LISTO("El valor justo depende de la batería y del LED."),
   ] },
-  { id: "multimetro", nombre: "Multímetro", ensena: "Medir tensión y continuidad sin gastar intentos.", nivel: 1, semilla: 18, pod: 0, circuito: "led", pasos: [
+  { id: "multimetro", nombre: "Multímetro", ensena: "Medir tensión y continuidad sin gastar intentos.", nivel: 1, semilla: 84, pod: 0, circuito: "led", pasos: [
     { titulo: "Arrastra una", objetivo: "gaveta", pide: arrastra("1000"), hecho: elige("1000"), texto: "Arrastra 1000 Ω al hueco: solo la coloca, aún no cuenta." },
     MODO_TENSION("Antes de validar puedes medir gratis. Toca Tensión."),
     { titulo: "Mide", objetivo: "pieza", hecho: MIDE_TENSION, texto: "Toca la pieza del centro: la aguja marca cuánta batería cae en ella." },

@@ -41,6 +41,7 @@ export async function runSession(
       const bots: Bot[] = [];
       for (const alias of ["ana", "beto"]) {
         const b = new Bot(make());
+        b.adivina = true;
         all.push(b.t);
         await b.enter(code, alias);
         bots.push(b);
