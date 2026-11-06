@@ -7,11 +7,12 @@ import * as Phaser from "phaser";
 import type { Nivel } from "../../spike/src/protocol";
 import { elegirSalaRapida, nivelRapida, salaDeUrl, salasAbiertas, textoSala, type Net, type SalaInfo } from "./net";
 import type { DificultadBot } from "./contraBot";
-import { anim, FUENTE_TITULO, letras, marco } from "./arte";
+import { anim, letras, marco } from "./arte";
 import { alternarSilencio, desbloquear, silenciado, sonar } from "./audio";
 import { type NivelBot, bienvenida, cargarPerfil, etiquetaNivel, INSIGNIAS, mejorNave, nivelBotElegido, nivelElegido, preferenciasSolo, progresoRango, recordarAlias, textoNivel, tutorialCompletado, tutorialesHechos, ultimoAlias } from "./perfil";
 import type { Pantalla } from "./pantalla";
-import { MECANICAS } from "./tutorial";
+import { MECANICAS, ofrecerBasico } from "./tutorial";
+import { lanzarIntro } from "./intro";
 import { COLORES, CUCHILLAS, ORO } from "./colores";
 import { chasis } from "./podio";
 import { crearChispa, mensajesMenu, type Mensaje } from "./chispa";
@@ -38,10 +39,6 @@ export function menu(s: Phaser.Scene, net: Net) {
   const lejana = s.add.tileSprite(0, 0, 90, 200, "capa_lejana_movil").setOrigin(0).setScale(4);
   if (!reducido) s.tweens.add({ targets: lejana, tilePositionX: 180, duration: 90000, repeat: -1 }); // 180 px de textura = un período
 
-  // --- Cabecera ---
-  const foco = anim(s, 20, 28, "foco_parpadeo", 2);
-  if (reducido) foco.stop();
-  letras(s, 40, 20, "TALLER LISTO", 2, GRIS);
   // Silencio: sobre los paneles (D+300), dentro del borde del panel (no sobre su esquina); 32x32 visibles, zona táctil 44x44.
   const SX = W - 50, SY = 46;
   const cajaSil = s.add.rectangle(SX, SY, 32, 32, 0x3a4466).setStrokeStyle(2, CIAN).setDepth(D + 300);
@@ -98,6 +95,9 @@ export function menu(s: Phaser.Scene, net: Net) {
   // Privacidad (S-02): enlace pequeño abajo a la derecha; abre un panel con el aviso.
   letras(s, W - 20, 626, "PRIVACIDAD", 1.5, GRIS).setOrigin(1, 0);
   s.add.zone(W - 56, 634, 90, 28).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => abrir(privacidad)));
+  // Intro: se vuelve a ver sin recargar (lanzarIntro); al acabar vuelve a este menú.
+  letras(s, W - 20, 606, "INTRO", 1.5, GRIS).setOrigin(1, 0);
+  s.add.zone(W - 42, 614, 54, 28).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => lanzarIntro(s)));
   const aviso = letras(s, W / 2, 568, "", 2, ROJO).setOrigin(0.5, 0).setMaxWidth(328).setCenterAlign().setDepth(D + 200);
 
   // --- Chispa: esquina inferior; su bocadillo rota (tiempo real) entre el primer pod, el consejo del día y la felicitación ---
@@ -112,7 +112,7 @@ export function menu(s: Phaser.Scene, net: Net) {
     const c = s.add.container(0, 0).setDepth(D).setVisible(false);
     c.add(s.add.rectangle(W / 2, 320, W, 640, 0x0b0e16, 0.88).setInteractive()); // tapa y bloquea lo de abajo
     c.add(marco(s, W / 2, y + h / 2, "panel_oscuro", 328, h, 2));
-    c.add(letras(s, W / 2, y + 16, t, 3, AMBAR, FUENTE_TITULO).setOrigin(0.5, 0));
+    c.add(letras(s, W / 2, y + 16, t, 3, AMBAR).setOrigin(0.5, 0));
     return c;
   };
   const etiqueta = (c: Phaser.GameObjects.Container, x: number, y: number, t: string) => c.add(letras(s, x, y, t, 2, GRIS));
@@ -255,7 +255,12 @@ export function menu(s: Phaser.Scene, net: Net) {
     for (const c of cDif) c.m.setTexture(c.v === dif ? "boton_primario" : "boton_secundario");
   };
   solo.add(letras(s, W / 2, 266, "Mismos pods y fallas que el duelo", 1.5, GRIS).setOrigin(0.5, 0));
-  solo.add(boton(W / 2, 312, 296, 44, "JUGAR SOLO", true, () => { if (alias()) recordarAlias(alias()); void net.jugarSolo(alias() || ultimoAlias(), nivelBotElegido(pf, nivBot), dif); }, 2.5));
+  solo.add(boton(W / 2, 312, 296, 44, "JUGAR SOLO", true, () => {
+    if (alias()) recordarAlias(alias());
+    const quien = alias() || ultimoAlias() || "Aprendiz";
+    if (ofrecerBasico(quien, almacen)) return void net.practicar(quien, 1, true, false, "basico"); // la primera vez por alias: «Primeros pasos» (se puede saltar)
+    void net.jugarSolo(quien, nivelBotElegido(pf, nivBot), dif);
+  }, 2.5));
   solo.add(boton(W / 2, 360, 296, 32, "VOLVER", false, () => abrir(modos), 2));
 
   const privacidad = panel(30, 560, "PRIVACIDAD");
@@ -272,7 +277,7 @@ export function menu(s: Phaser.Scene, net: Net) {
   const aprender = panel(60, 450, "APRENDER");
   aprender.add(boton(W / 2, 190, 296, 56, "MECÁNICAS", false, () => abrir(mecs)));
 
-  // Mecánicas: 2 columnas x 7 filas (12 tutoriales + la tabla de colores), 50 px de paso.
+  // Mecánicas: 2 columnas x 7 filas (13 tutoriales, «Primeros pasos» primero, + la tabla de colores), 50 px de paso.
   const mecs = panel(40, 480, "MECÁNICAS");
   const tarjetas = MECANICAS.map((m, k) => {
     const x = W / 2 + (k % 2 ? 76 : -76), y = 100 + 50 * Math.floor(k / 2);
