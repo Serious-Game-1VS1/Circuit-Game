@@ -328,6 +328,13 @@ describe("cliente conectado al árbitro", () => {
     expect((solo as unknown as { transport: unknown }).transport).not.toBe(practica);
   });
 
+  it("salir() vuelve al estado inicial aunque transport.close() lance", async () => {
+    const n = new Net(new Mem("p9"), () => t);
+    (n as unknown as { transport: Transport }).transport = { close: async () => { throw new Error("ya cerrado"); } } as unknown as Transport;
+    await expect(n.salir()).resolves.toBeUndefined();
+    expect(n.estado.fase).toBe("entrar");
+  });
+
   it("jugar solo: duelo contra el bot (rival, start, 5 pods, no es práctica)", async () => {
     vi.useFakeTimers();
     try {

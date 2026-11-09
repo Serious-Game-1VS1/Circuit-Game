@@ -24,10 +24,10 @@ const CAMPO = `width:100%;box-sizing:border-box;height:44px;font:700 22px "Couri
 
 /** Aviso de privacidad (S-02, LOPDP de Ecuador). Páginas cortas para que quepan en 360x640 sin scroll. */
 export const TEXTO_PRIVACIDAD = [
-  "1/4 FINALIDAD Y DATOS\n\nCircuitSync es un juego educativo y se usa para evaluar la tesis que lo desarrolla (UDLA).\n\nDatos que se tratan: tu alias (apodo de hasta 12 caracteres), tu ID de alumno si lo escribes (opcional) y los resultados de tus partidas (código de sala, fecha, pods despachados, errores).\n\nNo pedimos contraseñas, correo ni datos de pago. No uses tu nombre real como alias.",
+  "1/4 FINALIDAD Y DATOS\n\nCircuitSync es un juego educativo y se usa para evaluar la tesis que lo desarrolla (UDLA).\n\nDatos que se tratan: tu alias (apodo de hasta 12 caracteres) y los resultados de tus partidas (código de sala, fecha, pods despachados, errores).\n\nNo pedimos contraseñas, correo ni datos de pago. No uses tu nombre real como alias.",
   "2/4 BASE LEGAL Y TERCEROS\n\nBase legal: tu consentimiento, conforme a la Ley Orgánica de Protección de Datos Personales del Ecuador. Al jugar lo aceptas; si eres menor de edad, necesitas la autorización de tu institución o representante.\n\nPhoton (Exit Games), un tercero, procesa el tráfico de conexión de la partida. El servidor del juego está en Microsoft Azure (EE. UU.). No usamos tus datos para publicidad ni los vendemos.",
   "3/4 CONSERVACIÓN\n\nTu progreso, insignias y volumen se guardan solo en tu navegador; se borran al limpiar los datos del sitio.\n\nLos resultados guardados por el servidor se conservan como máximo 12 meses; se eliminan automáticamente al vencer ese plazo y antes si lo pides por correo.",
-  "4/4 TUS DERECHOS\n\nResponsable: Ricardo Quintana (UDLA).\n\nTienes derecho de acceso, rectificación, eliminación y oposición sobre tus datos. Para ejercerlos escribe a ricardo.quintana.maldonado@udla.edu.ec indicando tu alias y, si lo usaste, tu ID de alumno.",
+  "4/4 TUS DERECHOS\n\nResponsable: Ricardo Quintana (UDLA).\n\nTienes derecho de acceso, rectificación, eliminación y oposición sobre tus datos. Para ejercerlos escribe a ricardo.quintana.maldonado@udla.edu.ec indicando tu alias.",
 ];
 
 export function menu(s: Phaser.Scene, net: Net) {

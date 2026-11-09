@@ -61,6 +61,7 @@ type Letras = Phaser.GameObjects.BitmapText;
 
 export class Taller extends Phaser.Scene {
   private zona = 0;
+  private timerSalirBasico = 0;
   private ranura = RANURA;
   /** Pieza de la gaveta elegida con un toque (alternativa al arrastre): el siguiente toque en el hueco la coloca. */
   private sel: string | null = null;
@@ -300,13 +301,14 @@ export class Taller extends Phaser.Scene {
 
   create() {
     this.salirPide = 0;
+    window.clearTimeout(this.timerSalirBasico);
     const net = this.net, an = false; 
     const { width, height } = this.scale.gameSize;
     this.scale.setGameSize(an ? 1440 : 360, an ? 900 : 800);
     const antes = document.body.style.background;
     document.body.style.background = `#1e1838 url(arte/taller/fondo_taller.png) repeat-x center / auto 100%`;
     document.body.style.imageRendering = "pixelated";
-    this.events.once("shutdown", () => { this.scale.setGameSize(width, height); document.body.style.background = antes; document.body.style.imageRendering = ""; });
+    this.events.once("shutdown", () => { window.clearTimeout(this.timerSalirBasico); this.scale.setGameSize(width, height); document.body.style.background = antes; document.body.style.imageRendering = ""; });
     this.cameras.main.setRoundPixels(true);
     img(this, 0, 0, an ? "fondo_taller_ancho" : "fondo_taller").setOrigin(0);
     img(this, 0, 0, an ? "hud_barra_ancho" : "hud_barra").setOrigin(0);
@@ -1406,7 +1408,7 @@ export class Taller extends Phaser.Scene {
     if (fin && basico && !this.saleBasico) { // terminado: queda visto y vuelve solo al menú
       this.saleBasico = true;
       try { marcarBasicoVisto(this.aliasPerfil(), localStorage); } catch { /* sin disco */ }
-      window.setTimeout(() => { if (this.sys.isActive() && this.tut?.id === "basico") void this.net.salir(); }, 3000); // tiempo real
+      this.timerSalirBasico = window.setTimeout(() => { if (this.sys.isActive() && this.tut?.id === "basico") void this.net.salir(); }, 3000); // tiempo real
     }
     const rs = this.rectas(paso.objetivo, placa, this.contPaso());
     g.resaltes.forEach((r, i) => { const x = rs[i]; r.setVisible(!!x); if (x) r.setPosition(x[0], x[1]).setSize(x[2] / 4, x[3] / 4); });

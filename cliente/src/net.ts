@@ -202,7 +202,7 @@ export class Net {
     this.saliendo = false;
     this.sala = undefined;
     this.tutorial = false; this.idTutorial = null;
-    await this.transport.close();
+    try { await this.transport.close(); } catch { /* ya cerrado */ }
     this.transport = this.duelo;
     this.poner({ ...inicial(), alias });
   }
