@@ -110,8 +110,6 @@ describe("nivel 2 de punta a punta en el árbitro: Probar y Despachar de cada fa
       const ultimo = (k: string) => out.filter((m) => m.t === k).at(-1) as Extract<ServerMsg, { t: "result" }> & { reason: string };
       let seq = 0;
       const probar = (zona: number, pieza: string) => { arb.handle("p1", { t: "test", seq: ++seq, t0: 0, zone: zona, pieza }); return ultimo("result"); };
-      // El divisor necesita su R1 fija, que el cliente ve en `fija` ("R1 470 Ω").
-      const conR1 = <T extends { fija?: string }>(z: T) => ({ ...z, r1: z.fija ? Number(/(\d+) Ω/.exec(z.fija)![1]) : undefined });
       // La cadena no se resuelve con lo visible (hay que medir): se repara con la zona del árbitro (test/cadena.test.ts prueba el camino del jugador).
       const reparar = () => { for (const z of pod().zonas) if (!z.reparada) { const zs = arb.pods[pod().numero - 1]!.zonas.find((x) => x.zona === z.zona)!; probar(z.zona, jugadas(zs).find((p) => evaluar(zs, p) === "correcto")!); } arb.handle("p1", { t: "despachar", seq: ++seq, t0: 0 }); };
       // Avanza con juego perfecto hasta el pod que trae la falla.

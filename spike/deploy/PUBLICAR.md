@@ -4,6 +4,14 @@ Guía para que otras personas jueguen por una URL pública: el árbitro corre en
 
 Marcadores: `<tu-app-id>`, `<IP_VM>`, `<TU_IP>`, `<TOKEN>`. Nunca escribas valores reales en este archivo ni en git.
 
+### Antes de desplegar (comprobación)
+
+- [ ] `git status` sin cambios sin commitear en `cliente/` y `spike/`.
+- [ ] CI verde del commit exacto: `https://api.github.com/repos/<owner>/Circuit-Game/commits/<sha>/check-runs` (API pública; `gh` no está autenticado).
+- [ ] `npm run build` en `cliente/` con `VITE_TRANSPORT=photon`.
+- [ ] `dist/version.json` contiene el commit que se despliega.
+- [ ] Backup en la VM del `dist` y del `spike` actuales antes de instalar.
+
 ## 1. Preparación
 
 | Dato | Dónde | ¿Secreto? |
