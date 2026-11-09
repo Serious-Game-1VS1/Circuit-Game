@@ -365,3 +365,9 @@ Desde el `.gitattributes` de la raíz los `.sh` y la config de `spike/deploy/azu
 Restaurar el árbitro: `sudo rm -rf /opt/circuitsync/spike && sudo mv /opt/circuitsync/spike.bak-v14 /opt/circuitsync/spike && sudo systemctl restart arbitro`.
 
 Restaurar el cliente: copia del `dist` anterior en el scratchpad de la sesión (`dist-v14-anterior`) o reconstruir desde `0a2a697` y `swa deploy`.
+
+## Despliegue v15 (solo cliente, 9-nov-2026, commit 40f50dd)
+
+Cliente en SWA `circuitsync-juego` (bundle `index-BZh_PDu-.js`, antes `index-DeLgbuJu.js`; `dist/version.json` con commit `40f50dd` y protocolo 2). Cambios: aviso de privacidad sin «ID de alumno»; cancelación del timer de salida del tutorial; `salir()` más robusto al cerrar la sala. CI verde (Cliente y Spike), `tsc` y 411 tests OK. El árbitro sigue en v14 (no cambió; sin tocar la VM).
+
+Restaurar el cliente: copia del `dist` anterior en el scratchpad de la sesión (`dist-v15-anterior`) o reconstruir desde `6996815` y `swa deploy`.
