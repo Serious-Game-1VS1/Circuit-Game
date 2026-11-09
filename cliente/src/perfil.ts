@@ -53,7 +53,7 @@ export const INSIGNIAS: readonly Insignia[] = [
   { id: "ganador", nombre: "Ganador", descripcion: "Gana un duelo", cumple: (_, r) => r.gano },
   { id: "constante", nombre: "Constante", descripcion: "Juega 5 partidas", cumple: (p) => p.partidas >= 5 },
   { id: "dominio", nombre: "Dominio", descripcion: "3 estrellas en un concepto", cumple: (p) => Object.values(p.dominio).some((c) => habilidad(c).estrellas === 3) },
-  { id: "nivel-2", nombre: "Nivel 1 completo", descripcion: "Termina el nivel 1", cumple: (p) => p.nivelDesbloqueado >= 2 },
+  { id: "nivel-2", nombre: "Fácil completo", descripcion: "Termina el nivel Fácil", cumple: (p) => p.nivelDesbloqueado >= 2 },
 ];
 
 /** Criterio de desbloqueo (SCRUM-166): una partida de nivel 1, práctica o duelo, que despacha todos sus pods (sin Oleadas, donde total es Infinity). */
@@ -61,11 +61,11 @@ export const completoNivel1 = (r: Resultado) => r.nivel === 1 && r.pods >= r.tot
 
 /** Criterio del nivel 3 «Experto»: completar una partida de nivel 2 (con el nivel 2 ya abierto), con las mismas reglas que el nivel 1. */
 export const completoNivel2 = (r: Resultado) => r.nivel === 2 && r.pods >= r.total;
-/** Etiqueta del nivel en menús, salas y práctica: «NIVEL 1», «NIVEL 2» o «EXPERTO». */
-export const etiquetaNivel = (n: Nivel) => (n === 3 ? "EXPERTO" : `NIVEL ${n}`);
+/** Etiqueta del nivel en menús, salas y práctica: «FÁCIL», «NORMAL» o «EXPERTO». */
+export const etiquetaNivel = (n: Nivel) => (["FÁCIL", "NORMAL", "EXPERTO"][n - 1]!);
 
 /** Selector de nivel de la práctica: todos los niveles están abiertos (demo). `nivelDesbloqueado` sólo alimenta rangos e insignias. */
-export const textoNivel = (_p: Perfil, sel: Nivel) => `Nivel de práctica: ${sel === 3 ? "3 EXPERTO" : sel} (toca para cambiar)`;
+export const textoNivel = (_p: Perfil, sel: Nivel) => `Nivel de práctica: ${etiquetaNivel(sel)} (toca para cambiar)`;
 export const nivelElegido = (_p: Perfil, sel: Nivel): Nivel => sel;
 /** Nivel de «Jugar solo»: 1, 2, mixto (el del duelo) o 3 (Experto); todos disponibles. */
 export type NivelBot = "1" | "2" | "mixto" | "3";
@@ -86,7 +86,7 @@ export const cambiarNivel = (_p: Perfil, sel: Nivel): Nivel => (sel < 3 ? sel + 
 export function bienvenida(p: Perfil): string {
   if (!p.partidas && !p.xp) return "Bienvenido al taller. Tu primer pod te espera.";
   const r = progresoRango(p.xp);
-  return `Hola, ${p.alias}. Rango ${r.actual}. ${r.siguiente ? `Te faltan ${r.m - r.n} XP para ${r.siguiente}.` : "Eres de lo mejor del taller."}${p.nivelDesbloqueado === 3 ? " Nivel 2 completo." : p.nivelDesbloqueado === 2 ? " Nivel 1 completo." : ""}`;
+  return `Hola, ${p.alias}. Rango ${r.actual}. ${r.siguiente ? `Te faltan ${r.m - r.n} XP para ${r.siguiente}.` : "Eres de lo mejor del taller."}${p.nivelDesbloqueado === 3 ? " Normal completo." : p.nivelDesbloqueado === 2 ? " Fácil completo." : ""}`;
 }
 
 /** PROVISIONAL: naves por número de pod (sprites del kit; se cambiarán por los propios). Rangos 1-4 abren las naves 1-4; la 5 pide todas las insignias. */

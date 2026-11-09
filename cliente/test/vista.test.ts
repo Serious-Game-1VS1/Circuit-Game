@@ -23,7 +23,7 @@ describe("vista de una zona", () => {
 
   it("ningún texto de reto, gaveta o mensaje muestra cifras", () => {
     for (const c of CIRCUITOS) {
-      expect(RETO[c] + GAVETA[c]).not.toMatch(/\d/);
+      expect((RETO[c] + GAVETA[c]).replace(/(^| · )[1-4] /g, "$1")).not.toMatch(/\d/); // salvo los números de paso de la cadena
       for (const v of VEREDICTOS) expect(vistaDeVeredicto(v, c).mensaje).not.toMatch(/\d/);
     }
   });

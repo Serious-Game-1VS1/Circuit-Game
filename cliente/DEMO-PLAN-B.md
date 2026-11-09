@@ -48,7 +48,7 @@ Probado antes en `cliente/ENSAYO-DEMO.md` (Opción A). Necesita un PC y los disp
 | Cambio de IP de la VM al reiniciar | Baja | Bajo (solo SSH) | Consultar con `az vm show -d` |
 | Certificado/dominio con problema | Muy baja | Alto | Hostname `purple-bush-048e9630f.2.azurestaticapps.net` |
 | Carga en frío lenta en móvil | Media | Medio | Precargar el sitio en los dispositivos; WiFi estable |
-| Nivel 2/EXPERTO bloqueado en el dispositivo | Media | Bajo | Pegar el comando de perfiles de demo (T-1 día); candado de Mecánicas solo informa |
+| Nivel NORMAL/EXPERTO bloqueado en el dispositivo | Media | Bajo | Pegar el comando de perfiles de demo (T-1 día); candado de Mecánicas solo informa |
 | Despliegue accidental o cambio tardío | Baja | Alto | Congelar desde T-2 días; restaurar con PUBLICAR.md |
 | `LIMITE_MIN=5` olvidado (partida de 12 min) | Media | Medio | Checklist T-1 día; verificar «duración: 5 min» y reloj 5:00 |
 | `DEMO=1` activo por error (sin multímetro) | Baja | Medio | Revisar `arbitro.env` sin `DEMO` |

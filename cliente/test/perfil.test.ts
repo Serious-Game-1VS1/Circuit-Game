@@ -242,7 +242,7 @@ describe("bienvenida del menú", () => {
     expect(bienvenida(perfilNuevo("ana"))).toBe("Bienvenido al taller. Tu primer pod te espera.");
     const p = { ...perfilNuevo("ana"), partidas: 2, xp: 180 };
     expect(bienvenida(p)).toBe("Hola, ana. Rango Aprendiz. Te faltan 120 XP para Técnico.");
-    expect(bienvenida({ ...p, nivelDesbloqueado: 2 })).toContain("Nivel 1 completo.");
+    expect(bienvenida({ ...p, nivelDesbloqueado: 2 })).toContain("Fácil completo.");
   });
 });
 

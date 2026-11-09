@@ -110,10 +110,10 @@ describe("perfil: desbloqueo del nivel 3", () => {
     expect(textoNivel(p, 2)).not.toContain("completa");
   });
   it("etiquetas de nivel en menú y lista de salas", () => {
-    expect([1, 2, 3].map((n) => etiquetaNivel(n as 1 | 2 | 3))).toEqual(["NIVEL 1", "NIVEL 2", "EXPERTO"]);
+    expect([1, 2, 3].map((n) => etiquetaNivel(n as 1 | 2 | 3))).toEqual(["FÁCIL", "NORMAL", "EXPERTO"]);
     expect(textoSala({ codigo: "ABC123", nivel: 3, jugadores: 1, max: 2, estado: "esperando" })).toBe("ABC123  EXPERTO  1/2");
-    expect(textoSala({ codigo: "ABC123", nivel: "mixto", jugadores: 1, max: 2, estado: "esperando" })).toBe("ABC123  MIXTO  1/2");
-    expect(textoSala({ codigo: "ABC123", nivel: 2, jugadores: 1, max: 2, estado: "esperando" })).toBe("ABC123  NIVEL 2  1/2");
+    expect(textoSala({ codigo: "ABC123", nivel: "mixto", jugadores: 1, max: 2, estado: "esperando" })).toBe("ABC123  PROGRESIVO  1/2");
+    expect(textoSala({ codigo: "ABC123", nivel: 2, jugadores: 1, max: 2, estado: "esperando" })).toBe("ABC123  NORMAL  1/2");
   });
 });
 

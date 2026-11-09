@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decodificar } from "../../spike/src/engine/placa3";
 import {
-  cableEn3, codificar, colX, coordHoyo, enGaveta, filaY, gavetaDe, girar3, hoyoCerca, hoyoLibre, mismaTira, nombrePieza, ocupados, PASO, piezaEn3, poner3, ponerCable3,
+  ANCHO3, CANAL, cableEn3, codificar, colX, coordHoyo, enGaveta, filaY, gavetaDe, girar3, hoyoCerca, hoyoLibre, mismaTira, nombrePieza, ocupados, PASO, piezaEn3, poner3, ponerCable3,
   quitar3, quitarCable3, ranuraPieza, tiraEn, VACIO, faltaPlaca3,
 } from "../src/placa3";
 
@@ -13,8 +13,8 @@ describe("placa experta (cliente): protoboard y gavetas", () => {
     expect(tiraEn(colX(2), filaY(1))).toEqual(["1,0", "1,1", "1,2", "1,3", "1,4"]);
     expect(tiraEn(colX(7), filaY(3))).toEqual(["3,5", "3,6", "3,7", "3,8", "3,9"]);
     expect(tiraEn(5, filaY(0))![0]).toBe("+0");
-    expect(tiraEn(295, filaY(0))![0]).toBe("-0");
-    expect(tiraEn(150, filaY(0))).toBeNull(); // el canal no conecta
+    expect(tiraEn(ANCHO3 - 5, filaY(0))![0]).toBe("-0");
+    expect(tiraEn(CANAL, filaY(0))).toBeNull(); // el canal no conecta
     expect(mismaTira("2,0", "2,4")).toBe(true);
     expect(mismaTira("2,4", "2,5")).toBe(false);
     expect(hoyoCerca(colX(3) + 2, filaY(2))).toBe("2,3");
@@ -53,5 +53,14 @@ describe("placa experta (cliente): protoboard y gavetas", () => {
     expect(decodificar(codificar(m), ops)).toEqual(m);
     expect(faltaPlaca3(VACIO)).toMatch(/gaveta/);
     expect(faltaPlaca3(m)).toBeNull();
+  });
+
+  it("cable tira→tira: un agujero libre bajo la ruta de otro cable sigue siendo agujero (y no «cable» a borrar)", () => {
+    let m = ponerCable3(VACIO, "2,1", "3,6")!; // ruta horizontal por la fila 2
+    const h = coordHoyo("2,4"); // libre, justo sobre esa ruta
+    expect(cableEn3(m, h.x, h.y)).toBe(0); // el cable está ahí...
+    expect(hoyoLibre(m, h.x, h.y)).toBe("2,4"); // ...pero el agujero es la prioridad (tablero3.bajar lo resuelve por distancia < 9)
+    m = ponerCable3(m, "2,4", "0,7")!;
+    expect(m.cables).toHaveLength(2);
   });
 });

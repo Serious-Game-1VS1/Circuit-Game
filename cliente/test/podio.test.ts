@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { End } from "../../spike/src/protocol";
-import { chasis, chasisCarril, contraRecord, decision, mmss, podio } from "../src/podio";
+import { recortar, chasis, chasisCarril, contraRecord, decision, mmss, podio } from "../src/podio";
 import { inicial, reducir } from "../src/pantalla";
 
 const END: End = {
@@ -17,6 +17,11 @@ const END: End = {
 };
 
 describe("carrera final y podio", () => {
+  it("recortar: hasta 2 conceptos y «+N más» si hay más", () => {
+    expect(recortar(["a", "b"])).toEqual(["a", "b"]);
+    expect(recortar(["a", "b", "c", "d", "e"])).toEqual(["a", "b", "+3 más"]);
+  });
+
   it("el End con carrera lleva a la carrera; sin carrera o anulada, a Fin", () => {
     expect(reducir(inicial(), END, 0).fase).toBe("carrera");
     expect(reducir({ ...inicial(), fase: "podio" }, END, 0).fase).toBe("podio");

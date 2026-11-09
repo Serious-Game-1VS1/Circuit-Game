@@ -7,8 +7,8 @@ import type { Dial, Medida, ModoMedir, Tramo } from "../../spike/src/protocol";
 
 export const MEDIR_MS = 1000;
 
-/** Cadena (pieza muerta): solo se mide continuidad; la tensión con el circuito abierto da una lectura engañosa en el motor. */
-export const modoBloqueado = (circuito: string | undefined, modo: "tension" | "continuidad") => circuito === "cadena" && modo === "tension";
+/** Cadena (pieza muerta) en el nivel 1 en solitario: solo continuidad. `libre` (multijugador o nivel 2-3) deja medir tensión también. */
+export const modoBloqueado = (circuito: string | undefined, modo: "tension" | "continuidad", libre = false) => !libre && circuito === "cadena" && modo === "tension";
 
 export const T = {
   soloContinuidad: "En esta falla mide continuidad.",
@@ -28,16 +28,17 @@ export const T = {
   noPasaTexto: "No pasa: esta pieza está cortada por dentro.",
   // sin entrada en textos.js: el árbitro necesita la pieza o el montaje puesto para medir.
   // Con gaveta (sin placa) lo que falta es elegir; con placa, colocar y cablear. 
-  sinEleccion: "Primero elige una opción en la gaveta (abajo) y luego toca la pieza para medir.",
+  sinEleccion: "Elige una opción en la gaveta (abajo) y luego toca la pieza.",
   // Reactor: el multímetro no mide amperios. Con el consumo normal, un fusible que corta solo (0,5 A) lee toda la batería en sus bornes.
-  fusibleSano: "Pasa con poca corriente: no dice cuánto aguanta. Mide Tensión en el fusible.",
-  fusibleIgual: "Pasa con el consumo normal: no dice cuánto aguanta.", // el 1 A y el 3 A leen igual: solo la falla los separa
-  fusibleAyuda: "Toca el fusible o el calefactor. Con Tensión, casi toda la batería en el fusible = cortó solo.",
+  fusibleSano: "Pasa, pero no dice cuánto aguanta. Mide Tensión en el fusible.",
+  fusibleIgual: "Pasa con consumo normal. Mide Ω: I = V ÷ Ω.", // el 1 A y el 3 A leen igual: solo la falla los separa
+  calefactorOhm: "Calefactor: I = V ÷ Ω. El fusible debe aguantar más.",
+  fusibleAyuda: "Toca el fusible o el calefactor. Toda la batería en el fusible = cortó solo.",
   sinMontaje: "Primero coloca y cablea las piezas, y luego mide.",
   ledSentido: "Cae casi toda la batería en el LED: el LED no deja pasar, mira su sentido.",
   ledNoPasa: "No pasa: el LED solo deja pasar la corriente en un sentido, mira el suyo.",
-  divisorToda: "Mides el nodo medio: la lectura es la tensión que queda en R2; R1 se lleva el resto.",
-  protegidoToda: "Casi toda la batería cae en esta pieza: la tensión se reparte entre el diodo, el LED y la resistencia.",
+  divisorToda: "Mides el nodo medio: lo que queda en R2; R1 se lleva el resto.",
+  protegidoToda: "Casi toda la batería cae aquí: se reparte entre el diodo, el LED y la resistencia.",
 } as const;
 
 export const TRAMO: Record<Tramo, { etiqueta: string; texto: string }> = {
@@ -54,6 +55,7 @@ export const textoMedida = (m: Medida, circuito?: string) => {
   // LED invertido: mismo veredicto que el circuito abierto, pero la pista es la polaridad.
   const led = circuito === "invertido";
   if (m.modo === "continuidad" && (circuito === "fusible" || circuito === "fusible3") && m.punto === "pieza" && m.pasa) return T.fusibleSano; // el probador (3 mA) nunca funde un fusible: «no pasa» no ocurre
+  if (m.modo === "continuidad" && (circuito === "fusible" || circuito === "fusible3") && m.punto === "carga1" && m.ohmios !== undefined) return T.calefactorOhm;
   if (m.modo === "continuidad" && m.punto === "pieza" && circuito !== "cadena" && circuito !== "abierto" && circuito !== "invertido") return m.pasa ? T.piezaSuelta : T.huecoVacio; // el hueco de la gaveta, sin pieza
   if (m.modo === "continuidad") return m.pasa ? T.pasaTexto : led ? T.ledNoPasa : T.noPasaTexto;
   if (m.tension === "toda") { // «camino cortado» solo es cierto en los circuitos de corte; el divisor y el protegido no se cortan

@@ -148,7 +148,7 @@ export function menu(s: Phaser.Scene, net: Net) {
 
   // JUGAR: alias + elegir modo (solitario / multijugador). Cada modo es su panel; el alias es el mismo campo en los tres.
   const modos = panel(16, 360, "JUGAR");
-  const solo = panel(16, 400, "SOLITARIO");
+  const solo = panel(16, 480, "SOLITARIO");
   const multi = panel(16, 480, "MULTIJUGADOR");
   for (const p of [modos, solo, multi]) etiqueta(p, 34, 60, "ALIAS");
   etiqueta(multi, 34, 128, "CÓDIGO DE SALA (6)");
@@ -165,7 +165,7 @@ export function menu(s: Phaser.Scene, net: Net) {
   // Filtro de nivel de la lista de salas y de «Partida rápida»: null = todos. Arranca en el nivel de «Jugar solo» (por defecto nivel 1 en un perfil nuevo).
   let filtro: SalaInfo["nivel"] | null = "mixto";
   const FILTROS: (SalaInfo["nivel"] | null)[] = [null, 1, 2, "mixto", 3];
-  const nomNivel = (n: SalaInfo["nivel"]) => (n === 3 ? "EXPERTO" : n === "mixto" ? "MIXTO" : `NIVEL ${n}`);
+  const nomNivel = (n: SalaInfo["nivel"]) => (n === "mixto" ? "PROGRESIVO" : etiquetaNivel(n));
   const textoFiltro = () => `SALAS: ${filtro === null ? `TODOS (rap: ${nomNivel(nivelRapida(null, nivBot))})` : nomNivel(filtro)}`;
   const rapida = async () => {
     if (ocupado) return;
@@ -230,38 +230,46 @@ export function menu(s: Phaser.Scene, net: Net) {
   pintarSalas();
 
   // Jugar solo: mismo juego que el duelo (mismos pods y fallas) contra un bot; el jugador elige nivel y dificultad, ambos recordados.
-  const DIFS: [DificultadBot, string][] = [["facil", "FÁCIL"], ["normal", "NORMAL"], ["dificil", "DIFÍCIL"]];
-  const NIVS: [NivelBot, string][] = [["1", "NIVEL 1"], ["2", "NIVEL 2"], ["mixto", "MIXTO"], ["3", "EXPERTO"]];
+  const DIFS: [DificultadBot, string][] = [["facil", "SUAVE"], ["normal", "MEDIO"], ["dificil", "DURO"]];
+  const NIVS: [NivelBot, string][] = [["1", "FÁCIL"], ["2", "NORMAL"], ["mixto", "PROGRESIVO"], ["3", "EXPERTO"]];
+  // Una línea por opción (verdad según generador.ts y PERFILES_BOT): mixto = pods 1-3 de nivel 1 y 4-5 de nivel 2.
+  const DESC_NIV: Record<NivelBot, string> = { "1": "Pods sencillos, pocas piezas", "2": "Más piezas y fallas", mixto: "Empieza fácil y sube de dificultad", "3": "Colores, fusibles y placa de pruebas" };
+  const DESC_DIF: Record<DificultadBot, string> = { facil: "El rival se equivoca más y va lento", normal: "El rival juega a ritmo normal", dificil: "Rápido y casi no falla" };
   let almacen: Storage | null = null;
   try { almacen = localStorage; } catch { /* sin disco */ }
   let { dif, nivBot } = preferenciasSolo(almacen); // sin preferencia guardada: Fácil y nivel 1
   filtro = nivBot === "3" ? 3 : nivBot === "mixto" ? "mixto" : (Number(nivBot) as 1 | 2); pintarSalas();
   solo.add(letras(s, W / 2, 150, "Duelo contra un bot", 2, CIAN).setOrigin(0.5, 0));
   const fila = <T extends string>(y: number, opciones: [T, string][], elegir: (v: T) => void) => opciones.map(([v, nombre], k) => {
-    const n = opciones.length, paso = n > 3 ? 80 : 100, ancho = n > 3 ? 76 : 92, x = W / 2 + (k - (n - 1) / 2) * paso;
-    const m = marco(s, x, y, "boton_secundario", ancho, 36, 4);
-    const l = letras(s, x, y, nombre, 1.5, 0x140f1f).setOrigin(0.5);
-    const z = s.add.zone(x, y, ancho, 44).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => elegir(v)));
+    const n = opciones.length, rej = n > 3, ancho = rej ? 136 : 92, x = rej ? W / 2 + (k % 2 ? 72 : -72) : W / 2 + (k - 1) * 100, yk = rej ? y + (k >> 1) * 40 : y; // 4 opciones: rejilla 2x2 para leer PROGRESIVO a tamaño 2
+    const m = marco(s, x, yk, "boton_secundario", ancho, 36, 4);
+    const l = letras(s, x, yk, nombre, 2, 0x140f1f).setOrigin(0.5);
+    const z = s.add.zone(x, yk, ancho, 36).setInteractive({ useHandCursor: true }).on("pointerdown", sono(() => elegir(v)));
     solo.add([m, l, z]);
     return { m, v };
   });
-  const cNiv = fila(190, NIVS, (v) => {
+  solo.add(letras(s, W / 2, 184, "NIVEL", 2, 0xdde8f2).setOrigin(0.5));
+  const cNiv = fila(210, NIVS, (v) => {
     aviso.setText(""); nivBot = v; pintarSalas(); try { localStorage.setItem("circuitsync.nivelbot", v); } catch { /* sin disco */ } pintarBot();
   });
-  const cDif = fila(236, DIFS, (v) => { dif = v; try { localStorage.setItem("circuitsync.dificultad", v); } catch { /* sin disco */ } pintarBot(); });
+  solo.add(letras(s, W / 2, 312, "RIVAL", 2, 0xdde8f2).setOrigin(0.5));
+  const cDif = fila(338, DIFS, (v) => { dif = v; try { localStorage.setItem("circuitsync.dificultad", v); } catch { /* sin disco */ } pintarBot(); });
+  const dNiv = letras(s, W / 2, 276, "", 2, GRIS).setOrigin(0.5, 0).setMaxWidth(312).setCenterAlign();
+  const dDif = letras(s, W / 2, 364, "", 2, GRIS).setOrigin(0.5, 0).setMaxWidth(312).setCenterAlign();
   const pintarBot = () => {
+    dNiv.setText(DESC_NIV[nivBot]); dDif.setText(DESC_DIF[dif]);
     const nb = String(nivelBotElegido(pf, nivBot));
     for (const c of cNiv) c.m.setTexture(c.v === nb ? "boton_primario" : "boton_secundario");
     for (const c of cDif) c.m.setTexture(c.v === dif ? "boton_primario" : "boton_secundario");
   };
-  solo.add(letras(s, W / 2, 266, "Mismos pods y fallas que el duelo", 1.5, GRIS).setOrigin(0.5, 0));
-  solo.add(boton(W / 2, 312, 296, 44, "JUGAR SOLO", true, () => {
+  solo.add([dNiv, dDif]);
+  solo.add(boton(W / 2, 412, 296, 44, "JUGAR SOLO", true, () => {
     if (alias()) recordarAlias(alias());
     const quien = alias() || ultimoAlias() || "Aprendiz";
     if (ofrecerBasico(quien, almacen)) return void net.practicar(quien, 1, true, false, "basico"); // la primera vez por alias: «Primeros pasos» (se puede saltar)
     void net.jugarSolo(quien, nivelBotElegido(pf, nivBot), dif);
   }, 2.5));
-  solo.add(boton(W / 2, 360, 296, 32, "VOLVER", false, () => abrir(modos), 2));
+  solo.add(boton(W / 2, 462, 296, 32, "VOLVER", false, () => abrir(modos), 2));
 
   const privacidad = panel(30, 560, "PRIVACIDAD");
   let pag = 0;
@@ -349,7 +357,8 @@ export function menu(s: Phaser.Scene, net: Net) {
     for (const f of fichas) {
       f.m.setTexture(f.n === sel ? "boton_primario" : "boton_secundario");
     }
-    textoSel.setText(textoNivel(pf, sel));
+    textoSel.setText(`${textoNivel(pf, sel)}
+${DESC_NIV[String(sel) as NivelBot]}`);
     const sug = MECANICAS.find((m) => !tutorialCompletado(pf, m.id));
     for (const t of tarjetas) {
       t.marca.setVisible(tutorialCompletado(pf, t.m.id));

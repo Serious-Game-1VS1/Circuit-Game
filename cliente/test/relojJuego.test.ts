@@ -44,6 +44,7 @@ describe("cadena: solo continuidad", () => {
     expect(modoBloqueado("cadena", "tension")).toBe(true);
     expect(modoBloqueado("cadena", "continuidad")).toBe(false);
     expect(modoBloqueado("led", "tension")).toBe(false);
+    expect(modoBloqueado("cadena", "tension", true)).toBe(false); // multijugador o nivel 2-3
     expect(T.soloContinuidad).toBe("En esta falla mide continuidad.");
   });
 });

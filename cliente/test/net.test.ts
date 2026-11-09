@@ -376,7 +376,7 @@ describe("cliente conectado al árbitro", () => {
     const s = (codigo: string, jugadores: number, estado: "esperando" | "llena" | "jugando") => ({ codigo, nivel: 1 as const, jugadores, max: 2 as const, estado });
     const r = salasAbiertas([s("ZZZ222", 0, "esperando"), s("AAA111", 2, "llena"), s("BBB333", 1, "esperando"), s("CCC444", 1, "jugando"), s("AAA999", 0, "esperando")]);
     expect(r.map((x) => x.codigo)).toEqual(["BBB333", "AAA999", "ZZZ222"]);
-    expect(textoSala(r[0]!)).toBe("BBB333  NIVEL 1  1/2");
+    expect(textoSala(r[0]!)).toBe("BBB333  FÁCIL  1/2");
   });
 
   it("partida rápida: la más llena, empate por código, null si no hay a qué entrar", () => {

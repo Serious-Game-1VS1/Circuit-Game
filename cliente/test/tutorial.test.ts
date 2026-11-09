@@ -291,4 +291,12 @@ describe("Primeros pasos (basico)", () => {
     expect(ofrecerBasico("Ana", null)).toBe(false);
     expect(ofrecerBasico("Ana", { getItem: () => { throw new Error("bloqueado"); }, setItem: () => {} })).toBe(false);
   });
+
+  it("tras un CHECK sin verde se puede volver a colocar piezas (no queda clavado en «Valida»)", () => {
+    const t = iniciar("fusibles");
+    const v = { ...t, i: t.pasos.findIndex((p) => p.pide === "check") };
+    expect(permite(v, { arrastrar: "5x20F:2" })).not.toBeNull(); // antes de probar: solo CHECK
+    expect(permite(v, { arrastrar: "5x20F:2" }, e({ pruebas: 1 }))).toBeNull(); // probó y quedó ámbar: corrige
+    expect(permite(v, { arrastrar: "zzz" }, e({ pruebas: 1, reparada: true }))).not.toBeNull();
+  });
 });

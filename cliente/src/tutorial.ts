@@ -269,6 +269,8 @@ export function permite(t: Tutorial | null, a: Accion, e?: EstadoTut): string | 
   if (!t?.activo || actual(t).libre || coincide(actual(t).pide, a)) return null;
   // En «Valida» se puede volver a poner la pieza del paso anterior (si se devolvió a la gaveta no quedaba forma de seguir).
   if (actual(t).pide === "check" && t.i > 0 && coincide(t.pasos[t.i - 1]!.pide, a)) return null;
+  // Tras un CHECK sin verde se puede corregir: volver a colocar piezas (en cables y pestañas el velo ya deja actuar).
+  if (e && actual(t).pide === "check" && e.pruebas > 0 && !e.reparada) return null;
   if (e && t.i < t.pasos.length - 1 && cumple(t, e) && coincide(t.pasos[t.i + 1]!.pide, a)) return null;
   return actual(t).texto; // la frase del paso dice qué hacer («Ahora toca: Mover» no lo decía)
 }

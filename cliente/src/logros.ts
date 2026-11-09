@@ -6,7 +6,7 @@ import { INSIGNIAS, NAVES, navesDesbloqueadas, type Perfil } from "./perfil";
 /** Textos cortos escritos a propósito (caben en una línea de Logros sin «…» ni líneas envueltas). */
 export const CONDICION: Record<string, string> = {
   "primer-pod": "Despacha tu primer pod", "sin-quemadas": "Pods sin quemar piezas", "racha-limpia": "3 pods limpios en partida",
-  ganador: "Gana un duelo", constante: "Juega 5 partidas", dominio: "3 estrellas en un concepto", "nivel-2": "Termina el nivel 1",
+  ganador: "Gana un duelo", constante: "Juega 5 partidas", dominio: "3 estrellas en un concepto", "nivel-2": "Termina el nivel Fácil",
 };
 export { HABILIDAD };
 const NAVE: Record<string, string> = { Raya: "Todas las insignias" };

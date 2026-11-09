@@ -120,7 +120,7 @@ export function crearChispa(s: Phaser.Scene, x: number, y: number, escala = 3, e
     poner(e) { if (e !== expr) { expr = e; pintar(); } },
     decir(texto, ms, ancho) {
       quitar(); clearTimeout(tGlobo);
-      const lado = op.lado ?? "der", t = letras(s, 0, 0, texto, 1.5, 0xe8f6ff).setOrigin(0, 0.5).setMaxWidth(ancho ?? op.ancho ?? 220);
+      const lado = op.lado ?? "der", t = letras(s, 0, 0, texto, 2, 0xe8f6ff).setOrigin(0, 0.5).setMaxWidth(ancho ?? op.ancho ?? 220);
       const w = Math.ceil(t.width) + 16, h = Math.ceil(t.height) + 14, cy = -9.5 * k;
       const cx = lado === "der" ? 9 * k + w / 2 : -9 * k - w / 2;
       t.setPosition(cx - w / 2 + 8, cy);

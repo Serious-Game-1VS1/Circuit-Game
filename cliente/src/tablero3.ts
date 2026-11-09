@@ -10,15 +10,15 @@ import { diodo, img, letras, marco, resistenciaBandas } from "./arte";
 import { arrastrable, type Toque } from "./arrastre";
 import { bandas } from "./colores";
 import {
-  ALTO3, ANCHO3, AYUDA_CABLES, CANAL, COLOR_LED, GAVETAS, PASO, RIEL_MAS, RIEL_MENOS, VACIO, Y0, cableEn3, colorCable3, colX, coordHoyo, enGaveta, filaY, girar3,
+  ALTO3, ANCHO3, AYUDA_CABLES, CANAL, COLOR_LED, GAVETAS, PASO, RIEL_MAS, RIEL_MENOS, VACIO, X0, Y0, cableEn3, colorCable3, colX, coordHoyo, enGaveta, filaY, girar3,
   hoyoCerca, hoyoLibre, nombrePieza, ocupados, piezaEn3, polar, poner3, ponerCable3, quitar3, quitarCable3, ranuraPieza, ruta, tiraEn, tipoDe, TODOS, valorDe,
   type Gaveta, type Hoyo, type Montaje3, type P2,
 } from "./placa3";
 import { textoVolts } from "./vista";
 
 const OSCURO = 0x140f1f, CIAN = 0x5ef0ff, GRIS = 0x9aa4c0;
-/** Pestañas (y local −30) y fila de piezas (y local 264), en coordenadas del tablero. Zonas táctiles ≥ 55 de lienzo (44 px en pantalla). */
-export const GAV3 = { tabY: -30, tabW: 60, tabH: 56, filaY: 264, slotW: 82, slotH: 58 } as const;
+/** Pestañas (y local −30) y fila de piezas (y local 277), en coordenadas del tablero. Zonas táctiles ≥ 55 de lienzo (44 px en pantalla). */
+export const GAV3 = { tabY: -30, tabW: 60, tabH: 56, filaY: 277, slotW: 82, slotH: 50 } as const;
 export type Estado3 = "normal" | "encendido" | "quemado";
 
 export interface Eventos3 {
@@ -95,13 +95,13 @@ export class Tablero3 {
     s.input.on("pointerup", (p: Phaser.Input.Pointer) => this.soltar(p));
     // Pestañas de las gavetas: 6 de 60 px (todo el ancho del panel).
     this.tabs = GAVETAS.map(({ id, titulo }, i) => {
-      const tx = -30 + GAV3.tabW / 2 + GAV3.tabW * i;
+      const tx = -X0 + GAV3.tabW / 2 + GAV3.tabW * i;
       const zona = s.add.zone(tx, GAV3.tabY, GAV3.tabW, GAV3.tabH).setInteractive({ useHandCursor: true }).on("pointerdown", () => this.elegirGaveta(id));
       return { g: id, fondo: marco(s, tx, GAV3.tabY, "boton_secundario", GAV3.tabW - 2, 40), t: letras(s, tx, GAV3.tabY, titulo, 1.5).setOrigin(0.5), zona };
     });
     this.slots = [0, 1, 2, 3].map((i) => {
-      const sx = ANCHO3 / 2 + (i - 1.5) * 88, zona = s.add.zone(sx, GAV3.filaY, GAV3.slotW, GAV3.slotH).setInteractive({ useHandCursor: true });
-      const slot = { fondo: marco(s, sx, GAV3.filaY, "boton_secundario", GAV3.slotW, 52), zona, dib: s.add.container(sx, GAV3.filaY - 8), nombre: letras(s, sx, GAV3.filaY + 14, "", 1.5).setOrigin(0.5), id: null as string | null, clave: "" };
+      const sx = ANCHO3 / 2 + (i - 1.5) * 90, zona = s.add.zone(sx, GAV3.filaY, GAV3.slotW, GAV3.slotH).setInteractive({ useHandCursor: true });
+      const slot = { fondo: marco(s, sx, GAV3.filaY, "boton_secundario", GAV3.slotW, 46), zona, dib: s.add.container(sx, GAV3.filaY - 7), nombre: letras(s, sx, GAV3.filaY + 12, "", 1.5).setOrigin(0.5), id: null as string | null, clave: "" };
       arrastrable(s, zona, {
         puede: () => this.c.visible && !this.ev.bloqueado() && !!slot.id,
         fantasma: () => dibujoPieza(s, slot.id!).setScale(1.2),
@@ -130,10 +130,10 @@ export class Tablero3 {
     g.fillStyle(0xa79a74).fillRect(CANAL - 5, 4, 10, ALTO3 - 8).fillStyle(0x6d6652).fillRect(CANAL - 3, 4, 6, ALTO3 - 8);
     for (let f = 0; f < 4; f++) {
       const y = filaY(f);
-      for (const [x0, x1] of [[colX(0), colX(4)], [colX(5), colX(9)]] as const) g.fillStyle(0xe2d6b4).fillRoundedRect(x0 - 12, y - 14, x1 - x0 + 24, 28, 6).fillStyle(0xc9bb93).fillRect(x0, y - 1, x1 - x0, 3);
+      for (const [x0, x1] of [[colX(0), colX(4)], [colX(5), colX(9)]] as const) g.fillStyle(0xe2d6b4).fillRoundedRect(x0 - 12, y - 15, x1 - x0 + 24, 30, 6).fillStyle(0xc9bb93).fillRect(x0, y - 1, x1 - x0, 3);
       if (f) g.fillStyle(0xd9cca6).fillRect(28, Y0 + PASO * f - 1, ANCHO3 - 56, 2);
     }
-    for (const h of TODOS) { const { x, y } = coordHoyo(h); g.fillStyle(HOYO).fillRect(x - 3, y - 3, 6, 6); }
+    for (const h of TODOS) { const { x, y } = coordHoyo(h); g.fillStyle(HOYO).fillRect(x - 4, y - 4, 8, 8); }
     return ([[RIEL_MAS, "+"], [RIEL_MENOS, "-"]] as const).map(([x, signo]) => letras(this.s, x, ALTO3 - 2, signo, 2, x < CANAL ? 0xe8363c : 0x3e6af0).setOrigin(0.5, 1));
   }
 
@@ -237,10 +237,12 @@ export class Tablero3 {
     if (this.elegida) { const id = this.elegida; this.colocar(id, p); return this.repintar(); }
     const pz = piezaEn3(this.m, x, y);
     if (pz) { this.arr = { x0: x, y0: y, id: p.id, activo: false, pieza: pz.id }; return; }
-    const i = cableEn3(this.m, x, y);
-    if (i >= 0) { this.origen = null; this.sel = null; return this.ev.cambio(quitarCable3(this.m, i)); }
+    const hl = hoyoLibre(this.m, x, y), i = cableEn3(this.m, x, y);
+    // Un cable tendido pasa por encima de agujeros libres de su fila: sobre un agujero manda el agujero (si no, el toque borraba el cable y no nacía el nuevo).
+    const sobreHoyo = !!hl && Math.hypot(coordHoyo(hl).x - x, coordHoyo(hl).y - y) < 9;
+    if (i >= 0 && !sobreHoyo) { this.origen = null; this.sel = null; return this.ev.cambio(quitarCable3(this.m, i)); }
     if (this.sel) { this.sel = null; this.repintar(); }
-    const h = hoyoLibre(this.m, x, y);
+    const h = hl;
     if (!h) { this.origen = null; if (tiraEn(x, y)) this.ev.aviso("Esa tira está llena: usa otra."); return this.marcar(null); }
     this.arr = { x0: x, y0: y, id: p.id, activo: false, hoyo: h };
   }
@@ -292,11 +294,15 @@ export class Tablero3 {
   /** Resaltes: ranura de la pieza que se arrastra, origen del cable y su vista previa, tiras destino y la punta roja del multímetro. */
   private marcar(ranura: { f: number; c: number } | null, desde: Hoyo | null = this.origen, sobre: Hoyo | null = null, dedo?: P2) {
     const g = this.marcas.clear();
-    if (ranura) for (const f of [ranura.f, ranura.f + 1]) g.lineStyle(3, CIAN).strokeCircle(colX(ranura.c), filaY(f), 9);
-    if (ranura) g.fillStyle(CIAN, 0.25).fillRect(colX(ranura.c) - 12, filaY(ranura.f), 24, PASO);
-    if (this.elegida || ranura) {
+    if (ranura) for (const f of [ranura.f, ranura.f + 1]) g.lineStyle(4, CIAN).strokeCircle(colX(ranura.c), filaY(f), 12).fillStyle(CIAN, 0.45).fillCircle(colX(ranura.c), filaY(f), 12);
+    if (ranura) g.fillStyle(CIAN, 0.35).fillRect(colX(ranura.c) - 14, filaY(ranura.f), 28, PASO).lineStyle(2, CIAN).strokeRect(colX(ranura.c) - 14, filaY(ranura.f), 28, PASO);
+    if (this.elegida || ranura || dedo) { // agujeros libres donde puede caer la pieza (o la punta del cable): anillo verde bien visible
       const us = ocupados(this.m);
-      for (let f = 0; f < 4; f++) for (let c = 0; c < 10; c++) if (!us.has(`${f},${c}`)) g.fillStyle(0x56d364, 0.5).fillRect(colX(c) - 3, filaY(f) - 3, 6, 6);
+      for (const h of TODOS) {
+        if (us.has(h) || (!dedo && (h[0] === "+" || h[0] === "-"))) continue;
+        const { x, y } = coordHoyo(h);
+        g.fillStyle(0x56d364, 0.8).fillCircle(x, y, 5).lineStyle(2, 0x56d364, 0.9).strokeCircle(x, y, 8);
+      }
     }
     if (desde) {
       const A = coordHoyo(desde);

@@ -338,7 +338,7 @@ export { Net as NetManager };
 export function salasAbiertas(salas: SalaInfo[], nivel?: SalaInfo["nivel"]): SalaInfo[] {
   return salas.filter((s) => s.estado === "esperando" && (nivel === undefined || s.nivel === nivel)).sort((a, b) => b.jugadores - a.jugadores || a.codigo.localeCompare(b.codigo));
 }
-export const textoSala = (s: SalaInfo) => `${s.codigo}  ${s.nivel === 3 ? "EXPERTO" : s.nivel === "mixto" ? "MIXTO" : `NIVEL ${s.nivel}`}  ${s.jugadores}/${s.max}`;
+export const textoSala = (s: SalaInfo) => `${s.codigo}  ${s.nivel === "mixto" ? "PROGRESIVO" : (["FÁCIL", "NORMAL", "EXPERTO"][s.nivel - 1]!)}  ${s.jugadores}/${s.max}`;
 
 /** Partida rápida: la sala «esperando» con más jugadores (empate: código menor). Con `nivel`, solo las de ese nivel. */
 export const elegirSalaRapida = (salas: SalaInfo[], nivel?: SalaInfo["nivel"]): SalaInfo | null => salasAbiertas(salas, nivel)[0] ?? null;

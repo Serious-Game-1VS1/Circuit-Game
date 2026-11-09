@@ -23,11 +23,11 @@ import { crearMano, type Mano } from "./mano";
 import { cableDelCorto, cargasPuestas, conPlaca, faltaColocar, faltaCablear, montaje, textoCorto, todasPuestas, type Cable, type Puestas } from "./placa";
 import { ayudaCables, Tablero } from "./tablero";
 import { Tablero3 } from "./tablero3";
-import { codificar, faltaPlaca3, VACIO, type Montaje3 } from "./placa3";
+import { codificar, faltaPlaca3, VACIO, X0, type Montaje3 } from "./placa3";
 import { QUEMADAS_OLEADAS } from "../../spike/src/arbiter/penalties";
 import { conDoble, etiquetas, MEJORAS, medirMs, ofrecer } from "./mejoras";
 import { mecanica, actual, adelantar, avanzar, esFin, guiaPartida, iniciar, manoDe, marcarBasicoVisto, permite, siguiente, type EstadoTut, type Objetivo, type Tutorial } from "./tutorial";
-import { huecosCadena, montajeCarga, montajeOpcion, montajePieza, punteado, cargas, cola, estadoZona, etiquetaCarga, nivelCarga, pestanasArte, podDe, sprite, spriteBateria, spriteCadena, spriteCarga, spritePieza, spriteTarjeta } from "./sprites";
+import { kFusible, huecosCadena, montajeCarga, montajeOpcion, montajePieza, punteado, cargas, cola, estadoZona, etiquetaCarga, nivelCarga, pestanasArte, podDe, sprite, spriteBateria, spriteCadena, spriteCarga, spritePieza, spriteTarjeta } from "./sprites";
 import { AJUSTES_GAVETA, ocultaValor, botonesGaveta, CARTEL, conHueco, FRENA, LEYENDA_ZONAS, NOMBRE_ZONA, PISTA_DEMO, RETO, retrasoCola, textoOpcion, textoPiezaCadena, textoRotulo, textoVolts, type Aguja } from "./vista";
 
 const K = 4;
@@ -79,7 +79,7 @@ export class Taller extends Phaser.Scene {
   /** Placa experta (nivel 3): montaje por "pod-zona" (piezas y cables); empieza vacío. */
   private montajes = new Map<string, Montaje3>();
   private montajeZona() { return this.montajes.get(this.clave()) ?? VACIO; }
-  private filaDy(z = this.zonaActual()) { return z?.circuito === "placa3" ? 112 : z && conPlaca(z.circuito) ? 76 : FILA_HUECO; } // placa: el multímetro baja 76 px (su cuerpo queda bajo la fila D, sin tapar agujeros); hueco: bajo la gaveta
+  private filaDy(z = this.zonaActual()) { return z?.circuito === "placa3" ? 108 : z && conPlaca(z.circuito) ? 76 : FILA_HUECO; } // placa: el multímetro baja 76 px (su cuerpo queda bajo la fila D, sin tapar agujeros); hueco: bajo la gaveta
   /** Clave (pod-zona) en la que ya aparecieron la gaveta y el multímetro. */
   private aparecio = "";
   private modo: ModoMedir | null = null;
@@ -216,7 +216,7 @@ export class Taller extends Phaser.Scene {
   private medir(punto: string) {
     const z = this.zonaActual(), modo = this.modo;
     if (!z || !modo) return;
-    if (modoBloqueado(z.circuito, modo)) { this.modo = null; this.pintar(this.net.estado); return this.avisar(TM.soloContinuidad); }
+    if (modoBloqueado(z.circuito, modo, this.tensionLibre())) { this.modo = null; this.pintar(this.net.estado); return this.avisar(TM.soloContinuidad); }
     if (this.midiendo) return this.avisar(AYUDA_USO.sigue); // misma regla que el árbitro («el multímetro sigue midiendo»); la animación sigue sin reiniciarse
     const puesta = this.eleccion(z);
     // Continuidad: sin tensión y con la pieza fuera (placa de cables y protoboard miden con su montaje). Cadena: el hueco no puede llevar repuesto.
@@ -292,6 +292,14 @@ export class Taller extends Phaser.Scene {
     for (let i = 1; i <= z.cadena!.length; i++) if (i !== k && this.tramos.get(`${this.clave()}|t${i}`) === false) return i;
     return null;
   }
+  /** Tensión en la cadena: libre en multijugador y desde el nivel 2. */
+  private tensionLibre() { return this.net.enLinea || (this.net.estado.pod?.nivel ?? 1) >= 2; }
+  /** Pieza elegida del circuito; el fusible de nivel 2 escala con sus amperios y, tras «poco» (se fundió), se ve más grande, oscuro y con el hilo roto. */
+  private fusiblePuesto(z: ZonaView, elegida: string | undefined, v: { aguja: string | null } | undefined, pieza: string) {
+    if (z.circuito !== "fusible" || !elegida) return [img(this, 180, 34, pieza).setOrigin(0.5)];
+    const fundido = v?.aguja === "poco", k = kFusible(elegida) + 1 + (fundido ? 0.6 : 0), f = img(this, 180, 34, pieza, k).setOrigin(0.5);
+    return fundido ? [f.setTint(0x555555), this.add.rectangle(180, 34, 6, k * 3, 0x0b1020)] : [f];
+  }
   private zonaActual() {
     const zonas = this.net.estado.pod?.zonas ?? [];
     return zonas.find((x) => x.zona === this.zona) ?? zonas[0];
@@ -351,7 +359,7 @@ export class Taller extends Phaser.Scene {
     const leyenda = this.leyenda = letras(this, 180, 334, LEYENDA_ZONAS, 2, GRIS).setOrigin(0.5, 0); 
     escena.add([...pestanas, bocadillo, globo, colaC, bahia, podT, mejorasT, ...llamas, leyenda]);
     this.rivalCasillas = this.add.graphics(); 
-    this.chispa = crearChispa(this, 28, 72 + 218, 2, "normal", { ancho: 170 });
+    this.chispa = crearChispa(this, 28, 72 + 218, 2, "normal", { ancho: 230 });
     this.chispa.cont.setDepth(20);
     const flechaS = anim(this, 0, 0, "flecha_guia", 2), chispitas = [0, 1, 2].map((i) => this.add.rectangle(0, 0, 6 - i, 6 - i, PISTA).setAlpha(0));
     this.senalTag = this.add.container(0, 0, [this.add.rectangle(0, 0, 150, 20, OSCURO, 0.92).setStrokeStyle(2, PISTA), letras(this, 0, 0, AYUDA_USO.senal, 1.5, PISTA).setOrigin(0.5)]).setVisible(false);
@@ -379,7 +387,7 @@ export class Taller extends Phaser.Scene {
     const modos = (["tension", "continuidad"] as const).map((modo, i) => {
       const x = i ? 326 : 34;
       const fondo = marco(this, x, 178, "boton_secundario", 48, 48).setInteractive({ useHandCursor: true }).on("pointerdown", () => {
-        if (modoBloqueado(this.zonaActual()?.circuito, modo)) return this.avisar(TM.soloContinuidad);
+        if (modoBloqueado(this.zonaActual()?.circuito, modo, this.tensionLibre())) return this.avisar(TM.soloContinuidad);
         this.modo = this.modo === modo ? null : modo;
         this.limpiarMedida();
         this.pintar(net.estado);
@@ -425,7 +433,7 @@ export class Taller extends Phaser.Scene {
       medir: () => (this.modo ? (punto) => this.medir(punto) : null),
       bloqueado: () => !!this.zonaActual()?.reparada,
     });
-    const tablero3 = new Tablero3(this, 30, 2, {
+    const tablero3 = new Tablero3(this, X0, 2, {
       cambio: (m) => { sonar("pieza"); this.montajes.set(this.clave(), m); this.limpiarMedida(); this.net.limpiarAviso(); this.pintar(net.estado); },
       aviso: (t) => this.avisar(t),
       medir: () => (this.modo ? (punto) => this.medir(punto) : null),
@@ -460,6 +468,7 @@ export class Taller extends Phaser.Scene {
       sonar("elegir");
       if (this.elegidas.get(this.clave()) !== jugada) this.limpiarMedida();
       this.elegidas.set(this.clave(), jugada);
+      if (hueco && this.tramos.delete(`${this.clave()}|t${hueco}`)) this.avisar(`Mide el hueco ${hueco} sin repuesto, o pulsa CHECK`); // la marca era de la pieza vieja
       this.retiradas.delete(this.clave());
       this.sel = null;
       this.pintar(net.estado); return true;
@@ -651,10 +660,13 @@ export class Taller extends Phaser.Scene {
       this.tinteLectura = tinte !== null; // en la placa el aviso cabe entre «Correcto» y Probar (44 px): 1-2 líneas a 16 px, 3 a 12 px
       this.avisoClave = clave;
       this.ui.aviso.setText(texto);
-      for (const k of p3 ? [12, 11] : [16, 12, 11]) { this.ui.aviso.setFontSize(k); if (this.ui.aviso.height <= (p3 ? (medirP3 ? 12 : 26) : placa ? 44 : 32)) break; } // sin placa: de y 286 a 318, sin rozar CHECK (316): 2 líneas a 16 px, 3-4 a 12 u 11 (mínimo legible)
+      const tope = p3 ? (medirP3 ? 16 : 28) : placa ? 44 : 32; // p3: 1 o 2 líneas de ~13,5 px
+      for (const k of p3 ? [12, 11] : [16, 12, 11]) { this.ui.aviso.setFontSize(k); if (this.ui.aviso.height <= tope) break; }
+      // placa experta: el aviso no puede pisar CHECK; si aun a 11 px no cabe, se recorta (el multímetro repite el veredicto)
+      for (let t = texto; p3 && this.ui.aviso.height > tope && t.length > 12;) this.ui.aviso.setText((t = t.slice(0, -6).trimEnd()) + "…"); // sin placa: de y 286 a 318, sin rozar CHECK (316): 2 líneas a 16 px, 3-4 a 12 u 11 (mínimo legible)
     }
     if (placa) this.ui.aviso.setY(283);
-    if (p3) this.ui.aviso.setY(medirP3 ? 321 : 298); // entre la fila de piezas (o el multímetro) y CHECK
+    if (p3) this.ui.aviso.setY(medirP3 ? 313 : 300); // entre la fila de piezas (o el multímetro) y CHECK
     // El motor (ícono de turbina) gira cuando la corriente es la correcta.
     if (z?.circuito === "interruptor" && nivelCarga(z, p.vistas[z.zona]) === 2) this.ui.tablero.girar(dt * 0.3);
     // Tutorial: la lectura del multímetro llega aquí y no en pintar(), así que el paso se comprueba cada cuadro.
@@ -693,7 +705,9 @@ export class Taller extends Phaser.Scene {
     if (nombre) return t.add(img(this, 0, 0, nombre, 3).setOrigin(0.5));
     const z = this.zonaActual(), elegida = z && this.eleccion(z);
     t.add([marco(this, 0, 0, "panel_alerta", 300, 112),
-      letras(this, 0, 0, `¡Pieza quemada!\n${elegida ? textoRotulo(elegida, c) : ""}`, 3).setOrigin(0.5).setCenterAlign()]);
+      letras(this, 0, -26, v?.cortocircuito ? "¡Cortocircuito!" : "¡Pieza quemada!", 3).setOrigin(0.5),
+      letras(this, 0, 4, v?.cortocircuito ? "Atajo sin carga" : "Muy poca resistencia: pasó demasiada corriente", 1.5).setOrigin(0.5).setCenterAlign().setMaxWidth(270), // la causa, la misma del veredicto
+      letras(this, 0, 36, elegida ? textoRotulo(elegida, c) : "", 3).setOrigin(0.5)]);
   }
 
   /** «Salir» visible mientras se juega; armado muestra «SÍ / NO». */
@@ -736,7 +750,7 @@ export class Taller extends Phaser.Scene {
     u.circuito.removeAll(true).add([
       img(this, 50, 76, bat, bat === "icono_bateria" ? 4 : 2).setOrigin(0.5),
       letras(this, 50, 120, textoVolts(z.volts), 2).setOrigin(0.5, 0),
-      ...(mp ? pintarMontaje(this, mp, 180, 34) : pieza ? [img(this, 180, 34, pieza).setOrigin(0.5)] : z.circuito === "divisor" || !elegida ? [] : [marco(this, 180, 34, "boton_secundario", 104, 40)]),
+      ...(mp ? pintarMontaje(this, mp, 180, 34) : pieza ? this.fusiblePuesto(z, elegida, v, pieza) : z.circuito === "divisor" || !elegida ? [] : [marco(this, 180, 34, "boton_secundario", 104, 40)]),
       ...(z.circuito === "divisor" ? (elegida ? [] : [letras(this, MC.x + 28, MC.y, "?", 2).setOrigin(0.5)]) : [letras(this, 180, mp ? 34 + mp.alto + 4 : pieza ? 66 : 34, elegida ? textoRotulo(elegida, z.circuito) : "?", 2).setOrigin(0.5, mp || pieza ? 0 : 0.5)]),
       ...(mc ? [...pintarMontaje(this, mc, MC.x, MC.y), ...(z.circuito === "divisor" ? [] : [letras(this, MC.x, MC.y + mc.alto + 4, etiquetaCarga(z), 2).setOrigin(0.5, 0)])] : [letras(this, 354, z.circuito === "fusible3" ? 6 : 122, etiquetaCarga(z), 2).setOrigin(1, 0)]),
     ]);
@@ -779,7 +793,7 @@ export class Taller extends Phaser.Scene {
     for (const o of u.zonasMedir) o.input!.enabled = !placa && !p3 && !cad; // una Zone invisible sigue recibiendo toques
     // Mientras quedan piezas en la gaveta de la placa, esta ocupa el lugar del medidor.
     u.fila.setY(this.filaDy(z)).setVisible(p3 ? u.tablero3.gavetaActual === "medir" && !fin : !placa || !u.tablero.faltanPiezas()); // placa experta: el multímetro es la pestaña «Medir»
-    u.aviso.setY(placa ? 283 : p3 ? 298 : 286);
+    u.aviso.setY(placa ? 283 : p3 ? 300 : 286);
     u.etiquetas[1]!.setY(146);
     if (this.clave() !== this.aparecio) { this.aparecio = this.clave(); this.aparecer(); }
     // Pieza puesta en el circuito: se puede arrastrar de vuelta, lleva el mismo contorno que las de la gaveta.
@@ -857,10 +871,18 @@ export class Taller extends Phaser.Scene {
       if (sp) c.add(img(this, h.x, y, sp, 3).setOrigin(0.5).setFlipX(id === "ledInv"));
       else c.add(this.add.graphics().lineStyle(6, 0xaab4c8).lineBetween(h.x - 24, y, h.x + 24, y).fillStyle(0xaab4c8).fillCircle(h.x - 24, y, 4).fillCircle(h.x + 24, y, 4));
       c.add(letras(this, h.x, 60, textoPiezaCadena(id), 1.5, GRIS).setOrigin(0.5, 0));
-      if (i + 1 === k || marca === undefined) return;
+      if (i + 1 === k) return;
+      if (marca === undefined) return void c.add(letras(this, h.x, 88, "·", 3, GRIS).setOrigin(0.5)); // sin medir
       if (marca) c.add(img(this, h.x, 88, "icono_pasa", 2).setOrigin(0.5));
       else c.add([this.add.rectangle(h.x, y + 6, h.w - 4, 60, 0xe8363c, 0.55).setStrokeStyle(2, ALERTA), letras(this, h.x, y + 6, "?", 4).setOrigin(0.5)]); // hueco rojo = pieza muerta
     });
+    const medidas = cad.filter((_, i) => i + 1 !== k && this.tramos.has(`${this.clave()}|t${i + 1}`)).length, v = this.vistasVivas(this.net.estado)[z.zona];
+    c.add(letras(this, 200, 124, `Medidas: ${medidas}/${cad.length - (k ? 1 : 0)}`, 1.5, GRIS).setOrigin(0.5, 0));
+    if (k && !z.reparada && (v?.quemado || v?.cortocircuito)) { // el repuesto no sirvió: el hueco k en rojo y qué reponer (la misma pieza impresa de la muerta)
+      const h = hs[k - 1]!;
+      c.add([this.add.rectangle(h.x, y + 6, h.w - 4, 60, 0xe8363c, 0.55).setStrokeStyle(2, ALERTA), img(this, h.x, 88, "icono_no_pasa", 2).setOrigin(0.5),
+        letras(this, 200, 138, `Repón la misma: ${textoPiezaCadena(cad[k - 1]!)}`, 1.5, ALERTA).setOrigin(0.5, 0)]);
+    }
   }
 
   /** Tutorial terminado: el árbitro ya despachó su único pod y el «siguiente» no existe. */
@@ -1090,8 +1112,13 @@ export class Taller extends Phaser.Scene {
     else if (t?.activo && !esFin(t) && !actual(t).libre) { const p = actual(t); o = p.objetivo; arrastra = typeof p.pide === "object"; quita = cont && /quita/i.test(p.texto); }
     else return null;
     const P = this.ui.panel, p3 = z.circuito === "placa3";
+    // Tras un CHECK que no dio verde el paso «Valida» sigue vigente: el panel entero se ilumina para corregir (si no, el velo se traga todo menos CHECK).
+    const corrige = !g && o === "check" && this.pruebas > 0 && !z.reparada;
+    if (corrige) { o = "gaveta"; arrastra = true; }
     // Placa y protoboard: se arrastra y se cablea por todo el panel; solo CHECK y el multímetro tienen foco propio.
     const rs = (placa || p3) && !["check", "tension", "multimetro"].includes(o) ? [[P.x + 180, P.y + 177, 360, 356] as Rect4] : this.rectas(o, placa, cont);
+    if (p3 && o === "gaveta") rs.push(this.rectas("gaveta", placa, cont)[0]!); // las pestañas de gaveta quedan fuera del panel: sin hueco el velo se traga el toque
+    if (corrige) rs.push(...this.rectas("check", placa, cont), ...this.rectas("multimetro", placa, cont)); // CHECK y la luz siguen a mano
     if (arrastra && !placa && !p3) rs.push(...this.rectas("gaveta", placa, cont), ...this.rectas("circuito", placa, cont)); // de la pieza al hueco
     if (o === "check") rs.push(...this.rectas("multimetro", placa, cont)); // la luz del multímetro dice el veredicto
     if (quita) rs.push(this.rectas("pieza", placa, cont)[0]!); // «Continuidad: quita la pieza»
@@ -1366,10 +1393,10 @@ export class Taller extends Phaser.Scene {
     const div = this.zonaActual()?.circuito === "divisor", P = this.ui.panel, E = this.ui.escena, fila = P.y + this.filaDy() + 178, c = this.ui.contador.getBounds(), p3 = this.zonaActual()?.circuito === "placa3";
     const contador: [number, number, number, number] = [c.centerX, c.centerY, c.width + 16, c.height + 16];
     switch (o) {
-      case "gaveta": if (p3) return [[P.x + 180, P.y - 28, 360, 50], [P.x + 180, P.y + 266, 358, 60]]; // pestañas y piezas de la gaveta
+      case "gaveta": if (p3) return [[P.x + 180, P.y - 28, 360, 50], [P.x + 180, P.y + 278, 358, 54]]; // pestañas y piezas de la gaveta
         return [placa ? [P.x + 180, P.y + 240, 220, 68] : [P.x + 180, P.y + GY, 358, GH + 6]];
       case "tension": return [[P.x + (cont ? 326 : 36), fila - 4, 68, 64]]; // «Toca Continuidad» usa el mismo objetivo que Tensión
-      case "pieza": if (p3) return [[P.x + 180, P.y + 120, 320, 244]];
+      case "pieza": if (p3) return [[P.x + 180, P.y + 128, 354, 256]];
         return [div ? [P.x + MC.x + 30, P.y + MC.y + 10, 56, 68] : [P.x + 180, P.y + 44, 130, 92], [P.x + 180, fila, 110, 52]];
       case "carga": return [[P.x + 310, P.y + 76, 84, 118], [P.x + 180, fila, 110, 52]];
       case "cadena": { // la pieza localizada o, antes, toda la cadena

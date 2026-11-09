@@ -29,7 +29,7 @@ export const RETO: Record<Circuito, string> = {
   combinar: "Monta las dos resistencias para que el LED reciba entre 10 y 20 mA",
   divisor: "Tu salida va al Arduino: debe quedar entre 4 y 5 V. Mídela con Tensión",
   protegido: "El diodo se come 0,7 V: la resistencia debe ajustarse",
-  cadena: "Toca CONTINUIDAD y mide cada pieza: «No pasa» = cortada",
+  cadena: "1 CONTINUIDAD · 2 mide cada pieza · 3 cambia la que no pasa · 4 CHECK",
   fusible3: "Elige el fusible: aguanta el consumo normal y corta la falla",
   placa3: "Resuelve el problema en la placa", // el globo muestra el enunciado del pod
 };
@@ -125,7 +125,7 @@ export function vistaDeVeredicto(label: Verdict, circuito: Circuito = "led"): Vi
   const t = CARGA[circuito];
   if (label === "se quema") return { aguja: "demasiado", quemado: true, cortocircuito: false, mensaje: t.quema };
   // placa3: no cumple el problema; no se dice qué conexión falla (luz ámbar, penaliza como «poco»)
-  if (label === "mal") return { aguja: "poco", quemado: false, cortocircuito: false, mensaje: "Mal conectado: el montaje no cumple el problema. Mide y revisa las conexiones." };
+  if (label === "mal") return { aguja: "poco", quemado: false, cortocircuito: false, mensaje: "Mal conectado: revisa los cables y las piezas." };
   return { aguja: label, quemado: false, cortocircuito: false, mensaje: label === "correcto" ? "¡Correcto!" : t[label] };
 }
 

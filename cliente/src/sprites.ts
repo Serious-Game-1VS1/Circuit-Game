@@ -104,7 +104,7 @@ export function montajeOpcion(c: Circuito, pieza: string, n3 = false): Montaje {
       : { elementos: [{ fusible: pieza, x: 0, y: -7, k: 3 }], cables: [], rotulo: "", ancho: f.grande ? 84 : 54, alto: 22, textos: [{ t: f.marca, x: 0, y: 6, k: 2 }] };
   }
   if (n3 && (c === "led" || c === "cabina" || c === "protegido" || c === "divisor") && RESISTENCIA[pieza]) return uno({ bandas: bandas(Number(pieza)), x: 0, y: 0, k: 3 });
-  if (c === "fusible") return FUSIBLE[pieza] ? uno({ sprite: FUSIBLE[pieza], x: 0, y: 0, k: 3 }) : hueco;
+  if (c === "fusible") return FUSIBLE[pieza] ? uno({ sprite: FUSIBLE[pieza], x: 0, y: 0, k: kFusible(pieza) }) : hueco;
   if (c === "invertido") return { elementos: [{ diodo: true, giro: pieza === "inversa", x: 0, y: 0, k: 3 }], cables: [], rotulo: "", ancho: 36, alto: 17 };
   if (c === "abierto") return { elementos: [], cables: pieza === "empalmar" ? [[-30, 0, 30, 0]] : [[-30, 0, -10, 0], [10, 0, 30, 0], [-10, -7, -10, 7], [10, -7, 10, 7]], puntos: [[-30, 0], [30, 0]], rotulo: "", ancho: 60, alto: 7 };
   if (c === "combinar") {
@@ -147,6 +147,8 @@ export const cargas = (c: Circuito) => (c === "cabina" || c === "luces" ? 2 : 1)
 
 const RESISTENCIA: Record<string, string> = { "100": "resistencia_100", "220": "resistencia_220", "470": "resistencia_470", "1000": "resistencia_1k" };
 const FUSIBLE: Record<string, string> = { "0.5": "fusible_fino", "1": "fusible_medio", "3": "fusible_grueso" };
+/** Escala del fusible de nivel 2 según sus amperios: 0,5 A pequeño, 3 A grande (gaveta; en el circuito, +1). */
+export const kFusible = (pieza: string) => ({ "0.5": 2, "1": 3, "3": 4 } as Record<string, number>)[pieza] ?? 3;
 /** Sprite de la pieza elegida; null = solo texto (montajes de luces o nada elegido). */
 export function spritePieza(c: Circuito, pieza: string | undefined): string | null {
   if (!pieza) return null;

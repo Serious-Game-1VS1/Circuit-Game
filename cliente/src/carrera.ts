@@ -214,8 +214,8 @@ export class Podio extends Phaser.Scene {
     texto(this, W / 2, caja.y - 54, TXT.repasar, 2, 0xe0a43c);
     texto(this, W / 2, caja.y - 30, [...repasar.map((r) => `- ${r}`), ...(podLento ? [podLento] : [])].join("\n"), 2);
 
-    // Dos botones con el mismo destino (la entrada); el texto de VOLVER A JUGAR va en 2 líneas para caber a escala 2.
-    const botones: [string, string, number][] = [["boton_primario", "VOLVER A\nJUGAR", W / 2 - 84], ["boton_secundario", "MENU", W / 2 + 84]];
+    // Dos botones con el mismo destino (la entrada); «OTRA VEZ» cabe en una línea a escala 2.
+    const botones: [string, string, number][] = [["boton_primario", "OTRA VEZ", W / 2 - 84], ["boton_secundario", "MENU", W / 2 + 84]];
     for (const [tex, t, x] of botones) {
       marco(this, x, 604, tex, 160, 52);
       texto(this, x, 604 - t.split("\n").length * 8, t, 2, 0x140f1f).setDropShadow(0, 0, 0, 0);

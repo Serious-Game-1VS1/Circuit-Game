@@ -3,23 +3,24 @@
  * (tiras de 5 agujeros a cada lado del canal y rieles + y −, ver spike/src/engine/placa3.ts), gavetas por tipo de pieza y edición
  * del montaje (poner, mover, girar y quitar piezas; tender y quitar cables). El cliente no decide si está bien: manda el montaje.
  *
- * Coordenadas locales del tablero (300 × 236): tiras de 114 × 55 px (≥ 44 px en pantalla a 360 × 640), agujeros cada 22 px.
+ * Coordenadas locales del tablero (346 × 248, ocupa casi todo el ancho del panel de 360): tiras de 128 × 58 px, agujeros cada 26 px.
  */
 import { COLUMNAS, FILAS, MITAD, RIEL, esHoyo, nodoDe, patas, polar, tipoDe, valorDe, type Hoyo, type Montaje3, type Puesta } from "../../spike/src/engine/placa3";
 
 export { codificar } from "../../spike/src/engine/placa3";
 export type { Hoyo, Montaje3, Puesta } from "../../spike/src/engine/placa3";
 
-export const ANCHO3 = 300, ALTO3 = 236, PASO = 55, Y0 = 8;
-export const RIEL_MAS = 13, RIEL_MENOS = 287, CANAL = 150;
+/** X0: margen izquierdo del tablero en el panel (antes 30; con 346 de ancho queda centrado). DX: paso entre agujeros. */
+export const ANCHO3 = 346, ALTO3 = 248, PASO = 58, Y0 = 8, X0 = 7, DX = 26;
+export const RIEL_MAS = 13, RIEL_MENOS = ANCHO3 - 13, CANAL = ANCHO3 / 2;
 export const VACIO: Montaje3 = { piezas: [], cables: [] };
 
 export const filaY = (f: number) => Y0 + PASO * f + PASO / 2;
-export const colX = (c: number) => (c < MITAD ? 38 + 22 * c : 174 + 22 * (c - MITAD));
+export const colX = (c: number) => (c < MITAD ? 40 + DX * c : CANAL + 29 + DX * (c - MITAD));
 export interface P2 { x: number; y: number }
 /** Centro de un agujero. Riel: dos agujeros por fila (k par arriba, impar abajo). */
 export function coordHoyo(h: Hoyo): P2 {
-  if (h[0] === "+" || h[0] === "-") { const k = Number(h.slice(1)); return { x: h[0] === "+" ? RIEL_MAS : RIEL_MENOS, y: filaY(Math.floor(k / 2)) + (k % 2 ? 13 : -13) }; }
+  if (h[0] === "+" || h[0] === "-") { const k = Number(h.slice(1)); return { x: h[0] === "+" ? RIEL_MAS : RIEL_MENOS, y: filaY(Math.floor(k / 2)) + (k % 2 ? 14 : -14) }; }
   const [f, c] = h.split(",").map(Number) as [number, number];
   return { x: colX(c), y: filaY(f) };
 }
@@ -34,8 +35,8 @@ export const ocupados = (m: Montaje3) => new Set([...m.piezas.flatMap(patas), ..
 export function tiraEn(x: number, y: number): Hoyo[] | null {
   if (y < Y0 - 6 || y > Y0 + PASO * FILAS + 6 || x < -8 || x > ANCHO3 + 8) return null;
   const f = Math.max(0, Math.min(FILAS - 1, Math.floor((y - Y0) / PASO)));
-  if (x < 30) return Array.from({ length: RIEL }, (_, k) => `+${k}`);
-  if (x > ANCHO3 - 30) return Array.from({ length: RIEL }, (_, k) => `-${k}`);
+  if (x < 28) return Array.from({ length: RIEL }, (_, k) => `+${k}`);
+  if (x > ANCHO3 - 28) return Array.from({ length: RIEL }, (_, k) => `-${k}`);
   if (Math.abs(x - CANAL) < 6) return null; // el canal no conecta
   const c0 = x < CANAL ? 0 : MITAD;
   return Array.from({ length: MITAD }, (_, i) => `${f},${c0 + i}`);
@@ -75,7 +76,7 @@ export const quitarCable3 = (m: Montaje3, i: number): Montaje3 => ({ ...m, cable
 
 /** Pieza cuyo cuerpo (entre sus dos patas) está bajo (x, y). */
 export const piezaEn3 = (m: Montaje3, x: number, y: number): Puesta | null =>
-  m.piezas.find((p) => Math.abs(x - colX(p.c)) <= 12 && y >= filaY(p.f) + 6 && y <= filaY(p.f + 1) - 6) ?? null;
+  m.piezas.find((p) => Math.abs(x - colX(p.c)) <= 14 && y >= filaY(p.f) + 6 && y <= filaY(p.f + 1) - 6) ?? null;
 
 /** Ruta del cable: en L (primero horizontal, luego vertical); si sale de un riel, primero en vertical por el borde. */
 export function ruta(a: Hoyo, b: Hoyo): P2[] {
