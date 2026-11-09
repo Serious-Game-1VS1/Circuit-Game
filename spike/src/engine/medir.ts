@@ -102,7 +102,7 @@ export function medir(z: ZonaCircuito, pieza: string, modo: ModoMedir, punto: st
       { kind: "resistor", a: n, b: bajo, ohms: PROBADOR_OHMS },
     ];
     const r = solve(partes);
-    const ohmios = objetivo.kind === "resistor" && objetivo.ohms < 1e6 ? { ohmios: objetivo.ohms } : {}; // los 1e9 Ω del corte se leen «abierto»
+    const ohmios = (objetivo.kind === "resistor" || objetivo.kind === "heater") && objetivo.ohms < 1e6 ? { ohmios: objetivo.ohms } : {}; // los 1e9 Ω del corte se leen «abierto»; calefactor: su consumo normal, para I = V/R
     return { pasa: !r.short && Math.abs(r.parts.at(-1)!.amps) > PASA_A, ...ohmios };
   }
 

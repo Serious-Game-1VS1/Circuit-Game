@@ -64,6 +64,14 @@ describe("multímetro: solo lo que mediría un multímetro real", () => {
     expect(piezaPuesta({ circuito: "luces", volts: 9 }, "serie", "continuidad", "carga1", false)).toBe(false);
   });
 
+  it("continuidad en la carga del calefactor da sus Ω (consumo normal) para calcular I = V/R", () => {
+    for (const circuito of ["fusible", "fusible3"] as const) {
+      const l = medir({ circuito, volts: 9 }, "ninguna", "continuidad", "carga1");
+      expect(l).toMatchObject({ pasa: true });
+      expect((l as { ohmios?: number }).ohmios).toBeGreaterThan(1);
+    }
+  });
+
   it("continuidad del fusible: los 3 (0,5 / 1 / 3 A) pasan siempre; el motor nunca devuelve «cortado»", () => {
     for (const volts of [3.7, 4.5, 9]) {
       for (const f of PIEZAS.fusible) expect(medir({ circuito: "fusible", volts }, f, "continuidad", "pieza")).toMatchObject({ pasa: true });
